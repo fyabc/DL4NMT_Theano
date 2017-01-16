@@ -100,9 +100,11 @@ model/
 # log
 log/
 
+# translated files
+translated/
+
 # numpy saved models
 *.npz
 
 # theano config files
 .theanorc.*
-

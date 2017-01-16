@@ -33,6 +33,7 @@ def main(job_id, params):
                      n_words_src=params['n-words'][0],
                      sort_by_len=params['curr'],
                      convert_embedding=params['convert_embedding'],
+                     dump_before_train=params['dump_before_train'],
                      )
     return validerr
 
@@ -42,14 +43,15 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     # reload
-    parser.add_argument('-r', action="store_true", default=True)
+    parser.add_argument('-r', action="store_true", default=True, help='Reload, default to true')
     parser.add_argument('-C', action="store_false", default=True, dest='convert_embedding')
+    parser.add_argument('-d', action='store_true', default=False, dest='dump_before_train')
     parser.add_argument('--lr', action="store", metavar="learning_rate", dest="learning_rate", type=float, default=0.8)
     parser.add_argument('-curri', action="store_true", default=False)
 
-    parser.add_argument('model_file', type=str, default='model/nmt_selective_models.npz')
+    parser.add_argument('model_file', nargs='?', default='model/top1M/en2fr_top1M.npz')
     # parser.add_argument('train_idx_file', nargs='?', type=str, default='')  # the subset indexes chosen
-    parser.add_argument('pre_load_file', nargs='?', default='null.npz')
+    parser.add_argument('pre_load_file', nargs='?', default='model/en2fr.iter160000.npz')
 
     # default arguments in my experiment
     # reload = True
@@ -83,4 +85,5 @@ if __name__ == '__main__':
         'curr': args.curri,
         'pre_model': args.pre_load_file,
         'convert_embedding': args.convert_embedding,
+        'dump_before_train': args.dump_before_train,
     })

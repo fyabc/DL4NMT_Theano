@@ -747,6 +747,7 @@ def train(dim_word=100,  # word vector dimensionality
           preload='',
           sort_by_len=False,
           convert_embedding=True,
+          dump_before_train=False,
     ):
     # Model options
     model_options = locals().copy()
@@ -818,59 +819,60 @@ def train(dim_word=100,  # word vector dimensionality
         print 'Reloading model parameters'
         params = load_params(preload, params)
 
-    # for k, v in params.iteritems():
-    #     print '>', k, v.shape, v.dtype
-
-    if convert_embedding:
-        # =================
-        # Convert input and output embedding parameters with a exist word embedding
-        # =================
-        print 'Convert input and output embedding'
-
-        temp_Wemb = params['Wemb']
-        orig_emb_mean = np.mean(temp_Wemb, axis=0)
-
-        params['Wemb'] = np.tile(orig_emb_mean, [params['Wemb'].shape[0], 1])
-
-        # Load vocabulary map dicts and do mapping
-        with open(map_filename, 'rb') as map_file:
-            map_en = pkl.load(map_file)
-            map_fr = pkl.load(map_file)
-
-        for full, top in map_en.iteritems():
-            emb_size = temp_Wemb.shape[0]
-            if full < emb_size and top < emb_size:
-                params['Wemb'][top] = temp_Wemb[full]
-
-        print 'Convert input embedding done'
-
-        temp_ff_logit_W = params['ff_logit_W']
-        temp_Wemb_dec = params['Wemb_dec']
-        temp_b = params['ff_logit_b']
-
-        orig_ff_logit_W_mean = np.mean(temp_ff_logit_W, axis=1)
-        orig_Wemb_dec_mean = np.mean(temp_Wemb_dec, axis=0)
-        orig_b_mean = np.mean(temp_b)
-
-        params['ff_logit_W'] = np.tile(orig_Wemb_dec_mean, [params['ff_logit_W'].shape[1], 1]).T
-        params['ff_logit_b'].fill(orig_b_mean)
-        params['Wemb_dec'] = np.tile(orig_Wemb_dec_mean, [params['Wemb_dec'].shape[0], 1])
-
-        for full, top in map_en.iteritems():
-            emb_size = temp_Wemb.shape[0]
-            if full < emb_size and top < emb_size:
-                params['ff_logit_W'][:, top] = temp_ff_logit_W[:, full]
-                params['ff_logit_b'][top] = temp_b[full]
-                params['Wemb_dec'][top] = temp_Wemb[full]
-
-        print 'Convert output embedding done'
-
         # for k, v in params.iteritems():
         #     print '>', k, v.shape, v.dtype
 
-        # ================
-        # End Convert
-        # ================
+        # Only convert parameters when reloading
+        if convert_embedding:
+            # =================
+            # Convert input and output embedding parameters with a exist word embedding
+            # =================
+            print 'Convert input and output embedding'
+
+            temp_Wemb = params['Wemb']
+            orig_emb_mean = np.mean(temp_Wemb, axis=0)
+
+            params['Wemb'] = np.tile(orig_emb_mean, [params['Wemb'].shape[0], 1])
+
+            # Load vocabulary map dicts and do mapping
+            with open(map_filename, 'rb') as map_file:
+                map_en = pkl.load(map_file)
+                map_fr = pkl.load(map_file)
+
+            for full, top in map_en.iteritems():
+                emb_size = temp_Wemb.shape[0]
+                if full < emb_size and top < emb_size:
+                    params['Wemb'][top] = temp_Wemb[full]
+
+            print 'Convert input embedding done'
+
+            temp_ff_logit_W = params['ff_logit_W']
+            temp_Wemb_dec = params['Wemb_dec']
+            temp_b = params['ff_logit_b']
+
+            orig_ff_logit_W_mean = np.mean(temp_ff_logit_W, axis=1)
+            orig_Wemb_dec_mean = np.mean(temp_Wemb_dec, axis=0)
+            orig_b_mean = np.mean(temp_b)
+
+            params['ff_logit_W'] = np.tile(orig_Wemb_dec_mean, [params['ff_logit_W'].shape[1], 1]).T
+            params['ff_logit_b'].fill(orig_b_mean)
+            params['Wemb_dec'] = np.tile(orig_Wemb_dec_mean, [params['Wemb_dec'].shape[0], 1])
+
+            for full, top in map_en.iteritems():
+                emb_size = temp_Wemb.shape[0]
+                if full < emb_size and top < emb_size:
+                    params['ff_logit_W'][:, top] = temp_ff_logit_W[:, full]
+                    params['ff_logit_b'][top] = temp_b[full]
+                    params['Wemb_dec'][top] = temp_Wemb[full]
+
+            print 'Convert output embedding done'
+
+            # for k, v in params.iteritems():
+            #     print '>', k, v.shape, v.dtype
+
+            # ================
+            # End Convert
+            # ================
 
     tparams = init_tparams(params)
 
@@ -950,6 +952,14 @@ def train(dim_word=100,  # word vector dimensionality
     estop = False
     history_errs = []
     # reload history
+
+    if dump_before_train:
+        print 'Dumping before train...',
+        saveto_uidx = '{}.iter{}.npz'.format(
+            os.path.splitext(saveto)[0], uidx)
+        np.savez(saveto_uidx, history_errs=history_errs,
+                 uidx=uidx, **unzip(tparams))
+        print 'Done'
 
     if saveFreq == -1:
         saveFreq = len(train[0]) / batch_size
