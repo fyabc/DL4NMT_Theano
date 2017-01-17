@@ -43,7 +43,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     # reload
-    parser.add_argument('-r', action="store_true", default=True, help='Reload, default to true')
+    parser.add_argument('-R', action="store_false", default=True, help='Reload, default to true')
     parser.add_argument('-C', action="store_false", default=True, dest='convert_embedding')
     parser.add_argument('-d', action='store_true', default=False, dest='dump_before_train')
     parser.add_argument('--lr', action="store", metavar="learning_rate", dest="learning_rate", type=float, default=0.8)

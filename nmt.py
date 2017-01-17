@@ -967,9 +967,6 @@ def train(dim_word=100,  # word vector dimensionality
     for eidx in xrange(max_epochs):
         n_samples = 0
 
-        if lr_discount_freq > 0 and (eidx + 1) % lr_discount_freq == 0:
-            lrate *= 0.5
-
         # for i, batch_idx in train_batch_idx:
         #
         #     x = [train_data_x[id] for id in batch_idx]
@@ -1002,6 +999,11 @@ def train(dim_word=100,  # word vector dimensionality
             if np.isnan(cost) or np.isinf(cost):
                 print 'NaN detected'
                 return 1., 1., 1.
+
+            # discount reward
+            if lr_discount_freq > 0 and np.mod(uidx, lr_discount_freq) == 0:
+                lrate *= 0.5
+                print 'Discount learning rate to {} at iteration {}'.format(lrate, uidx)
 
             # verbose
             if np.mod(uidx, dispFreq) == 0:
