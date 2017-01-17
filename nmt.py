@@ -854,7 +854,7 @@ def train(dim_word=100,  # word vector dimensionality
             orig_Wemb_dec_mean = np.mean(temp_Wemb_dec, axis=0)
             orig_b_mean = np.mean(temp_b)
 
-            params['ff_logit_W'] = np.tile(orig_Wemb_dec_mean, [params['ff_logit_W'].shape[1], 1]).T
+            params['ff_logit_W'] = np.tile(orig_ff_logit_W_mean, [params['ff_logit_W'].shape[1], 1]).T
             params['ff_logit_b'].fill(orig_b_mean)
             params['Wemb_dec'] = np.tile(orig_Wemb_dec_mean, [params['Wemb_dec'].shape[0], 1])
 
