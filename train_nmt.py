@@ -48,6 +48,7 @@ if __name__ == '__main__':
     parser.add_argument('-d', action='store_true', default=False, dest='dump_before_train')
     parser.add_argument('--lr', action="store", metavar="learning_rate", dest="learning_rate", type=float, default=0.8)
     parser.add_argument('-curri', action="store_true", default=False)
+    parser.add_argument('--optimizer', action='store', default='sgd')
 
     parser.add_argument('model_file', nargs='?', default='model/top1M/en2fr_top1M.npz')
     # parser.add_argument('train_idx_file', nargs='?', type=str, default='')  # the subset indexes chosen
@@ -72,7 +73,7 @@ if __name__ == '__main__':
         'dim_word': [620],
         'dim': [1000],
         'n-words': [30000],
-        'optimizer': ['sgd'],
+        'optimizer': [args.optimizer],
         'decay-c': [0.],
         'clip-c': [1.],
         'use-dropout': [False],
