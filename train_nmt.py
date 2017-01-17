@@ -43,7 +43,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     # reload
-    parser.add_argument('-R', action="store_false", default=True, help='Reload, default to true')
+    parser.add_argument('-R', action="store_false", default=True, dest='reload', help='Reload, default to true')
     parser.add_argument('-C', action="store_false", default=True, dest='convert_embedding')
     parser.add_argument('-d', action='store_true', default=False, dest='dump_before_train')
     parser.add_argument('--lr', action="store", metavar="learning_rate", dest="learning_rate", type=float, default=0.8)
@@ -78,7 +78,7 @@ if __name__ == '__main__':
         'use-dropout': [False],
         # 'learning-rate': [1.],
         'learning-rate': [args.learning_rate],
-        'reload': [args.r],
+        'reload': [args.reload],
         # 'save_freq': [5000],
         'save_freq': [10000],
         # 'train_idx_file': args.train_idx_file,
