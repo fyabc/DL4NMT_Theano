@@ -44,17 +44,22 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     # reload
-    parser.add_argument('-R', action="store_false", default=True, dest='reload', help='Reload, default to true')
-    parser.add_argument('-C', action="store_false", default=False, dest='convert_embedding')
+    parser.add_argument('-R', action="store_false", default=True, dest='reload',
+                        help='Reload, default to True, set to False')
+    parser.add_argument('-C', action="store_false", default=False, dest='convert_embedding',
+                        help='Convert embedding, default to True, set to False')
     parser.add_argument('-d', action='store_true', default=False, dest='dump_before_train')
     parser.add_argument('--lr', action="store", metavar="learning_rate", dest="learning_rate", type=float, default=0.8)
     parser.add_argument('-curri', action="store_true", default=False)
     parser.add_argument('--optimizer', action='store', default='sgd')
-    parser.add_argument('--plot', action='store', default=None)
+    parser.add_argument('--plot', action='store', default=None,
+                        help='Plot filename, default is None (not plot)')
 
-    parser.add_argument('model_file', nargs='?', default='model/top1M/en2fr_top1M.npz')
+    parser.add_argument('model_file', nargs='?', default='model/top1M/en2fr_top1M.npz',
+                        help='Generated model file, default is "model/top1M/en2fr_top1M.npz"')
     # parser.add_argument('train_idx_file', nargs='?', type=str, default='')  # the subset indexes chosen
-    parser.add_argument('pre_load_file', nargs='?', default='model/en2fr.iter160000.npz')
+    parser.add_argument('pre_load_file', nargs='?', default='model/en2fr.iter160000.npz',
+                        help='Pre-load model file, default is "model/en2fr.iter160000.npz"')
 
     # [NOTE]
     # default arguments in my experiment

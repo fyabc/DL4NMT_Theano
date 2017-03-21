@@ -117,3 +117,11 @@ def sgd(lr, tparams, grads, inp, cost):
     f_update = theano.function([lr], [], updates=pup, profile=profile)
 
     return f_grad_shared, f_update
+
+
+__all__ = [
+    'adadelta',
+    'adam',
+    'rmsprop',
+    'sgd',
+]
