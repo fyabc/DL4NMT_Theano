@@ -34,6 +34,7 @@ def main(job_id, params):
                      sort_by_len=params['curr'],
                      convert_embedding=params['convert_embedding'],
                      dump_before_train=params['dump_before_train'],
+                     plot_graph=params['plot_graph'],
                      )
     return validerr
 
@@ -44,16 +45,18 @@ if __name__ == '__main__':
 
     # reload
     parser.add_argument('-R', action="store_false", default=True, dest='reload', help='Reload, default to true')
-    parser.add_argument('-C', action="store_false", default=True, dest='convert_embedding')
+    parser.add_argument('-C', action="store_false", default=False, dest='convert_embedding')
     parser.add_argument('-d', action='store_true', default=False, dest='dump_before_train')
     parser.add_argument('--lr', action="store", metavar="learning_rate", dest="learning_rate", type=float, default=0.8)
     parser.add_argument('-curri', action="store_true", default=False)
     parser.add_argument('--optimizer', action='store', default='sgd')
+    parser.add_argument('--plot', action='store', default=None)
 
     parser.add_argument('model_file', nargs='?', default='model/top1M/en2fr_top1M.npz')
     # parser.add_argument('train_idx_file', nargs='?', type=str, default='')  # the subset indexes chosen
     parser.add_argument('pre_load_file', nargs='?', default='model/en2fr.iter160000.npz')
 
+    # [NOTE]
     # default arguments in my experiment
     # reload = True
     # Optimizer = sgd
@@ -87,4 +90,5 @@ if __name__ == '__main__':
         'pre_model': args.pre_load_file,
         'convert_embedding': args.convert_embedding,
         'dump_before_train': args.dump_before_train,
+        'plot_graph': args.plot,
     })

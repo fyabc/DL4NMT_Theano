@@ -1,6 +1,7 @@
-'''
+"""
 Build a neural machine translation model with soft attention
-'''
+"""
+
 import theano
 import theano.tensor as tensor
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
@@ -13,7 +14,7 @@ import os
 import sys
 import time
 from collections import OrderedDict
-import regex as re
+import re
 
 from utils import _p, concatenate, load_params, init_tparams, ortho_weight, norm_weight, zipp, unzip, itemlist, \
     get_minibatches_idx, prepare_data
@@ -27,10 +28,10 @@ profile = False
 # dropout
 def dropout_layer(state_before, use_noise, trng):
     proj = tensor.switch(
-            use_noise,
-            state_before * trng.binomial(state_before.shape, p=0.5, n=1,
-                                         dtype=state_before.dtype),
-            state_before * 0.5)
+        use_noise,
+        state_before * trng.binomial(state_before.shape, p=0.5, n=1,
+                                     dtype=state_before.dtype),
+        state_before * 0.5)
     return proj
 
 
@@ -70,8 +71,8 @@ def param_init_fflayer(options, params, prefix='ff', nin=None, nout=None,
 def fflayer(tparams, state_below, options, prefix='rconv',
             activ='lambda x: tensor.tanh(x)', **kwargs):
     return eval(activ)(
-            tensor.dot(state_below, tparams[_p(prefix, 'W')]) +
-            tparams[_p(prefix, 'b')])
+        tensor.dot(state_below, tparams[_p(prefix, 'W')]) +
+        tparams[_p(prefix, 'b')])
 
 
 # GRU layer
@@ -509,6 +510,15 @@ def build_model(tparams, options):
     cost = cost.reshape([y.shape[0], y.shape[1]])
     cost = (cost * y_mask).sum(0)
 
+    if options['plot_graph'] is not None:
+        print 'Plotting pre-compile graph...',
+        theano.printing.pydotprint(
+            cost,
+            outfile='pre_compile_{}'.format(options['plot_graph']),
+            var_with_name_simple=True,
+        )
+        print 'Done'
+
     return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost, ctx_mean
 
 
@@ -718,28 +728,27 @@ def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True, norma
     return np.array(probs)
 
 
-def train(dim_word=100,  # word vector dimensionality
-          dim=1000,  # the number of LSTM units
+def train(dim_word=100,             # word vector dimensionality
+          dim=1000,                 # the number of LSTM units
           encoder='gru',
           decoder='gru_cond',
           n_words_src=30000,
           n_words=30000,
-          patience=10,  # early stopping patience
+          patience=10,              # early stopping patience
           max_epochs=5000,
-          finish_after=10000000,  # finish after this many updates
+          finish_after=10000000,    # finish after this many updates
           dispFreq=100,
-          decay_c=0.,  # L2 regularization penalty
-          alpha_c=0.,  # alignment regularization
-          clip_c=-1.,  # gradient clipping threshold
-          lrate=1.,  # learning rate
-          maxlen=100,  # maximum length of the description
+          decay_c=0.,               # L2 regularization penalty
+          alpha_c=0.,               # alignment regularization
+          clip_c=-1.,               # gradient clipping threshold
+          lrate=1.,                 # learning rate
+          maxlen=100,               # maximum length of the description
           optimizer='rmsprop',
           batch_size=16,
           saveto='model.npz',
-          saveFreq=1000,  # save the parameters after every saveFreq updates
-          datasets=[
-              '/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.en.tok',
-              '/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.fr.tok'],
+          saveFreq=1000,            # save the parameters after every saveFreq updates
+          datasets=('/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.en.tok',
+                    '/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.fr.tok'),
           picked_train_idxes_file=r'',
           use_dropout=False,
           reload_=False,
@@ -748,7 +757,8 @@ def train(dim_word=100,  # word vector dimensionality
           sort_by_len=False,
           convert_embedding=True,
           dump_before_train=False,
-    ):
+          plot_graph=None,
+          ):
     # Model options
     model_options = locals().copy()
     if reload_:
@@ -916,6 +926,15 @@ def train(dim_word=100,  # word vector dimensionality
     f_cost = theano.function(inps, cost, profile=profile)
     print 'Done'
 
+    if plot_graph is not None:
+        print 'Plotting post-compile graph...',
+        theano.printing.pydotprint(
+            f_cost,
+            outfile='post_compile_{}'.format(plot_graph),
+            var_with_name_simple=True,
+        )
+        print 'Done'
+
     print 'Computing gradient...',
     grads = tensor.grad(cost, wrt=itemlist(tparams))
     print 'Done'
@@ -1015,7 +1034,7 @@ def train(dim_word=100,  # word vector dimensionality
                 if not overwrite:
                     # print 'Saving the model at iteration {}...'.format(uidx),
                     saveto_uidx = '{}.iter{}.npz'.format(
-                            os.path.splitext(saveto)[0], uidx)
+                        os.path.splitext(saveto)[0], uidx)
                     np.savez(saveto_uidx, history_errs=history_errs,
                              uidx=uidx, **unzip(tparams))
                     # print 'Done'
