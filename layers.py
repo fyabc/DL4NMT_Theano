@@ -14,6 +14,25 @@ from utils import _p, norm_weight, ortho_weight, concatenate
 __author__ = 'fyabc'
 
 
+# Some utilities.
+
+def _slice(_x, n, dim):
+    """Utility function to slice a tensor."""
+    if _x.ndim == 3:
+        return _x[:, :, n * dim:(n + 1) * dim]
+    return _x[:, n * dim:(n + 1) * dim]
+
+
+# Activations.
+
+def tanh(x):
+    return tensor.tanh(x)
+
+
+def linear(x):
+    return x
+
+
 # Some helper layers.
 
 def dropout_layer(state_before, use_noise, trng):
@@ -28,10 +47,30 @@ def dropout_layer(state_before, use_noise, trng):
 
 
 def embedding(tparams, state_below, options, n_timesteps, n_samples):
+    """Embedding"""
+
     emb = tparams['Wemb'][state_below.flatten()]
     emb = emb.reshape([n_timesteps, n_samples, options['dim_word']])
 
     return emb
+
+
+def attention_layer(context_mask, et, ht_1, We_att, Wh_att, Wb_att, U_att, Ub_att):
+    """Attention"""
+
+    a_network = tensor.tanh(tensor.dot(et, We_att) + tensor.dot(ht_1, Wh_att) + Wb_att)
+    alpha = tensor.dot(a_network, U_att) + Ub_att
+    alpha = alpha.reshape([alpha.shape[0], alpha.shape[1]])
+    alpha = tensor.exp(alpha)
+    if context_mask:
+        alpha *= context_mask
+    alpha = alpha / alpha.sum(0, keepdims=True)
+    # if Wp_compress_e:
+    #    ctx_t = (tensor.dot(et, Wp_compress_e) * alpha[:,:,None]).sum(0) # This is the c_t in Baidu's paper
+    # else:
+    #    ctx_t = (et * alpha[:,:,None]).sum(0)
+    ctx_t = (et * alpha[:, :, None]).sum(0)
+    return ctx_t
 
 
 # layers: 'name': ('parameter initializer', 'feedforward')
@@ -45,14 +84,6 @@ layers = {
 def get_layer(name):
     fns = layers[name]
     return eval(fns[0]), eval(fns[1])
-
-
-def tanh(x):
-    return tensor.tanh(x)
-
-
-def linear(x):
-    return x
 
 
 def param_init_fflayer(options, params, prefix='ff', nin=None, nout=None,
@@ -70,8 +101,10 @@ def param_init_fflayer(options, params, prefix='ff', nin=None, nout=None,
 
 
 def fflayer(tparams, state_below, options, prefix='rconv',
-            activ='lambda x: tensor.tanh(x)', **kwargs):
-    return eval(activ)(
+            activ=tanh, **kwargs):
+    if isinstance(activ, (str, unicode)):
+        activ = eval(activ)
+    return activ(
         tensor.dot(state_below, tparams[_p(prefix, 'W')]) +
         tparams[_p(prefix, 'b')])
 
@@ -105,63 +138,52 @@ def param_init_gru(options, params, prefix='gru', nin=None, dim=None):
     return params
 
 
+def _gru_step_slice(src_mask, x_, xx_, ht_1, U, Ux):
+    """GRU step function to be used by scan
+
+    arguments (0) | sequences (3) | outputs-info (1) | non-seqs (2)
+    """
+
+    _dim = Ux.shape[1]
+
+    preact = tensor.dot(ht_1, U) + x_
+
+    # reset and update gates
+    r = tensor.nnet.sigmoid(_slice(preact, 0, _dim))
+    u = tensor.nnet.sigmoid(_slice(preact, 1, _dim))
+
+    # hidden state proposal
+    ht_tilde = tensor.tanh(tensor.dot(ht_1, Ux) * r + xx_)
+
+    # leaky integrate and obtain next hidden state
+    ht = u * ht_1 + (1. - u) * ht_tilde
+    ht = src_mask[:, None] * ht + (1. - src_mask)[:, None] * ht_1
+
+    return ht
+
+
 def gru_layer(tparams, state_below, options, prefix='gru', mask=None,
               **kwargs):
     """GRU layer"""
 
-    nsteps = state_below.shape[0]
-    if state_below.ndim == 3:
-        n_samples = state_below.shape[1]
-    else:
-        n_samples = 1
+    n_steps = state_below.shape[0]
+    n_samples = state_below.shape[1] if state_below.ndim == 3 else 1
 
     dim = tparams[_p(prefix, 'Ux')].shape[1]
 
     if mask is None:
         mask = tensor.alloc(1., state_below.shape[0], 1)
 
-    # utility function to slice a tensor
-    def _slice(_x, n, dim):
-        if _x.ndim == 3:
-            return _x[:, :, n * dim:(n + 1) * dim]
-        return _x[:, n * dim:(n + 1) * dim]
-
     # state_below is the input word embeddings
     # input to the gates, concatenated
-    state_below_ = tensor.dot(state_below, tparams[_p(prefix, 'W')]) + \
-                   tparams[_p(prefix, 'b')]
+    state_below_ = tensor.dot(state_below, tparams[_p(prefix, 'W')]) + tparams[_p(prefix, 'b')]
     # input to compute the hidden state proposal
-    state_belowx = tensor.dot(state_below, tparams[_p(prefix, 'Wx')]) + \
-                   tparams[_p(prefix, 'bx')]
-
-    # step function to be used by scan
-    # arguments    | sequences |outputs-info| non-seqs
-    def _step_slice(m_, x_, xx_, h_, U, Ux):
-        preact = tensor.dot(h_, U)
-        preact += x_
-
-        # reset and update gates
-        r = tensor.nnet.sigmoid(_slice(preact, 0, dim))
-        u = tensor.nnet.sigmoid(_slice(preact, 1, dim))
-
-        # compute the hidden state proposal
-        preactx = tensor.dot(h_, Ux)
-        preactx = preactx * r
-        preactx = preactx + xx_
-
-        # hidden state proposal
-        h = tensor.tanh(preactx)
-
-        # leaky integrate and obtain next hidden state
-        h = u * h_ + (1. - u) * h
-        h = m_[:, None] * h + (1. - m_)[:, None] * h_
-
-        return h
+    state_belowx = tensor.dot(state_below, tparams[_p(prefix, 'Wx')]) + tparams[_p(prefix, 'bx')]
 
     # prepare scan arguments
     seqs = [mask, state_below_, state_belowx]
     init_states = [tensor.alloc(0., n_samples, dim)]
-    _step = _step_slice
+    _step = _gru_step_slice
     shared_vars = [tparams[_p(prefix, 'U')],
                    tparams[_p(prefix, 'Ux')]]
 
@@ -170,7 +192,7 @@ def gru_layer(tparams, state_below, options, prefix='gru', mask=None,
                                 outputs_info=init_states,
                                 non_sequences=shared_vars,
                                 name=_p(prefix, '_layers'),
-                                n_steps=nsteps,
+                                n_steps=n_steps,
                                 profile=profile,
                                 strict=True)
     rval = [rval]
@@ -248,12 +270,13 @@ def gru_cond_layer(tparams, state_below, options, prefix='gru',
                    context_mask=None,
                    **kwargs):
     """Conditional GRU layer with Attention"""
+
     assert context, 'Context must be provided'
 
     if one_step:
         assert init_state, 'previous state must be provided'
 
-    nsteps = state_below.shape[0]
+    n_steps = state_below.shape[0]
     if state_below.ndim == 3:
         n_samples = state_below.shape[1]
     else:
@@ -281,14 +304,12 @@ def gru_cond_layer(tparams, state_below, options, prefix='gru',
         return _x[:, n * dim:(n + 1) * dim]
 
     # projected x
-    state_belowx = tensor.dot(state_below, tparams[_p(prefix, 'Wx')]) + \
-                   tparams[_p(prefix, 'bx')]
-    state_below_ = tensor.dot(state_below, tparams[_p(prefix, 'W')]) + \
-                   tparams[_p(prefix, 'b')]
+    state_belowx = tensor.dot(state_below, tparams[_p(prefix, 'Wx')]) + tparams[_p(prefix, 'bx')]
+    state_below_ = tensor.dot(state_below, tparams[_p(prefix, 'W')]) + tparams[_p(prefix, 'b')]
 
-    def _step_slice(m_, x_, xx_, h_, ctx_, alpha_, pctx_, cc_,
-                    U, Wc, W_comb_att, U_att, c_tt, Ux, Wcx,
-                    U_nl, Ux_nl, b_nl, bx_nl):
+    def _step_slice(m_, x_, xx_,
+                    h_, ctx_, alpha_, pctx_, cc_,
+                    U, Wc, W_comb_att, U_att, c_tt, Ux, Wcx, U_nl, Ux_nl, b_nl, bx_nl):
         preact1 = tensor.dot(h_, U)
         preact1 += x_
         preact1 = tensor.nnet.sigmoid(preact1)
@@ -365,10 +386,28 @@ def gru_cond_layer(tparams, state_below, options, prefix='gru',
                                                                context.shape[0])],
                                     non_sequences=[pctx_, context] + shared_vars,
                                     name=_p(prefix, '_layers'),
-                                    n_steps=nsteps,
+                                    n_steps=n_steps,
                                     profile=profile,
                                     strict=True)
     return rval
+
+
+def gru_encoder(tparams, src_word_embedding, options, prefix='encoder', mask=None, dropout_param=None):
+    """Multi-layer GRU encoder."""
+
+    n_layer = options['n_encoder_layer']
+
+    n_steps = src_word_embedding.shape[0]
+    n_samples = src_word_embedding.shape[1] if src_word_embedding.ndim == 3 else 1
+
+    if mask is None:
+        mask = tensor.alloc(1., src_word_embedding.shape[0], 1)
+
+    global_f = src_word_embedding
+    _hidden_state_last_layer = None
+
+    for layer_id in xrange(n_layer):
+        pass
 
 
 def init_params(options):

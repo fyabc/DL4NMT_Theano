@@ -15,7 +15,7 @@ Optimize:
     The result will be the initial value of Encoder'.
 """
 
-from __future__ import print_function, unicode_literals
+from __future__ import print_function
 
 import theano.tensor as T
 

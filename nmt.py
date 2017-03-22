@@ -180,9 +180,15 @@ def train(dim_word=100,             # word vector dimensionality
           overwrite=False,
           preload='',
           sort_by_len=False,
+
+          # Options from v-yanfa
           convert_embedding=True,
           dump_before_train=False,
           plot_graph=None,
+          vocab_filenames=('./data/dic/filtered_dic_en-fr.en.pkl',
+                           './data/dic/filtered_dic_en-fr.fr.pkl'),
+          map_filename='./data/dic/mapFullVocab2Top1MVocab.pkl',
+          lr_discount_freq=80000,
           ):
     # Model options
     model_options = locals().copy()
@@ -199,22 +205,13 @@ def train(dim_word=100,             # word vector dimensionality
             # FIXME: Update the option instead of replace it
             model_options.update(pkl.load(f))
 
-    print 'Configuration from fy'
-
-    vocab_en_filename = './data/dic/en2fr_en_vocabs_top1M.pkl'
-    vocab_fr_filename = './data/dic/en2fr_fr_vocabs_top1M.pkl'
-    map_filename = './data/dic/mapFullVocab2Top1MVocab.pkl'
-    lr_discount_freq = 80000
-
-    print 'Done'
-
     print 'Loading data'
 
     text_iterator = TextIterator(
         datasets[0],
         datasets[1],
-        vocab_en_filename,
-        vocab_fr_filename,
+        vocab_filenames[0],
+        vocab_filenames[1],
         batch_size,
         maxlen,
         n_words_src,

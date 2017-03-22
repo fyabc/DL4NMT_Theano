@@ -24,8 +24,8 @@ def main(job_id, params):
                      batch_size=80,
                      dispFreq=2500,
                      saveFreq=params['save_freq'][0],
-                     datasets=[r'.\data\train\edit_dis_top1M.en',
-                               r'.\data\train\edit_dis_top1M.fr'],
+                     datasets=[r'.\data\train\filtered_en-fr.en',
+                               r'.\data\train\filtered_en-fr.fr'],
                      use_dropout=params['use-dropout'][0],
                      overwrite=False,
                      # picked_train_idxes_file=params['train_idx_file'],
@@ -46,17 +46,18 @@ if __name__ == '__main__':
     # reload
     parser.add_argument('-R', action="store_false", default=True, dest='reload',
                         help='Reload, default to True, set to False')
-    parser.add_argument('-C', action="store_false", default=False, dest='convert_embedding',
-                        help='Convert embedding, default to True, set to False')
-    parser.add_argument('-d', action='store_true', default=False, dest='dump_before_train')
+    parser.add_argument('-c', action="store_true", default=False, dest='convert_embedding',
+                        help='Convert embedding, default to False, set to True (deprecated)')
+    parser.add_argument('-d', action='store_true', default=False, dest='dump_before_train',
+                        help='Dump before train default to False, set to True')
     parser.add_argument('--lr', action="store", metavar="learning_rate", dest="learning_rate", type=float, default=0.8)
     parser.add_argument('-curri', action="store_true", default=False)
     parser.add_argument('--optimizer', action='store', default='sgd')
     parser.add_argument('--plot', action='store', default=None,
                         help='Plot filename, default is None (not plot)')
 
-    parser.add_argument('model_file', nargs='?', default='model/top1M/en2fr_top1M.npz',
-                        help='Generated model file, default is "model/top1M/en2fr_top1M.npz"')
+    parser.add_argument('model_file', nargs='?', default='model/baseline/baseline.npz',
+                        help='Generated model file, default is "model/baseline/baseline.npz"')
     # parser.add_argument('train_idx_file', nargs='?', type=str, default='')  # the subset indexes chosen
     parser.add_argument('pre_load_file', nargs='?', default='model/en2fr.iter160000.npz',
                         help='Pre-load model file, default is "model/en2fr.iter160000.npz"')
