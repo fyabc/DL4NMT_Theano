@@ -19,7 +19,7 @@ from __future__ import print_function
 
 import theano.tensor as T
 
-from layers import get_layer, embedding
+from layers import get_build, get_init, embedding
 from constants import profile, fX
 from utils import concatenate
 
@@ -46,14 +46,10 @@ def build_initializer(tparams, options):
 
     # word embedding for forward rnn (source)
     emb = embedding(tparams, x, options, n_timesteps, n_samples)
-    proj = get_layer(options['encoder'])[1](tparams, emb, options,
-                                            prefix='encoder',
-                                            mask=x_mask)
+    proj = get_build(options['encoder'])(tparams, emb, options, prefix='encoder', mask=x_mask)
     # word embedding for backward rnn (source)
     embr = embedding(tparams, xr, options, n_timesteps, n_samples)
-    projr = get_layer(options['encoder'])[1](tparams, embr, options,
-                                             prefix='encoder_r',
-                                             mask=xr_mask)
+    projr = get_build(options['encoder'])(tparams, embr, options, prefix='encoder_r', mask=xr_mask)
 
     # context will be the concatenation of forward and backward rnns
     ctx = concatenate([proj[0], projr[0][::-1]], axis=proj[0].ndim - 1)

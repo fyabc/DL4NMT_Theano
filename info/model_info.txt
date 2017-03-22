@@ -1,0 +1,90 @@
+# Baseline model parameters
+
+Model options:
+{'alpha_c': 0.0,
+ 'batch_size': 80,
+ 'clip_c': 1.0,
+ 'convert_embedding': False,
+ 'datasets': ['..\\data\\\\train\\filtered_en-fr.en',
+              '..\\data\\\\train\\filtered_en-fr.fr'],
+ 'decay_c': 0.0,
+ 'decoder': 'gru_cond',
+ 'dictionaries': ['..\\data\\\\dic\\filtered_dic_en-fr.en.pkl',
+                  '..\\data\\\\dic\\filtered_dic_en-fr.fr.pkl'],
+ 'dim': 1000,
+ 'dim_word': 620,
+ 'dispFreq': 10,
+ 'dump_before_train': False,
+ 'encoder': 'gru',
+ 'finish_after': 10000000,
+ 'lr_discount_freq': 80000,
+ 'lrate': 0.7,
+ 'map_filename': './data/dic/mapFullVocab2Top1MVocab.pkl',
+ 'max_epochs': 5000,
+ 'maxlen': 50,
+ 'n_words': 30000,
+ 'n_words_src': 30000,
+ 'optimizer': 'sgd',
+ 'overwrite': False,
+ 'patience': 10,
+ 'picked_train_idxes_file': '',
+ 'plot_graph': None,
+ 'preload': 'model/en2fr.iter160000.npz',
+ 'reload_': False,
+ 'sampleFreq': 100000,
+ 'saveFreq': 5000,
+ 'saveto': '..\\m_en2fr_async4_sgd_all_filter\\base.npz',
+ 'sort_by_len': False,
+ 'sync_flag': False,
+ 'syncbatch': 4,
+ 'use_dropout': False,
+ 'validFreq': 5000,
+ 'valid_batch_size': 80,
+ 'valid_datasets': ['..\\data\\\\valid\\newstest2011.en.tok',
+                    '..\\data\\\\valid\\newstest2011.fr.tok'],
+ 'vocab_filenames': ('./data/dic/filtered_dic_en-fr.en.pkl',
+                     './data/dic/filtered_dic_en-fr.fr.pkl')}
+
+Model Parameters:
+  > Wemb (30000L, 620L) float32
+  > Wemb_dec (30000L, 620L) float32
+  > encoder_W (620L, 2000L) float32
+  > encoder_b (2000L,) float32
+  > encoder_U (1000L, 2000L) float32
+  > encoder_Wx (620L, 1000L) float32
+  > encoder_bx (1000L,) float32
+  > encoder_Ux (1000L, 1000L) float32
+  > encoder_r_W (620L, 2000L) float32
+  > encoder_r_b (2000L,) float32
+  > encoder_r_U (1000L, 2000L) float32
+  > encoder_r_Wx (620L, 1000L) float32
+  > encoder_r_bx (1000L,) float32
+  > encoder_r_Ux (1000L, 1000L) float32
+  > ff_state_W (2000L, 1000L) float32
+  > ff_state_b (1000L,) float32
+  > decoder_W (620L, 2000L) float32
+  > decoder_b (2000L,) float32
+  > decoder_U (1000L, 2000L) float32
+  > decoder_Wx (620L, 1000L) float32
+  > decoder_Ux (1000L, 1000L) float32
+  > decoder_bx (1000L,) float32
+  > decoder_U_nl (1000L, 2000L) float32
+  > decoder_b_nl (2000L,) float32
+  > decoder_Ux_nl (1000L, 1000L) float32
+  > decoder_bx_nl (1000L,) float32
+  > decoder_Wc (2000L, 2000L) float32
+  > decoder_Wcx (2000L, 1000L) float32
+  > decoder_W_comb_att (1000L, 2000L) float32
+  > decoder_Wc_att (2000L, 2000L) float32
+  > decoder_b_att (2000L,) float32
+  > decoder_U_att (2000L, 1L) float32
+  > decoder_c_tt (1L,) float32
+  > ff_logit_lstm_W (1000L, 620L) float32
+  > ff_logit_lstm_b (620L,) float32
+  > ff_logit_prev_W (620L, 620L) float32
+  > ff_logit_prev_b (620L,) float32
+  > ff_logit_ctx_W (2000L, 620L) float32
+  > ff_logit_ctx_b (620L,) float32
+  > ff_logit_W (620L, 30000L) float32
+  > ff_logit_b (30000L,) float32
+Model Parameters Done

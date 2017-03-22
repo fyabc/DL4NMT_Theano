@@ -87,8 +87,8 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
     processes = [None] * n_process
     for midx in xrange(n_process):
         processes[midx] = Process(
-                target=translate_model,
-                args=(queue, rqueue, midx, model, options, k, normalize))
+            target=translate_model,
+            args=(queue, rqueue, midx, model, options, k, normalize))
         processes[midx].start()
 
     # utility function
@@ -139,19 +139,23 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description='Translate the source language test file to target language with given model')
     parser.add_argument('-k', type=int, default=5)
-    parser.add_argument('-p', type=int, default=5)
-    parser.add_argument('-n', action="store_true", default=False)
-    parser.add_argument('-c', action="store_true", default=False)
-    parser.add_argument('model', type=str)
-    parser.add_argument('dictionary', type=str)
-    parser.add_argument('dictionary_target', type=str)
-    parser.add_argument('source', type=str)
-    parser.add_argument('saveto', type=str)
+    parser.add_argument('-p', type=int, default=5,
+                        help='Number of parallel processes, default to 5')
+    parser.add_argument('-n', action="store_true", default=False,
+                        help='Use normalize, default to False, set to True')
+    parser.add_argument('-c', action="store_true", default=False,
+                        help='Char level model, default to False, set to True')
+    parser.add_argument('model', type=str, help='The model path')
+    parser.add_argument('dictionary_source', type=str, help='The source dict path')
+    parser.add_argument('dictionary_target', type=str, help='The target dict path')
+    parser.add_argument('source', type=str, help='The source input path')
+    parser.add_argument('saveto', type=str, help='The translated file output path')
 
     args = parser.parse_args()
 
-    main(args.model, args.dictionary, args.dictionary_target, args.source,
+    main(args.model, args.dictionary_source, args.dictionary_target, args.source,
          args.saveto, k=args.k, normalize=args.n, n_process=args.p,
          chr_level=args.c)

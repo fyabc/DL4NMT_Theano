@@ -8,6 +8,7 @@ import os
 import re
 import sys
 import time
+from pprint import pprint
 
 import numpy as np
 import theano
@@ -17,7 +18,7 @@ from constants import profile, fX
 from data_iterator import TextIterator
 from layers import init_params, build_model, build_sampler
 from optimizers import *
-from utils import load_params, init_tparams, zipp, unzip, itemlist, prepare_data
+from utils import load_params, init_tparams, zipp, unzip, itemlist, prepare_data, print_params
 
 
 def gen_sample(tparams, f_init, f_next, x, options, trng=None, k=1, maxlen=30,
@@ -200,10 +201,15 @@ def train(dim_word=100,             # word vector dimensionality
     # reload options
     if reload_ and os.path.exists(preload):
         print 'Reloading model options'
-        with open(r'.\model\en2fr.iter160000.npz.pkl', 'rb') as f:
+        with open('{}.pkl'.format(preload), 'rb') as f:
             # model_options = pkl.load(f)
             # FIXME: Update the option instead of replace it
             model_options.update(pkl.load(f))
+
+    if True:
+        print 'Model options:'
+        pprint(model_options)
+        print
 
     print 'Loading data'
 
@@ -253,8 +259,7 @@ def train(dim_word=100,             # word vector dimensionality
         print 'Reloading model parameters'
         params = load_params(preload, params)
 
-        # for k, v in params.iteritems():
-        #     print '>', k, v.shape, v.dtype
+        # print_params(params)
 
         # Only convert parameters when reloading
         if convert_embedding:
@@ -301,12 +306,14 @@ def train(dim_word=100,             # word vector dimensionality
 
             print 'Convert output embedding done'
 
-            # for k, v in params.iteritems():
-            #     print '>', k, v.shape, v.dtype
+            # print_params(params)
 
             # ================
             # End Convert
             # ================
+
+    if True:
+        print_params(params)
 
     tparams = init_tparams(params)
 

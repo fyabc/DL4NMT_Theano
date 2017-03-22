@@ -72,6 +72,7 @@ if __name__ == '__main__':
     # lr /= 2 per 80000 iteration
 
     args = parser.parse_args()
+    print 'Command line arguments:'
     print args
     # if len(args.train_idx_file) != 0:
     #     assert os.path.exists(args.train_idx_file)

@@ -174,3 +174,14 @@ def get_minibatches_idx(n, minibatch_size, shuffle=False):
         minibatches.append(idx_list[minibatch_start:])
 
     return list(enumerate(minibatches))
+
+
+# Debug utilities
+def print_params(params, exit_=False):
+    print 'Model Parameters:'
+    for k, v in params.iteritems():
+        print '  >', k, v.shape, v.dtype
+    print 'Model Parameters Done'
+
+    if exit_:
+        exit(0)
