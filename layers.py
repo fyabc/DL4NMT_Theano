@@ -403,10 +403,15 @@ def gru_encoder(tparams, src_embedding, src_embedding_r, x_mask, xr_mask, O, dro
             if True:
                 global_f = h_last
                 global_f_r = h_last_r
+            x_mask_ = None
+            xr_mask_ = None
+        else:
+            x_mask_ = x_mask
+            xr_mask_ = xr_mask
 
-        h_last = get_build(O['encoder'])(tparams, global_f, O, prefix='encoder', mask=x_mask, layer_id=layer_id,
+        h_last = get_build(O['encoder'])(tparams, global_f, O, prefix='encoder', mask=x_mask_, layer_id=layer_id,
                                          dropout_params=dropout_params)[0]
-        h_last_r = get_build(O['encoder'])(tparams, global_f_r, O, prefix='encoder_r', mask=xr_mask, layer_id=layer_id,
+        h_last_r = get_build(O['encoder'])(tparams, global_f_r, O, prefix='encoder_r', mask=xr_mask_, layer_id=layer_id,
                                            dropout_params=dropout_params)[0]
 
     # context will be the concatenation of forward and backward rnns
