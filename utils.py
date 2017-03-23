@@ -24,13 +24,20 @@ def itemlist(tparams):
     return [vv for kk, vv in tparams.iteritems()]
 
 
-def _p(*args):
+def _p(*args, **kwargs):
     """Make prefix-appended name"""
+
+    # FIXME: To be compatible with old model, when the layer id is 0 and open layer_id_compatible, omit the layer id.
+    layer_id_compatible = kwargs.pop('layer_id_compatible', True)
+    if layer_id_compatible and args[-1] == 0:
+        args = args[:-1]
+
     return '_'.join(str(arg) for arg in args)
 
 
 def init_tparams(params):
     """Initialize Theano shared variables according to the initial parameters"""
+
     tparams = OrderedDict()
     for kk, pp in params.iteritems():
         tparams[kk] = theano.shared(params[kk], name=kk)
@@ -39,28 +46,29 @@ def init_tparams(params):
 
 def load_params(path, params):
     """Load parameters"""
-    pp = numpy.load(path)
-    for kk, vv in params.iteritems():
-        if kk not in pp:
-            warnings.warn('%s is not in the archive' % kk)
+
+    old_params = numpy.load(path)
+    for key, value in params.iteritems():
+        if key not in old_params:
+            warnings.warn('{} is not in the archive'.format(key))
             continue
-        params[kk] = pp[kk]
+        params[key] = old_params[key]
 
     return params
 
 
 # some utilities
-def ortho_weight(ndim):
+def orthogonal_weight(ndim):
     W = numpy.random.randn(ndim, ndim)
     u, s, v = numpy.linalg.svd(W)
     return u.astype('float32')
 
 
-def norm_weight(nin, nout=None, scale=0.01, ortho=True):
+def normal_weight(nin, nout=None, scale=0.01, orthogonal=True):
     if nout is None:
         nout = nin
-    if nout == nin and ortho:
-        W = ortho_weight(nin)
+    if nout == nin and orthogonal:
+        W = orthogonal_weight(nin)
     else:
         W = scale * numpy.random.randn(nin, nout)
     return W.astype('float32')

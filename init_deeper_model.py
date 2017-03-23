@@ -18,6 +18,7 @@ Optimize:
 from __future__ import print_function
 
 import theano.tensor as T
+import numpy as np
 
 from layers import get_build, get_init, embedding
 from constants import profile, fX
@@ -53,6 +54,8 @@ def build_initializer(tparams, options):
 
     # context will be the concatenation of forward and backward rnns
     ctx = concatenate([proj[0], projr[0][::-1]], axis=proj[0].ndim - 1)
+
+    np.zeros(shape=())
 
 
 def main():

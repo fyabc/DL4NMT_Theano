@@ -10,37 +10,42 @@ from nmt import train
 
 def main(job_id, params):
     print params
-    validerr = train(saveto=params['model'][0],
-                     preload=params['pre_model'],
-                     reload_=params['reload'][0],
-                     dim_word=params['dim_word'][0],
-                     dim=params['dim'][0],
-                     decay_c=params['decay-c'][0],
-                     clip_c=params['clip-c'][0],
-                     lrate=params['learning-rate'][0],
-                     optimizer=params['optimizer'][0],
-                     patience=1000,
-                     maxlen=1000,
-                     batch_size=80,
-                     dispFreq=2500,
-                     saveFreq=params['save_freq'][0],
-                     datasets=[r'.\data\train\filtered_en-fr.en',
-                               r'.\data\train\filtered_en-fr.fr'],
-                     use_dropout=params['use-dropout'][0],
-                     overwrite=False,
-                     # picked_train_idxes_file=params['train_idx_file'],
-                     n_words=params['n-words'][0],
-                     n_words_src=params['n-words'][0],
-                     sort_by_len=params['curr'],
-                     convert_embedding=params['convert_embedding'],
-                     dump_before_train=params['dump_before_train'],
-                     plot_graph=params['plot_graph'],
-                     )
+    validerr = train(
+        saveto=params['model'][0],
+        preload=params['pre_model'],
+        reload_=params['reload'][0],
+        dim_word=params['dim_word'][0],
+        dim=params['dim'][0],
+        decay_c=params['decay-c'][0],
+        clip_c=params['clip-c'][0],
+        lrate=params['learning-rate'][0],
+        optimizer=params['optimizer'][0],
+        patience=1000,
+        maxlen=1000,
+        batch_size=80,
+        dispFreq=2500,
+        saveFreq=params['save_freq'][0],
+        datasets=[r'.\data\train\filtered_en-fr.en',
+                  r'.\data\train\filtered_en-fr.fr'],
+        use_dropout=params['use-dropout'][0],
+        overwrite=False,
+        # picked_train_idxes_file=params['train_idx_file'],
+        n_words=params['n-words'][0],
+        n_words_src=params['n-words'][0],
+        sort_by_len=params['curr'],
+
+        # Options from v-yanfa
+        convert_embedding=params['convert_embedding'],
+        dump_before_train=params['dump_before_train'],
+        plot_graph=params['plot_graph'],
+
+        n_encoder_layers=params['n_encoder_layers'],
+        n_decoder_layers=params['n_decoder_layers'],
+    )
     return validerr
 
 
 if __name__ == '__main__':
-
     parser = argparse.ArgumentParser()
 
     # reload
@@ -61,6 +66,11 @@ if __name__ == '__main__':
     # parser.add_argument('train_idx_file', nargs='?', type=str, default='')  # the subset indexes chosen
     parser.add_argument('pre_load_file', nargs='?', default='model/en2fr.iter160000.npz',
                         help='Pre-load model file, default is "model/en2fr.iter160000.npz"')
+
+    parser.add_argument('--enc', action='store', default=1, type=int, dest='n_encoder_layers',
+                        help='Number of encoder layers, default is 1')
+    parser.add_argument('--dec', action='store', default=1, type=int, dest='n_decoder_layers',
+                        help='Number of decoder layers, default is 1')
 
     # [NOTE]
     # default arguments in my experiment
@@ -98,4 +108,6 @@ if __name__ == '__main__':
         'convert_embedding': args.convert_embedding,
         'dump_before_train': args.dump_before_train,
         'plot_graph': args.plot,
+        'n_encoder_layers': args.n_encoder_layers,
+        'n_decoder_layers': args.n_decoder_layers,
     })

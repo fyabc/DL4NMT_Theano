@@ -182,7 +182,7 @@ def train(dim_word=100,             # word vector dimensionality
           preload='',
           sort_by_len=False,
 
-          # Options from v-yanfa
+          # Options below are from v-yanfa
           convert_embedding=True,
           dump_before_train=False,
           plot_graph=None,
@@ -190,6 +190,10 @@ def train(dim_word=100,             # word vector dimensionality
                            './data/dic/filtered_dic_en-fr.fr.pkl'),
           map_filename='./data/dic/mapFullVocab2Top1MVocab.pkl',
           lr_discount_freq=80000,
+
+          # Options of deeper encoder and decoder
+          n_encoder_layers=1,
+          n_decoder_layers=1,
           ):
     # Model options
     model_options = locals().copy()

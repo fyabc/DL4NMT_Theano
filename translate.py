@@ -141,7 +141,8 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description='Translate the source language test file to target language with given model')
-    parser.add_argument('-k', type=int, default=5)
+    parser.add_argument('-k', type=int, default=4,
+                        help='Beam size (?), default to 4, can also use 12')
     parser.add_argument('-p', type=int, default=5,
                         help='Number of parallel processes, default to 5')
     parser.add_argument('-n', action="store_true", default=False,
