@@ -404,11 +404,6 @@ def gru_encoder(tparams, src_embedding, src_embedding_r, x_mask, xr_mask, O, dro
                 global_f = h_last
                 global_f_r = h_last_r
 
-            # Affine hidden state output to input
-            # Only for >= 1 layers
-            global_f = T.dot(global_f, tparams[_p('encoder', 'Wf', layer_id)])
-            global_f_r = T.dot(global_f_r, tparams[_p('encoder_r', 'Wf', layer_id)])
-
         h_last = get_build(O['encoder'])(tparams, global_f, O, prefix='encoder', mask=x_mask, layer_id=layer_id,
                                          dropout_params=dropout_params)[0]
         h_last_r = get_build(O['encoder'])(tparams, global_f_r, O, prefix='encoder_r', mask=xr_mask, layer_id=layer_id,
@@ -452,12 +447,12 @@ def init_params(O):
 
     # encoder: bidirectional RNN
     for layer_id in xrange(O['n_encoder_layers']):
-        if layer_id > 0:
-            params[_p('encoder', 'Wf', layer_id)] = normal_weight(O['dim'], O['dim_word'])
-            params[_p('encoder_r', 'Wf', layer_id)] = normal_weight(O['dim'], O['dim_word'])
-        params = get_init(O['encoder'])(O, params, prefix='encoder', nin=O['dim_word'], dim=O['dim'], layer_id=layer_id)
-        params = get_init(O['encoder'])(O, params, prefix='encoder_r', nin=O['dim_word'], dim=O['dim'],
-                                        layer_id=layer_id)
+        if layer_id == 0:
+            n_in = O['dim_word']
+        else:
+            n_in = O['dim']
+        params = get_init(O['encoder'])(O, params, prefix='encoder', nin=n_in, dim=O['dim'], layer_id=layer_id)
+        params = get_init(O['encoder'])(O, params, prefix='encoder_r', nin=n_in, dim=O['dim'], layer_id=layer_id)
 
     context_dim = 2 * O['dim']
     # init_state, init_cell
