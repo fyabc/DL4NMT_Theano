@@ -74,6 +74,12 @@ def normal_weight(nin, nout=None, scale=0.01, orthogonal=True):
     return W.astype('float32')
 
 
+def uniform_weight(nin, nout=None, scale=0.01):
+    if nout is None:
+        nout = nin
+    return numpy.random.uniform(-1. * scale, 1. * scale, (nin, nout)).astype('float32')
+
+
 def concatenate(tensor_list, axis=0):
     """
     Alternative implementation of `theano.tensor.concatenate`.
