@@ -418,6 +418,8 @@ def train(dim_word=100,             # word vector dimensionality
     if saveFreq == -1:
         saveFreq = len(train[0]) / batch_size
 
+    start_time = time.time()
+
     for eidx in xrange(max_epochs):
         n_samples = 0
 
@@ -461,7 +463,9 @@ def train(dim_word=100,             # word vector dimensionality
 
             # verbose
             if np.mod(uidx, dispFreq) == 0:
-                print 'Epoch ', eidx, 'Update ', uidx, 'Cost ', cost, 'UD ', ud
+                print 'Epoch {} Update {} Cost {:.6f} UD {:.6f} Time {:.6f}'.format(
+                    eidx, uidx, cost, ud, time.time() - start_time,
+                )
                 sys.stdout.flush()
 
             if np.mod(uidx, saveFreq) == 0:
