@@ -446,7 +446,7 @@ def init_params(O):
     params['Wemb_dec'] = normal_weight(O['n_words'], O['dim_word'])
 
     # encoder: bidirectional RNN
-    for layer_id in O['n_encoder_layers']:
+    for layer_id in xrange(O['n_encoder_layers']):
         params = get_init(O['encoder'])(O, params, prefix='encoder', nin=O['dim_word'], dim=O['dim'], layer_id=layer_id)
         params = get_init(O['encoder'])(O, params, prefix='encoder_r', nin=O['dim_word'], dim=O['dim'],
                                         layer_id=layer_id)
