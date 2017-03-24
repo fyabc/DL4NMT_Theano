@@ -476,9 +476,6 @@ def init_params(O):
 def build_model(tparams, O):
     """Build a training model."""
 
-    theano.config.exception_verbosity = 'high'
-    theano.config.optimizer = 'None'
-
     opt_ret = dict()
 
     trng = RandomStreams(1234)

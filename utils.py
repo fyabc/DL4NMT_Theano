@@ -192,9 +192,13 @@ def get_minibatches_idx(n, minibatch_size, shuffle=False):
 
 # Debug utilities
 def print_params(params, exit_=False):
+    total_parameters = 0
+
     print 'Model Parameters:'
     for k, v in params.iteritems():
         print '  >', k, v.shape, v.dtype
+        total_parameters += v.size
+    print 'Total parameters of the network: {}'.format(total_parameters)
     print 'Model Parameters Done'
 
     if exit_:
