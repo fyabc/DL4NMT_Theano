@@ -645,3 +645,26 @@ def build_sampler(tparams, O, trng, use_noise):
     print 'Done'
 
     return f_init, f_next
+
+
+__all__ = [
+    'tanh',
+    'linear',
+    'dropout_layer',
+    'embedding',
+    'attention_layer',
+    'param_init_fflayer',
+    'fflayer',
+    'param_init_gru',
+    'gru_layer',
+    'param_init_gru_cond',
+    'gru_cond_layer',
+    'gru_encoder',
+    'layers',
+    'get_layer',
+    'get_build',
+    'get_init',
+    'init_params',
+    'build_model',
+    'build_sampler',
+]

@@ -1,8 +1,15 @@
+#! /usr/bin/python
+# -*- coding: utf-8 -*-
+
+from collections import OrderedDict
+import warnings
+import os
+import cPickle as pkl
+from pprint import pprint
+
 import theano
 import theano.tensor as tensor
 import numpy
-from collections import OrderedDict
-import warnings
 
 
 def zipp(params, tparams):
@@ -27,7 +34,7 @@ def itemlist(tparams):
 def _p(*args, **kwargs):
     """Make prefix-appended name"""
 
-    # FIXME: To be compatible with old model, when the layer id is 0 and open layer_id_compatible, omit the layer id.
+    # FIXME: To be compatible with old model, when the layer id is 0 and open 'layer_id_compatible', omit the layer id.
     layer_id_compatible = kwargs.pop('layer_id_compatible', True)
     if layer_id_compatible and args[-1] == 0:
         args = args[:-1]
@@ -35,17 +42,21 @@ def _p(*args, **kwargs):
     return '_'.join(str(arg) for arg in args)
 
 
-def init_tparams(params):
+def init_tparams(params, given_tparams=None):
     """Initialize Theano shared variables according to the initial parameters"""
 
-    tparams = OrderedDict()
+    tparams = OrderedDict() if given_tparams is None else given_tparams
     for kk, pp in params.iteritems():
         tparams[kk] = theano.shared(params[kk], name=kk)
     return tparams
 
 
 def load_params(path, params):
-    """Load parameters"""
+    """Load parameters
+
+    :param path: Path of old parameters.
+    :param params: New parameters to be updated.
+    """
 
     old_params = numpy.load(path)
     for key, value in params.iteritems():
@@ -123,6 +134,21 @@ def concatenate(tensor_list, axis=0):
         offset += tt.shape[axis]
 
     return out
+
+
+def apply_gradient_clipping(O, grads):
+    clip_c = O['clip_c']
+    if clip_c > 0.:
+        g2 = 0.
+        for g in grads:
+            g2 += (g ** 2).sum()
+        new_grads = []
+        for g in grads:
+            new_grads.append(tensor.switch(g2 > (clip_c ** 2),
+                                           g / tensor.sqrt(g2) * clip_c,
+                                           g))
+        grads = new_grads
+    return grads
 
 
 # batch preparation
@@ -203,3 +229,33 @@ def print_params(params, exit_=False):
 
     if exit_:
         exit(0)
+
+
+def load_options(options, print_options=True):
+    """Reload options."""
+
+    reload_ = options['reload_']
+    preload = options['preload']
+
+    if reload_ and os.path.exists(preload):
+        print 'Reloading model options'
+        with open('{}.pkl'.format(preload), 'rb') as f:
+            # model_options = pkl.load(f)
+            # FIXME: Update the option instead of replace it
+            options.update(pkl.load(f))
+
+    if print_options:
+        print 'Model options:'
+        pprint(options)
+        print
+
+
+def make_f_train(f_grad_shared, f_update):
+    def f_train(x, x_mask, y, y_mask, lr):
+        cost = f_grad_shared(x, x_mask, y, y_mask)
+
+        f_update(lr)
+
+        return cost
+
+    return f_train

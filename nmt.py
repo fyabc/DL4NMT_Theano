@@ -8,7 +8,6 @@ import os
 import re
 import sys
 import time
-from pprint import pprint
 
 import numpy as np
 import theano
@@ -18,7 +17,8 @@ from constants import profile, fX
 from data_iterator import TextIterator
 from layers import init_params, build_model, build_sampler
 from optimizers import *
-from utils import load_params, init_tparams, zipp, unzip, itemlist, prepare_data, print_params
+from utils import load_params, init_tparams, zipp, unzip, itemlist, prepare_data, print_params, load_options, \
+    apply_gradient_clipping
 
 
 def gen_sample(tparams, f_init, f_next, x, options, trng=None, k=1, maxlen=30,
@@ -154,25 +154,25 @@ def _just_ref():
     _ = sgd, adadelta, rmsprop, adam
 
 
-def train(dim_word=100,             # word vector dimensionality
-          dim=1000,                 # the number of LSTM units
+def train(dim_word=100,  # word vector dimensionality
+          dim=1000,  # the number of LSTM units
           encoder='gru',
           decoder='gru_cond',
           n_words_src=30000,
           n_words=30000,
-          patience=10,              # early stopping patience
+          patience=10,  # early stopping patience
           max_epochs=5000,
-          finish_after=10000000,    # finish after this many updates
+          finish_after=10000000,  # finish after this many updates
           dispFreq=100,
-          decay_c=0.,               # L2 regularization penalty
-          alpha_c=0.,               # alignment regularization
-          clip_c=-1.,               # gradient clipping threshold
-          lrate=1.,                 # learning rate
-          maxlen=100,               # maximum length of the description
+          decay_c=0.,  # L2 regularization penalty
+          alpha_c=0.,  # alignment regularization
+          clip_c=-1.,  # gradient clipping threshold
+          lrate=1.,  # learning rate
+          maxlen=100,  # maximum length of the description
           optimizer='rmsprop',
           batch_size=16,
           saveto='model.npz',
-          saveFreq=1000,            # save the parameters after every saveFreq updates
+          saveFreq=1000,  # save the parameters after every saveFreq updates
           datasets=('/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.en.tok',
                     '/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.fr.tok'),
           picked_train_idxes_file=r'',
@@ -197,23 +197,10 @@ def train(dim_word=100,             # word vector dimensionality
           ):
     # Model options
     model_options = locals().copy()
-    if reload_:
-        lrate *= 0.5
 
     # load dictionaries and invert them
 
-    # reload options
-    if reload_ and os.path.exists(preload):
-        print 'Reloading model options'
-        with open('{}.pkl'.format(preload), 'rb') as f:
-            # model_options = pkl.load(f)
-            # FIXME: Update the option instead of replace it
-            model_options.update(pkl.load(f))
-
-    if True:
-        print 'Model options:'
-        pprint(model_options)
-        print
+    load_options(model_options)
 
     print 'Loading data'
 
@@ -374,17 +361,9 @@ def train(dim_word=100,             # word vector dimensionality
     grads = tensor.grad(cost, wrt=itemlist(tparams))
     print 'Done'
     sys.stdout.flush()
+
     # apply gradient clipping here
-    if clip_c > 0.:
-        g2 = 0.
-        for g in grads:
-            g2 += (g ** 2).sum()
-        new_grads = []
-        for g in grads:
-            new_grads.append(tensor.switch(g2 > (clip_c ** 2),
-                                           g / tensor.sqrt(g2) * clip_c,
-                                           g))
-        grads = new_grads
+    grads = apply_gradient_clipping(model_options, grads)
 
     # compile the optimizer, the actual computational graph is compiled here
     lr = tensor.scalar(name='lr')
@@ -401,6 +380,8 @@ def train(dim_word=100,             # word vector dimensionality
         m = re.search('.+iter(\d+?)\.npz', preload)
         if m:
             uidx = int(m.group(1))
+
+        lrate *= 0.5
     print 'uidx', uidx, 'l_rate', lrate
 
     estop = False
