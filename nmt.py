@@ -464,7 +464,7 @@ def train(dim_word=100,             # word vector dimensionality
             # verbose
             if np.mod(uidx, dispFreq) == 0:
                 print 'Epoch {} Update {} Cost {:.6f} UD {:.6f} Time {:.6f}'.format(
-                    eidx, uidx, cost, ud, time.time() - start_time,
+                    eidx, uidx, float(cost), ud, time.time() - start_time,
                 )
                 sys.stdout.flush()
 
