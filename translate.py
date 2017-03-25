@@ -1,10 +1,12 @@
-'''
+"""
 Translates a source file using a translation model.
-'''
+"""
+
 import argparse
+from pprint import pprint
+import cPickle as pkl
 
 import numpy
-import cPickle as pkl
 import theano
 
 from nmt import (build_sampler, gen_sample, load_params,
@@ -62,6 +64,9 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
     # load model model_options
     with open('%s.pkl' % model, 'rb') as f:
         options = pkl.load(f)
+
+        print 'Options:'
+        pprint(options)
 
     # load source dictionary and invert
     with open(dictionary, 'rb') as f:
