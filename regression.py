@@ -105,7 +105,7 @@ def build_regression(args, top_options):
         iteration = 0
         estop = False
 
-        if args.dump_defore_train:
+        if args.dump_before_train:
             print('Dumping before train...', end='')
             save_filename = '{}_iter{}.iter160000.npz'.format(
                 os.path.split(args.model_file)[0], iteration,
