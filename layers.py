@@ -571,7 +571,7 @@ def build_sampler(tparams, O, trng, use_noise):
     n_timestep = x.shape[0]
     n_samples = x.shape[1]
 
-    # word embedding for forward rnn and backward rnn (source)
+    # Word embedding for forward rnn and backward rnn (source)
     src_embedding = embedding(tparams, x, O, n_timestep, n_samples)
     src_embedding_r = embedding(tparams, xr, O, n_timestep, n_samples)
 
