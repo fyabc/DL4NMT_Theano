@@ -594,12 +594,12 @@ def build_sampler(tparams, O, trng, use_noise):
     init_state = T.matrix('init_state', dtype=fX)
 
     # if it's the first word, emb should be all zero and it is indicated by -1
-    src_embedding = T.switch(y[:, None] < 0,
+    emb = T.switch(y[:, None] < 0,
                    T.alloc(0., 1, tparams['Wemb_dec'].shape[1]),
                    tparams['Wemb_dec'][y])
 
     # apply one step of conditional gru with attention
-    proj = get_build(O['decoder'])(tparams, src_embedding, O,
+    proj = get_build(O['decoder'])(tparams, emb, O,
                                    prefix='decoder',
                                    mask=None, context=ctx,
                                    one_step=True,
@@ -612,7 +612,7 @@ def build_sampler(tparams, O, trng, use_noise):
 
     logit_lstm = get_build('ff')(tparams, next_state, O,
                                  prefix='ff_logit_lstm', activ='linear')
-    logit_prev = get_build('ff')(tparams, src_embedding, O,
+    logit_prev = get_build('ff')(tparams, emb, O,
                                  prefix='ff_logit_prev', activ='linear')
     logit_ctx = get_build('ff')(tparams, ctxs, O,
                                 prefix='ff_logit_ctx', activ='linear')
