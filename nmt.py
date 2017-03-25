@@ -18,7 +18,7 @@ from data_iterator import TextIterator
 from layers import init_params, build_model, build_sampler
 from optimizers import *
 from utils import load_params, init_tparams, zipp, unzip, itemlist, prepare_data, print_params, load_options, \
-    apply_gradient_clipping
+    apply_gradient_clipping, save_options, search_start_uidx
 
 
 def gen_sample(tparams, f_init, f_next, x, options, trng=None, k=1, maxlen=30,
@@ -195,12 +195,11 @@ def train(dim_word=100,  # word vector dimensionality
           n_encoder_layers=1,
           n_decoder_layers=1,
           ):
-    # Model options
+    # Model options: load and save
     model_options = locals().copy()
+    load_options(model_options, reload_, preload)
 
     # load dictionaries and invert them
-
-    load_options(model_options)
 
     print 'Loading data'
 
@@ -250,8 +249,6 @@ def train(dim_word=100,  # word vector dimensionality
         print 'Reloading model parameters'
         params = load_params(preload, params)
 
-        # print_params(params)
-
         # Only convert parameters when reloading
         if convert_embedding:
             # =================
@@ -296,8 +293,6 @@ def train(dim_word=100,  # word vector dimensionality
                     params['Wemb_dec'][top] = temp_Wemb[full]
 
             print 'Convert output embedding done'
-
-            # print_params(params)
 
             # ================
             # End Convert
@@ -363,7 +358,7 @@ def train(dim_word=100,  # word vector dimensionality
     sys.stdout.flush()
 
     # apply gradient clipping here
-    grads = apply_gradient_clipping(model_options, grads)
+    grads = apply_gradient_clipping(clip_c, grads)
 
     # compile the optimizer, the actual computational graph is compiled here
     lr = tensor.scalar(name='lr')
@@ -375,12 +370,8 @@ def train(dim_word=100,  # word vector dimensionality
 
     best_p = None
     bad_counter = 0
-    uidx = 0
+    uidx = search_start_uidx(reload_, preload)
     if reload_:
-        m = re.search('.+iter(\d+?)\.npz', preload)
-        if m:
-            uidx = int(m.group(1))
-
         lrate *= 0.5
     print 'uidx', uidx, 'l_rate', lrate
 
@@ -394,10 +385,11 @@ def train(dim_word=100,  # word vector dimensionality
             os.path.splitext(saveto)[0], uidx)
         np.savez(saveto_uidx, history_errs=history_errs,
                  uidx=uidx, **unzip(tparams))
+        save_options(model_options, uidx, saveto)
         print 'Done'
 
-    if saveFreq == -1:
-        saveFreq = len(train[0]) / batch_size
+    # if saveFreq == -1:
+    #     saveFreq = len(train[0]) / batch_size
 
     start_time = time.time()
 
@@ -452,18 +444,19 @@ def train(dim_word=100,  # word vector dimensionality
             if np.mod(uidx, saveFreq) == 0:
                 # save with uidx
                 if not overwrite:
-                    # print 'Saving the model at iteration {}...'.format(uidx),
+                    print 'Saving the model at iteration {}...'.format(uidx),
                     saveto_uidx = '{}.iter{}.npz'.format(
                         os.path.splitext(saveto)[0], uidx)
                     np.savez(saveto_uidx, history_errs=history_errs,
                              uidx=uidx, **unzip(tparams))
-                    # print 'Done'
-                    # sys.stdout.flush()
+                    save_options(model_options, uidx, saveto)
+                    print 'Done'
+                    sys.stdout.flush()
             # generate some samples with the model and display them
 
             # finish after this many updates
             if uidx >= finish_after:
-                print 'Finishing after %d iterations!' % uidx
+                print 'Finishing after {} iterations!'.format(uidx)
                 estop = True
                 break
 

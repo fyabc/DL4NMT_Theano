@@ -48,7 +48,6 @@ def main(job_id, params):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
-    # reload
     parser.add_argument('-R', action="store_false", default=True, dest='reload',
                         help='Reload, default to True, set to False')
     parser.add_argument('-c', action="store_true", default=False, dest='convert_embedding',

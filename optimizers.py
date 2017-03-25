@@ -119,9 +119,18 @@ def sgd(lr, tparams, grads, inp, cost):
     return f_grad_shared, f_update
 
 
+Optimizers = {
+    'adadelta': adadelta,
+    'adam': adam,
+    'rmsprop': rmsprop,
+    'sgd': sgd,
+}
+
+
 __all__ = [
     'adadelta',
     'adam',
     'rmsprop',
     'sgd',
+    'Optimizers',
 ]

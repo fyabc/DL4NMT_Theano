@@ -6,10 +6,11 @@ import warnings
 import os
 import cPickle as pkl
 from pprint import pprint
+import re
 
 import theano
 import theano.tensor as tensor
-import numpy
+import numpy as np
 
 
 def zipp(params, tparams):
@@ -58,7 +59,7 @@ def load_params(path, params):
     :param params: New parameters to be updated.
     """
 
-    old_params = numpy.load(path)
+    old_params = np.load(path)
     for key, value in params.iteritems():
         if key not in old_params:
             warnings.warn('{} is not in the archive'.format(key))
@@ -70,8 +71,8 @@ def load_params(path, params):
 
 # some utilities
 def orthogonal_weight(ndim):
-    W = numpy.random.randn(ndim, ndim)
-    u, s, v = numpy.linalg.svd(W)
+    W = np.random.randn(ndim, ndim)
+    u, s, v = np.linalg.svd(W)
     return u.astype('float32')
 
 
@@ -81,14 +82,14 @@ def normal_weight(nin, nout=None, scale=0.01, orthogonal=True):
     if nout == nin and orthogonal:
         W = orthogonal_weight(nin)
     else:
-        W = scale * numpy.random.randn(nin, nout)
+        W = scale * np.random.randn(nin, nout)
     return W.astype('float32')
 
 
 def uniform_weight(nin, nout=None, scale=0.01):
     if nout is None:
         nout = nin
-    return numpy.random.uniform(-1. * scale, 1. * scale, (nin, nout)).astype('float32')
+    return np.random.uniform(-1. * scale, 1. * scale, (nin, nout)).astype('float32')
 
 
 def concatenate(tensor_list, axis=0):
@@ -136,8 +137,7 @@ def concatenate(tensor_list, axis=0):
     return out
 
 
-def apply_gradient_clipping(O, grads):
-    clip_c = O['clip_c']
+def apply_gradient_clipping(clip_c, grads):
     if clip_c > 0.:
         g2 = 0.
         for g in grads:
@@ -177,13 +177,13 @@ def prepare_data(seqs_x, seqs_y, maxlen=None):
             return None, None, None, None
 
     n_samples = len(seqs_x)
-    maxlen_x = numpy.max(lengths_x) + 1
-    maxlen_y = numpy.max(lengths_y) + 1
+    maxlen_x = np.max(lengths_x) + 1
+    maxlen_y = np.max(lengths_y) + 1
 
-    x = numpy.zeros((maxlen_x, n_samples)).astype('int64')
-    y = numpy.zeros((maxlen_y, n_samples)).astype('int64')
-    x_mask = numpy.zeros((maxlen_x, n_samples)).astype('float32')
-    y_mask = numpy.zeros((maxlen_y, n_samples)).astype('float32')
+    x = np.zeros((maxlen_x, n_samples)).astype('int64')
+    y = np.zeros((maxlen_y, n_samples)).astype('int64')
+    x_mask = np.zeros((maxlen_x, n_samples)).astype('float32')
+    y_mask = np.zeros((maxlen_y, n_samples)).astype('float32')
     for idx, [s_x, s_y] in enumerate(zip(seqs_x, seqs_y)):
         x[:lengths_x[idx], idx] = s_x
         x_mask[:lengths_x[idx] + 1, idx] = 1.
@@ -197,10 +197,10 @@ def get_minibatches_idx(n, minibatch_size, shuffle=False):
     """
     Used to shuffle the dataset at each iteration.
     """
-    idx_list = numpy.arange(n, dtype="int32")
+    idx_list = np.arange(n, dtype="int32")
 
     if shuffle:
-        numpy.random.shuffle(idx_list)
+        np.random.shuffle(idx_list)
 
     minibatches = []
     minibatch_start = 0
@@ -231,11 +231,11 @@ def print_params(params, exit_=False):
         exit(0)
 
 
-def load_options(options, print_options=True):
+def load_options(options, reload_=None, preload=None, print_options=True):
     """Reload options."""
 
-    reload_ = options['reload_']
-    preload = options['preload']
+    reload_ = options['reload_'] if reload_ is None else reload_
+    preload = options['preload'] if preload is None else preload
 
     if reload_ and os.path.exists(preload):
         print 'Reloading model options'
@@ -250,6 +250,22 @@ def load_options(options, print_options=True):
         print
 
 
+def save_options(options, iteration, saveto=None):
+    saveto = options['saveto'] if saveto is None else saveto
+
+    save_filename = '{}.iter{}.npz.pkl'.format(os.path.splitext(saveto)[0], iteration)
+    with open(save_filename, 'wb') as f:
+        pkl.dump(options, f)
+
+
+def search_start_uidx(reload_, preload):
+    m = re.search('.+iter(\d+?)\.npz', preload)
+    if m:
+        return int(m.group(1))
+    else:
+        return 0
+
+
 def make_f_train(f_grad_shared, f_update):
     def f_train(x, x_mask, y, y_mask, lr):
         cost = f_grad_shared(x, x_mask, y, y_mask)
@@ -259,3 +275,25 @@ def make_f_train(f_grad_shared, f_update):
         return cost
 
     return f_train
+
+
+__all__ = [
+    'zipp',
+    'unzip',
+    'itemlist',
+    '_p',
+    'init_tparams',
+    'load_params',
+    'orthogonal_weight',
+    'normal_weight',
+    'uniform_weight',
+    'concatenate',
+    'apply_gradient_clipping',
+    'prepare_data',
+    'get_minibatches_idx',
+    'print_params',
+    'load_options',
+    'save_options',
+    'search_start_uidx',
+    'make_f_train',
+]
