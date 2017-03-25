@@ -568,23 +568,15 @@ def build_sampler(tparams, O, trng, use_noise):
 
     x = T.matrix('x', dtype='int64')
     xr = x[::-1]
-    n_timesteps = x.shape[0]
+    n_timestep = x.shape[0]
     n_samples = x.shape[1]
 
-    # word embedding (source), forward and backward
-    emb = tparams['Wemb'][x.flatten()]
-    emb = emb.reshape([n_timesteps, n_samples, O['dim_word']])
-    embr = tparams['Wemb'][xr.flatten()]
-    embr = embr.reshape([n_timesteps, n_samples, O['dim_word']])
+    # word embedding for forward rnn and backward rnn (source)
+    src_embedding = embedding(tparams, x, O, n_timestep, n_samples)
+    src_embedding_r = embedding(tparams, xr, O, n_timestep, n_samples)
 
-    # encoder
-    proj = get_build(O['encoder'])(tparams, emb, O,
-                                   prefix='encoder')
-    projr = get_build(O['encoder'])(tparams, embr, O,
-                                    prefix='encoder_r')
-
-    # concatenate forward and backward rnn hidden states
-    ctx = concatenate([proj[0], projr[0][::-1]], axis=proj[0].ndim - 1)
+    # Encoder
+    ctx = gru_encoder(tparams, src_embedding, src_embedding_r, None, None, O, dropout_params=None)
 
     # get the input for decoder rnn initializer mlp
     ctx_mean = ctx.mean(0)
@@ -602,12 +594,12 @@ def build_sampler(tparams, O, trng, use_noise):
     init_state = T.matrix('init_state', dtype=fX)
 
     # if it's the first word, emb should be all zero and it is indicated by -1
-    emb = T.switch(y[:, None] < 0,
+    src_embedding = T.switch(y[:, None] < 0,
                    T.alloc(0., 1, tparams['Wemb_dec'].shape[1]),
                    tparams['Wemb_dec'][y])
 
     # apply one step of conditional gru with attention
-    proj = get_build(O['decoder'])(tparams, emb, O,
+    proj = get_build(O['decoder'])(tparams, src_embedding, O,
                                    prefix='decoder',
                                    mask=None, context=ctx,
                                    one_step=True,
@@ -620,7 +612,7 @@ def build_sampler(tparams, O, trng, use_noise):
 
     logit_lstm = get_build('ff')(tparams, next_state, O,
                                  prefix='ff_logit_lstm', activ='linear')
-    logit_prev = get_build('ff')(tparams, emb, O,
+    logit_prev = get_build('ff')(tparams, src_embedding, O,
                                  prefix='ff_logit_prev', activ='linear')
     logit_ctx = get_build('ff')(tparams, ctxs, O,
                                 prefix='ff_logit_ctx', activ='linear')
