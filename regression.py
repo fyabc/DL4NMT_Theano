@@ -18,10 +18,8 @@ Optimize:
 from __future__ import print_function
 
 import sys
-import os
 import argparse
 import time
-import cPickle as pkl
 
 import theano.tensor as T
 import numpy as np
@@ -62,7 +60,9 @@ def build_regression(args, top_options):
         # Initialize and reload model parameters.
         print('Initializing and reloading model parameters...', end='')
         old_model.initializer.init_input_to_context(old_model.P)
-        new_model.initializer.init_input_to_context(new_model.P)
+
+        # New model may reload the parameters or not
+        new_model.initializer.init_input_to_context(new_model.P, reload_=args.reload)
         print('Done')
 
         # Build model.
@@ -107,12 +107,7 @@ def build_regression(args, top_options):
 
         if args.dump_defore_train:
             print('Dumping before train...', end='')
-            save_filename = '{}_iter{}.iter160000.npz'.format(
-                os.path.split(args.model_file)[0], iteration,
-            )
-            np.savez(save_filename, **unzip(new_model.P))
-            with open('{}.pkl'.format(save_filename), 'wb') as f:
-                pkl.dump(new_options, f)
+            new_model.save_whole_model(args.model_file, iteration)
             print('Done')
 
         for epoch in xrange(args.max_epoch):
@@ -145,17 +140,7 @@ def build_regression(args, top_options):
                     sys.stdout.flush()
 
                 if np.mod(iteration, args.save_freq) == 0:
-                    # save with iteration
-                    print('Saving the new model at iteration {}...'.format(iteration), end='')
-                    save_filename = '{}_iter{}.iter160000.npz'.format(
-                        os.path.split(args.model_file)[0], iteration,
-                    )
-                    np.savez(save_filename, **unzip(new_model.P))
-                    with open('{}.pkl'.format(save_filename), 'wb') as f:
-                        pkl.dump(new_options, f)
-
-                    print('Done')
-                    sys.stdout.flush()
+                    new_model.save_whole_model(args.model_file, iteration)
 
                 # finish after this many updates
                 if iteration >= args.finish_after:
@@ -175,8 +160,8 @@ def build_regression(args, top_options):
 
 def main():
     parser = argparse.ArgumentParser(description='The regression task to initialize the model.')
-    parser.add_argument('-R', action="store_false", default=True, dest='reload',
-                        help='Reload, default to True, set to False')
+    parser.add_argument('-r', action="store_true", default=False, dest='reload',
+                        help='Reload, default to False, set to True')
     parser.add_argument('--enc', action='store', default=2, type=int, dest='n_encoder_layers',
                         help='Number of encoder layers of new model, default is 2')
     parser.add_argument('--dec', action='store', default=1, type=int, dest='n_decoder_layers',
@@ -203,8 +188,8 @@ def main():
 
     build_regression(args, dict(
         saveto='',
-        preload=args.pre_load_file,
-        reload_=args.reload,
+        preload='model/en2fr.iter160000.npz',
+        reload_=True,
         dim_word=620,
         dim=1000,
         decay_c=0.,

@@ -1,14 +1,19 @@
 #! /usr/bin/python
 # -*- coding: utf-8 -*-
 
+from __future__ import print_function
+
 from collections import OrderedDict
+import sys
 import os
 
 import theano
 import theano.tensor as T
+import numpy as np
+import cPickle as pkl
 
 from constants import fX, profile
-from utils import _p, init_tparams, normal_weight, load_params
+from utils import _p, init_tparams, normal_weight, load_params, unzip
 from layers import *
 
 __author__ = 'fyabc'
@@ -23,7 +28,7 @@ class ParameterInitializer(object):
     def init_embedding(np_parameters, name, n_in, n_out):
         np_parameters[name] = normal_weight(n_in, n_out)
 
-    def init_input_to_context(self, parameters):
+    def init_input_to_context(self, parameters, reload_=None, preload=None):
         """Initialize the model parameters from input to context vector.
 
         :param parameters: OrderedDict of Theano shared variables to be initialized.
@@ -46,10 +51,10 @@ class ParameterInitializer(object):
                                                         dim=self.O['dim'], layer_id=layer_id)
 
         # Reload parameters
-        reload_ = self.O['reload_']
-        preload = self.O['preload']
+        reload_ = self.O['reload_'] if reload_ is None else reload_
+        preload = self.O['preload'] if preload is None else preload
         if reload_ and os.path.exists(preload):
-            print 'Reloading model parameters'
+            print('Reloading model parameters')
             np_parameters = load_params(preload, np_parameters)
 
         # Init theano parameters
@@ -144,3 +149,23 @@ class NMTModel(object):
         context = self.gru_encoder(src_embedding, src_embedding_r, x_mask, x_mask_r, dropout_params=None)
 
         return [x, x_mask, y, y_mask], context
+
+    def save_whole_model(self, model_file, iteration):
+        # save with iteration
+        print('Saving the new model at iteration {}...'.format(iteration), end='')
+        save_filename = '{}_iter{}.iter160000.npz'.format(
+            os.path.split(model_file)[0], iteration,
+        )
+
+        # Encoder weights from new model + other weights from old model
+        old_params = np.load(self.O['preload'])
+        old_params.update(unzip(self.P))
+
+        np.savez(save_filename, **old_params)
+
+        # Save options
+        with open('{}.pkl'.format(save_filename), 'wb') as f:
+            pkl.dump(self.O, f)
+
+        print('Done')
+        sys.stdout.flush()
