@@ -244,6 +244,10 @@ def load_options(options, reload_=None, preload=None, print_options=True):
             # FIXME: Update the option instead of replace it
             options.update(pkl.load(f))
 
+        # Remain reload_ and preload
+        options['reload_'] = reload_
+        options['preload'] = preload
+
     if print_options:
         print 'Model options:'
         pprint(options)

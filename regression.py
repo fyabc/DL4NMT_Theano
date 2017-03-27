@@ -59,7 +59,7 @@ def build_regression(args, top_options):
     if only_encoder:
         # Initialize and reload model parameters.
         print('Initializing and reloading model parameters...', end='')
-        old_model.initializer.init_input_to_context(old_model.P)
+        old_model.initializer.init_input_to_context(old_model.P, reload_=True)
 
         # New model may reload the parameters or not
         new_model.initializer.init_input_to_context(new_model.P, reload_=args.reload)
@@ -171,20 +171,23 @@ def main():
                         help='Generated model file, default is "model/init/en2fr_init_encoder2.npz"')
     parser.add_argument('pre_load_file', nargs='?', default='model/en2fr.iter160000.npz',
                         help='Pre-load model file, default is "model/en2fr.iter160000.npz"')
-    parser.add_argument('-d', action='store_true', default=False, dest='dump_before_train',
-                        help='Dump before train default to False, set to True')
+    parser.add_argument('-D', action='store_false', default=True, dest='dump_before_train',
+                        help='Dump before train default to True, set to False')
     parser.add_argument('--optimizerR', action='store', default='adam', dest='regression_optimizer',
                         help='Regression optimizer, default is "adam"')
     parser.add_argument('-e', '--epoch', action='store', default=5000, type=int, dest='max_epoch',
                         help='The max epoch of regression, default is 5000')
-    parser.add_argument('--disp_freq', action='store', default=500, type=int, dest='disp_freq',
-                        help='The display frequency, default is 500')
+    parser.add_argument('--disp_freq', action='store', default=10, type=int, dest='disp_freq',
+                        help='The display frequency, default is 10')
     parser.add_argument('--save_freq', action='store', default=5000, type=int, dest='save_freq',
                         help='The save frequency, default is 5000')
     parser.add_argument('--finish_after', action='store', default=10000000, type=int, dest='finish_after',
                         help='Finish after this many updates, default is ')
 
     args = parser.parse_args()
+
+    print('Arguments:')
+    print(args)
 
     build_regression(args, dict(
         saveto='',

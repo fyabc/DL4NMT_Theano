@@ -13,7 +13,7 @@ import numpy as np
 import cPickle as pkl
 
 from constants import fX, profile
-from utils import _p, init_tparams, normal_weight, load_params, unzip
+from utils import *
 from layers import *
 
 __author__ = 'fyabc'
@@ -56,6 +56,8 @@ class ParameterInitializer(object):
         if reload_ and os.path.exists(preload):
             print('Reloading model parameters')
             np_parameters = load_params(preload, np_parameters)
+
+        print_params(np_parameters)
 
         # Init theano parameters
         init_tparams(np_parameters, parameters)
@@ -152,13 +154,14 @@ class NMTModel(object):
 
     def save_whole_model(self, model_file, iteration):
         # save with iteration
-        print('Saving the new model at iteration {}...'.format(iteration), end='')
         save_filename = '{}_iter{}.iter160000.npz'.format(
-            os.path.split(model_file)[0], iteration,
+            os.path.splitext(model_file)[0], iteration,
         )
 
+        print('Saving the new model at iteration {} to {}...'.format(iteration, save_filename), end='')
+
         # Encoder weights from new model + other weights from old model
-        old_params = np.load(self.O['preload'])
+        old_params = dict(np.load(self.O['preload']))
         old_params.update(unzip(self.P))
 
         np.savez(save_filename, **old_params)

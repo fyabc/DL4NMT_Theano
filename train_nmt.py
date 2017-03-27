@@ -48,6 +48,9 @@ def main(job_id, params):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
+    # FIXME: If reload set to True, the model will be set as this:
+    # Encoder/Decoder layer 0: copy
+    # Encoder/Decoder layer 1 ~ last: set weights to identity
     parser.add_argument('-R', action="store_false", default=True, dest='reload',
                         help='Reload, default to True, set to False')
     parser.add_argument('-c', action="store_true", default=False, dest='convert_embedding',
