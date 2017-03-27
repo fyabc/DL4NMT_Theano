@@ -46,10 +46,10 @@ def dropout_layer(state_before, use_noise, trng, dropout_rate=0.5):
     return projection
 
 
-def embedding(tparams, state_below, O, n_timestep, n_samples):
+def embedding(tparams, state_below, O, n_timestep, n_samples, emb_name='Wemb'):
     """Embedding"""
 
-    emb = tparams['Wemb'][state_below.flatten()]
+    emb = tparams[emb_name][state_below.flatten()]
     emb = emb.reshape([n_timestep, n_samples, O['dim_word']])
 
     return emb
@@ -514,8 +514,7 @@ def build_model(tparams, O):
     # to the right. This is done because of the bi-gram connections in the
     # readout and decoder rnn. The first target will be all zeros and we will
     # not condition on the last output.
-    tgt_embedding = tparams['Wemb_dec'][y.flatten()]
-    tgt_embedding = tgt_embedding.reshape([n_timestep_tgt, n_samples, O['dim_word']])
+    tgt_embedding = embedding(tparams, y, O, n_timestep_tgt, n_samples, 'Wemb_dec')
     emb_shifted = T.zeros_like(tgt_embedding)
     emb_shifted = T.set_subtensor(emb_shifted[1:], tgt_embedding[:-1])
     tgt_embedding = emb_shifted
