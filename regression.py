@@ -105,7 +105,7 @@ def build_regression(args, top_options):
         iteration = 0
         estop = False
 
-        if args.dump_defore_train:
+        if args.dump_before_train:
             print('Dumping before train...', end='')
             new_model.save_whole_model(args.model_file, iteration)
             print('Done')
