@@ -21,6 +21,7 @@ import sys
 import argparse
 import time
 
+import theano
 import theano.tensor as T
 import numpy as np
 
@@ -31,6 +32,34 @@ from utils import *
 from optimizers import Optimizers
 
 __author__ = 'fyabc'
+
+
+def build_loss(x, x_mask, context_old, context_new):
+    delta_context = (context_old - context_new) * x_mask[:, :, None]
+    loss = (delta_context ** 2).mean()
+    f_loss = theano.function([x, x_mask], loss, profile=False)
+
+    return loss, f_loss
+
+
+def validate(iterator, f_loss):
+    cost = 0.0
+    count = 0
+
+    for x, y in iterator:
+        x, x_mask, y, y_mask = prepare_data(x, y)
+
+        if x is None:
+            continue
+
+        cost += f_loss(x, x_mask)
+        count += 1
+
+    cost /= count
+
+    print('Valid average loss per batch: {}'.format(cost))
+
+    return cost
 
 
 def build_regression(args, top_options):
@@ -62,7 +91,11 @@ def build_regression(args, top_options):
         old_model.initializer.init_input_to_context(old_model.P, reload_=True)
 
         # New model may reload the parameters or not
-        new_model.initializer.init_input_to_context(new_model.P, reload_=args.reload)
+        new_model.initializer.init_input_to_context(
+            new_model.P,
+            reload_=args.warm_start_file is not None,
+            preload=args.warm_start_file,
+        )
         print('Done')
 
         # Build model.
@@ -73,12 +106,11 @@ def build_regression(args, top_options):
         print('Done')
 
         # Build MSE loss.
-        loss = ((context_new - context_old) ** 2).mean()
+        loss, f_loss = build_loss(x, x_mask, context_old, context_new)
 
         # Compute gradient.
         print('Computing gradient...', end='')
         grads = T.grad(loss, wrt=itemlist(new_model.P))
-        grads = apply_gradient_clipping(old_options['clip_c'], grads)
         print('Done')
 
         # Build optimizer.
@@ -98,6 +130,17 @@ def build_regression(args, top_options):
             old_options['n_words_src'],
             old_options['n_words'],
         )
+
+        valid_text_iterator = TextIterator(
+            old_options['valid_datasets'][0],
+            old_options['valid_datasets'][1],
+            old_options['vocab_filenames'][0],
+            old_options['vocab_filenames'][1],
+            old_options['valid_batch_size'],
+            old_options['maxlen'],
+            old_options['n_words_src'],
+            old_options['n_words'],
+        )
         print('Done')
 
         print('Optimization')
@@ -109,6 +152,8 @@ def build_regression(args, top_options):
             print('Dumping before train...', end='')
             new_model.save_whole_model(args.model_file, iteration)
             print('Done')
+
+        learning_rate = args.learning_rate
 
         for epoch in xrange(args.max_epoch):
             n_samples = 0
@@ -126,7 +171,7 @@ def build_regression(args, top_options):
 
                 # Train!
                 cost = f_grad_shared(x, x_mask)
-                f_update(args.learning_rate)
+                f_update(learning_rate)
 
                 if np.isnan(cost) or np.isinf(cost):
                     print('NaN detected')
@@ -141,6 +186,13 @@ def build_regression(args, top_options):
 
                 if np.mod(iteration, args.save_freq) == 0:
                     new_model.save_whole_model(args.model_file, iteration)
+
+                if np.mod(iteration, args.valid_freq) == 0:
+                    validate(valid_text_iterator, f_loss)
+
+                if args.discount_lr_freq > 0 and np.mod(iteration, args.discount_lr_freq) == 0:
+                    learning_rate *= 0.5
+                    print('Discount learning rate to {}'.format(learning_rate))
 
                 # finish after this many updates
                 if iteration >= args.finish_after:
@@ -160,17 +212,20 @@ def build_regression(args, top_options):
 
 def main():
     parser = argparse.ArgumentParser(description='The regression task to initialize the model.')
-    parser.add_argument('-r', action="store_true", default=False, dest='reload',
-                        help='Reload, default to False, set to True')
+    # parser.add_argument('-r', action="store_true", default=False, dest='reload',
+    #                     help='Reload, default to False, set to True')
     parser.add_argument('--enc', action='store', default=2, type=int, dest='n_encoder_layers',
                         help='Number of encoder layers of new model, default is 2')
     parser.add_argument('--dec', action='store', default=1, type=int, dest='n_decoder_layers',
                         help='Number of decoder layers of new model, default is 1')
-    parser.add_argument('--lr', action="store", metavar="learning_rate", dest="learning_rate", type=float, default=0.8)
+    parser.add_argument('--lr', action="store", metavar="learning_rate", dest="learning_rate", type=float, default=0.1)
     parser.add_argument('model_file', nargs='?', default='model/init/en2fr_init_encoder2.npz',
                         help='Generated model file, default is "model/init/en2fr_init_encoder2.npz"')
     parser.add_argument('pre_load_file', nargs='?', default='model/en2fr.iter160000.npz',
-                        help='Pre-load model file, default is "model/en2fr.iter160000.npz"')
+                        help='Pre-load model file (to old model, the optimize target), '
+                             'default is "model/en2fr.iter160000.npz"')
+    parser.add_argument('-w', '--warm_start_file', action='store', default=None, dest='warm_start_file',
+                        help='The warm start model file (to new model), default is None (cold start)')
     parser.add_argument('-D', action='store_false', default=True, dest='dump_before_train',
                         help='Dump before train default to True, set to False')
     parser.add_argument('--optimizerR', action='store', default='adam', dest='regression_optimizer',
@@ -181,8 +236,12 @@ def main():
                         help='The display frequency, default is 10')
     parser.add_argument('--save_freq', action='store', default=5000, type=int, dest='save_freq',
                         help='The save frequency, default is 5000')
+    parser.add_argument('--valid_freq', action='store', default=100, type=int, dest='valid_freq',
+                        help='The save frequency, default is 100')
     parser.add_argument('--finish_after', action='store', default=10000000, type=int, dest='finish_after',
                         help='Finish after this many updates, default is ')
+    parser.add_argument('--discount_lr_freq', action='store', default=2000, type=int, dest='discount_lr_freq',
+                        help='The discount learning rate frequency, default is 2000')
 
     args = parser.parse_args()
 

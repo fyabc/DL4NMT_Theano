@@ -45,4 +45,12 @@ DefaultOptions = dict(
     # Options of deeper encoder and decoder
     n_encoder_layers=1,
     n_decoder_layers=1,
+
+    # The connection type:
+    #     1. encoder_many_bidirectional = True (default):
+    #         forward1 -> forward2 -> forward3 -> ...
+    #         backward1 -> backward2 -> backward3 -> ...
+    #     2. encoder_many_bidirectional = False (default):
+    #         forward1 + backward1 -> forward2 -> forward3 -> ...
+    encoder_many_bidirectional=True,
 )

@@ -5,9 +5,9 @@ Build a neural machine translation model with soft attention
 import cPickle as pkl
 import copy
 import os
-import re
 import sys
 import time
+from pprint import pprint
 
 import numpy as np
 import theano
@@ -194,15 +194,17 @@ def train(dim_word=100,  # word vector dimensionality
           # Options of deeper encoder and decoder
           n_encoder_layers=1,
           n_decoder_layers=1,
+          encoder_many_bidirectional=True,
           ):
     # Model options: load and save
     model_options = locals().copy()
+    print 'Top options: '
+    pprint(model_options)
+    print 'Done'
+
     load_options(model_options, reload_, preload)
 
-    # load dictionaries and invert them
-
     print 'Loading data'
-
     text_iterator = TextIterator(
         datasets[0],
         datasets[1],
@@ -213,34 +215,6 @@ def train(dim_word=100,  # word vector dimensionality
         n_words_src,
         n_words,
     )
-
-    # sys.stdout.flush()
-    # train_data_x = pkl.load(open(datasets[0], 'rb'))
-    # train_data_y = pkl.load(open(datasets[1], 'rb'))
-    #
-    # if len(picked_train_idxes_file) != 0:
-    #     picked_idxes = pkl.load(open(picked_train_idxes_file, 'rb'))
-    #     train_data_x = [train_data_x[id] for id in picked_idxes]
-    #     train_data_y = [train_data_y[id] for id in picked_idxes]
-    #
-    # print 'Total train:', len(train_data_x)
-    # print 'Max len:', max([len(x) for x in train_data_x])
-    # sys.stdout.flush()
-    #
-    # if sort_by_len:
-    #     slen = np.array([len(s) for s in train_data_x])
-    #     sidx = slen.argsort()
-    #
-    #     _sbuf = [train_data_x[i] for i in sidx]
-    #     _tbuf = [train_data_y[i] for i in sidx]
-    #
-    #     train_data_x = _sbuf
-    #     train_data_y = _tbuf
-    #     print len(train_data_x[0]), len(train_data_x[-1])
-    #     sys.stdout.flush()
-    #     train_batch_idx = get_minibatches_idx(len(train_data_x), batch_size, shuffle=False)
-    # else:
-    #     train_batch_idx = get_minibatches_idx(len(train_data_x), batch_size, shuffle=True)
 
     print 'Building model'
     params = init_params(model_options)
@@ -396,11 +370,6 @@ def train(dim_word=100,  # word vector dimensionality
     for eidx in xrange(max_epochs):
         n_samples = 0
 
-        # for i, batch_idx in train_batch_idx:
-        #
-        #     x = [train_data_x[id] for id in batch_idx]
-        #     y = [train_data_y[id] for id in batch_idx]
-
         for i, (x, y) in enumerate(text_iterator):
             n_samples += len(x)
             uidx += 1
@@ -460,7 +429,7 @@ def train(dim_word=100,  # word vector dimensionality
                 estop = True
                 break
 
-        print 'Seen %d samples' % n_samples
+        print 'Seen {} samples'.format(n_samples)
 
         if estop:
             break
