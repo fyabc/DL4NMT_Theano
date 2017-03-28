@@ -263,6 +263,9 @@ def save_options(options, iteration, saveto=None):
 
 
 def search_start_uidx(reload_, preload):
+    if not reload_:
+        return 0
+
     m = re.search('.+iter(\d+?)\.npz', preload)
     if m:
         return int(m.group(1))
