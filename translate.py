@@ -12,6 +12,7 @@ import theano
 from nmt import (build_sampler, gen_sample, load_params,
                  init_tparams)
 from layers import init_params, build_sampler
+from config import DefaultOptions
 
 from multiprocessing import Process, Queue
 
@@ -63,7 +64,8 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
          normalize=False, n_process=5, chr_level=False):
     # load model model_options
     with open('%s.pkl' % model, 'rb') as f:
-        options = pkl.load(f)
+        options = DefaultOptions.copy()
+        options.update(pkl.load(f))
 
         print 'Options:'
         pprint(options)
