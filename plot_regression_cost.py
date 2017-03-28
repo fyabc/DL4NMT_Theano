@@ -26,7 +26,7 @@ def main():
                 costs.append(float(words[5]))
             elif line.startswith('Valid'):
                 words = line.split()
-                valid_iterations.append(iterations[-1])
+                valid_iterations.append(iterations[-1] if iterations else 0)
                 valid_costs.append(words[5])
 
         plt.plot(iterations, costs)

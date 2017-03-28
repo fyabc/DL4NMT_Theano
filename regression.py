@@ -110,13 +110,18 @@ def build_regression(args, top_options):
 
         # Compute gradient.
         print('Computing gradient...', end='')
-        grads = T.grad(loss, wrt=itemlist(new_model.P))
+        trainable_parameters = new_model.P.copy()
+        if args.fix_embedding:
+            print('Fix word embedding!')
+            del trainable_parameters['Wemb']
+        grads = T.grad(loss, wrt=itemlist(trainable_parameters))
         print('Done')
 
         # Build optimizer.
         print('Building optimizers...', end='')
         lr = T.scalar(name='lr')
-        f_grad_shared, f_update = Optimizers[args.regression_optimizer](lr, new_model.P, grads, [x, x_mask], loss)
+        f_grad_shared, f_update = Optimizers[args.regression_optimizer](
+            lr, trainable_parameters, grads, [x, x_mask], loss)
         print('Done')
 
         print('Loading data...', end='')
@@ -152,6 +157,9 @@ def build_regression(args, top_options):
             print('Dumping before train...', end='')
             new_model.save_whole_model(args.model_file, iteration)
             print('Done')
+
+        # Validate before train
+        validate(valid_text_iterator, f_loss)
 
         learning_rate = args.learning_rate
 
@@ -232,16 +240,18 @@ def main():
                         help='Regression optimizer, default is "adam"')
     parser.add_argument('-e', '--epoch', action='store', default=5000, type=int, dest='max_epoch',
                         help='The max epoch of regression, default is 5000')
-    parser.add_argument('--disp_freq', action='store', default=10, type=int, dest='disp_freq',
+    parser.add_argument('--disp_freq', action='store', default=50, type=int, dest='disp_freq',
                         help='The display frequency, default is 10')
-    parser.add_argument('--save_freq', action='store', default=5000, type=int, dest='save_freq',
-                        help='The save frequency, default is 5000')
-    parser.add_argument('--valid_freq', action='store', default=100, type=int, dest='valid_freq',
-                        help='The save frequency, default is 100')
+    parser.add_argument('--save_freq', action='store', default=10000, type=int, dest='save_freq',
+                        help='The save frequency, default is 10000')
+    parser.add_argument('--valid_freq', action='store', default=500, type=int, dest='valid_freq',
+                        help='The valid frequency, default is 500')
     parser.add_argument('--finish_after', action='store', default=10000000, type=int, dest='finish_after',
-                        help='Finish after this many updates, default is ')
+                        help='Finish after this many updates, default is 10000000')
     parser.add_argument('--discount_lr_freq', action='store', default=2000, type=int, dest='discount_lr_freq',
                         help='The discount learning rate frequency, default is 2000')
+    parser.add_argument('--fix_embedding', action='store_false', default=True, dest='fix_embedding',
+                        help='Fix the source embedding, default to True, set to False')
 
     args = parser.parse_args()
 

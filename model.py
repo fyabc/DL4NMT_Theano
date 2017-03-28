@@ -28,7 +28,8 @@ class ParameterInitializer(object):
     def init_embedding(np_parameters, name, n_in, n_out):
         np_parameters[name] = normal_weight(n_in, n_out)
 
-    def init_input_to_context(self, parameters, reload_=None, preload=None):
+    def init_input_to_context(self, parameters, reload_=None, preload=None,
+                              load_embedding=True):
         """Initialize the model parameters from input to context vector.
 
         :param parameters: OrderedDict of Theano shared variables to be initialized.
@@ -56,6 +57,12 @@ class ParameterInitializer(object):
         if reload_ and os.path.exists(preload):
             print('Reloading model parameters')
             np_parameters = load_params(preload, np_parameters)
+        else:
+            if load_embedding:
+                # [NOTE] Important: Load embedding even in random init case
+                print('Loading embedding')
+                old_params = np.load(self.O['preload'])
+                np_parameters['Wemb'] = old_params['Wemb']
 
         print_params(np_parameters)
 
