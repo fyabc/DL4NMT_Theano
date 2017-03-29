@@ -82,7 +82,12 @@ def normal_weight(nin, nout=None, scale=0.01, orthogonal=True):
     if nout == nin and orthogonal:
         W = orthogonal_weight(nin)
     else:
-        W = scale * np.random.randn(nin, nout)
+        W = np.random.randn(nin, nout)
+        u, s, v = np.linalg.svd(W)
+        if nin > nout:
+            W = u[:, :nout]
+        else:
+            W = v[:nin, :]
     return W.astype('float32')
 
 
