@@ -482,8 +482,8 @@ def init_params(O):
                 params = get_init(O['encoder'])(O, params, prefix='encoder', nin=n_in, dim=O['dim'], layer_id=0)
                 params = get_init(O['encoder'])(O, params, prefix='encoder_r', nin=n_in, dim=O['dim'], layer_id=0)
             else:
-                n_in = O['dim']
-                params = get_init(O['encoder'])(O, params, prefix='encoder', nin=n_in, dim=O['dim'], layer_id=layer_id)
+                n_in = 2 * O['dim']
+                params = get_init(O['encoder'])(O, params, prefix='encoder', nin=n_in, dim=n_in, layer_id=layer_id)
 
     context_dim = 2 * O['dim']
     # init_state, init_cell
