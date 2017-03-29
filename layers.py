@@ -400,26 +400,38 @@ def gru_encoder(tparams, src_embedding, src_embedding_r, x_mask, xr_mask, O, dro
     if O['encoder_many_bidirectional']:
         for layer_id in xrange(O['n_encoder_layers']):
             if layer_id > 0:
-                # [NOTE] Add more connections (fast-forward, highway, ...) here
                 if True:
-                    global_f = h_last
-                    global_f_r = h_last_r
-                x_mask_ = None
-                xr_mask_ = None
+                    # [NOTE] Add more connections (fast-forward, highway, ...) here
+                    global_f, global_f_r = h_last, h_last_r
+                x_mask_, xr_mask_ = None, None
             else:
-                x_mask_ = x_mask
-                xr_mask_ = xr_mask
+                x_mask_, xr_mask_ = x_mask, xr_mask
 
             h_last = get_build(O['encoder'])(tparams, global_f, O, prefix='encoder', mask=x_mask_, layer_id=layer_id,
                                              dropout_params=dropout_params)[0]
             h_last_r = get_build(O['encoder'])(tparams, global_f_r, O, prefix='encoder_r', mask=xr_mask_, layer_id=layer_id,
                                                dropout_params=dropout_params)[0]
-    else:
-        # todo
-        pass
 
-    # context will be the concatenation of forward and backward rnns
-    context = concatenate([h_last, h_last_r[::-1]], axis=h_last.ndim - 1)
+        # context will be the concatenation of forward and backward rnns
+        context = concatenate([h_last, h_last_r[::-1]], axis=h_last.ndim - 1)
+    else:
+        for layer_id in xrange(O['n_encoder_layers']):
+            if layer_id > 0:
+                if True:
+                    # [NOTE] Add more connections (fast-forward, highway, ...) here
+                    global_f = h_last
+
+                h_last = get_build(O['encoder'])(tparams, global_f, O, prefix='encoder', mask=None, layer_id=layer_id,
+                                                 dropout_params=dropout_params)[0]
+            else:
+                h_last = get_build(O['encoder'])(tparams, global_f, O, prefix='encoder', mask=x_mask, layer_id=0,
+                                                 dropout_params=dropout_params)[0]
+                h_last_r = get_build(O['encoder'])(tparams, global_f_r, O, prefix='encoder_r', mask=xr_mask, layer_id=0,
+                                                   dropout_params=dropout_params)[0]
+
+                h_last = concatenate([h_last, h_last_r[::-1]], axis=h_last.ndim - 1)
+
+        context = h_last
 
     return context
 
@@ -464,8 +476,14 @@ def init_params(O):
             params = get_init(O['encoder'])(O, params, prefix='encoder', nin=n_in, dim=O['dim'], layer_id=layer_id)
             params = get_init(O['encoder'])(O, params, prefix='encoder_r', nin=n_in, dim=O['dim'], layer_id=layer_id)
     else:
-        # todo
-        pass
+        for layer_id in xrange(O['n_encoder_layers']):
+            if layer_id == 0:
+                n_in = O['dim_word']
+                params = get_init(O['encoder'])(O, params, prefix='encoder', nin=n_in, dim=O['dim'], layer_id=0)
+                params = get_init(O['encoder'])(O, params, prefix='encoder_r', nin=n_in, dim=O['dim'], layer_id=0)
+            else:
+                n_in = O['dim']
+                params = get_init(O['encoder'])(O, params, prefix='encoder', nin=n_in, dim=O['dim'], layer_id=layer_id)
 
     context_dim = 2 * O['dim']
     # init_state, init_cell
