@@ -8,39 +8,38 @@ import sys
 from nmt import train
 
 
-def main(job_id, params):
-    print params
+def main(job_id, args):
     validerr = train(
-        saveto=params['model'][0],
-        preload=params['pre_model'],
-        reload_=params['reload'][0],
-        dim_word=params['dim_word'][0],
-        dim=params['dim'][0],
-        decay_c=params['decay-c'][0],
-        clip_c=params['clip-c'][0],
-        lrate=params['learning-rate'][0],
-        optimizer=params['optimizer'][0],
+        saveto=args.model_file,
+        preload=args.pre_load_file,
+        reload_=args.reload,
+        dim_word=620,
+        dim=1000,
+        decay_c=0.,
+        clip_c=1.,
+        lrate=args.learning_rate,
+        optimizer=args.optimizer,
         patience=1000,
         maxlen=1000,
         batch_size=80,
         dispFreq=2500,
-        saveFreq=params['save_freq'][0],
+        saveFreq=10000,
         datasets=[r'.\data\train\filtered_en-fr.en',
                   r'.\data\train\filtered_en-fr.fr'],
-        use_dropout=params['use-dropout'][0],
+        use_dropout=False,
         overwrite=False,
-        # picked_train_idxes_file=params['train_idx_file'],
-        n_words=params['n-words'][0],
-        n_words_src=params['n-words'][0],
-        sort_by_len=params['curr'],
+        n_words=30000,
+        n_words_src=30000,
+        sort_by_len=args.curri,
 
         # Options from v-yanfa
-        convert_embedding=params['convert_embedding'],
-        dump_before_train=params['dump_before_train'],
-        plot_graph=params['plot_graph'],
+        convert_embedding=args.pre_load_file,
+        dump_before_train=args.dump_before_train,
+        plot_graph=args.plot,
 
-        n_encoder_layers=params['n_encoder_layers'],
-        n_decoder_layers=params['n_decoder_layers'],
+        n_encoder_layers=args.n_encoder_layers,
+        n_decoder_layers=args.n_decoder_layers,
+        encoder_many_bidirectional=args.connection_type == 1,
     )
     return validerr
 
@@ -73,6 +72,9 @@ if __name__ == '__main__':
                         help='Number of encoder layers, default is 1')
     parser.add_argument('--dec', action='store', default=1, type=int, dest='n_decoder_layers',
                         help='Number of decoder layers, default is 1')
+    parser.add_argument('--conn', action='store', default=1, type=int, dest='connection_type',
+                        help='Connection type, default is 1 (divided bidirectional GRU);\n'
+                             '2 is bidirectional only in first layer, other layers are forward')
 
     # [NOTE]
     # default arguments in my experiment
@@ -90,26 +92,4 @@ if __name__ == '__main__':
     #     assert os.path.exists(args.train_idx_file)
     sys.stdout.flush()
 
-    main(0, {
-        'model': [args.model_file],
-        'dim_word': [620],
-        'dim': [1000],
-        'n-words': [30000],
-        'optimizer': [args.optimizer],
-        'decay-c': [0.],
-        'clip-c': [1.],
-        'use-dropout': [False],
-        # 'learning-rate': [1.],
-        'learning-rate': [args.learning_rate],
-        'reload': [args.reload],
-        # 'save_freq': [5000],
-        'save_freq': [10000],
-        # 'train_idx_file': args.train_idx_file,
-        'curr': args.curri,
-        'pre_model': args.pre_load_file,
-        'convert_embedding': args.convert_embedding,
-        'dump_before_train': args.dump_before_train,
-        'plot_graph': args.plot,
-        'n_encoder_layers': args.n_encoder_layers,
-        'n_decoder_layers': args.n_decoder_layers,
-    })
+    main(0, args)
