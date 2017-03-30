@@ -177,9 +177,15 @@ def build_regression(args, top_options):
                     iteration -= 1
                     continue
 
+                if args.debug:
+                    print('Cost before train: {}'.format(f_loss(x, x_mask)))
+
                 # Train!
                 cost = f_grad_shared(x, x_mask)
                 f_update(learning_rate)
+
+                if args.debug:
+                    print('Cost after train: {}'.format(f_loss(x, x_mask)))
 
                 if np.isnan(cost) or np.isinf(cost):
                     print('NaN detected')
@@ -252,6 +258,8 @@ def main():
                         help='The discount learning rate frequency, default is 2000')
     parser.add_argument('--fix_embedding', action='store_false', default=True, dest='fix_embedding',
                         help='Fix the source embedding, default to True, set to False')
+    parser.add_argument('--debug', action='store_true', default=False, dest='debug',
+                        help='Open debug mode, default is False, set to True')
 
     args = parser.parse_args()
 
