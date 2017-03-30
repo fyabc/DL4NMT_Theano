@@ -248,7 +248,7 @@ def main():
                         help='The valid frequency, default is 500')
     parser.add_argument('--finish_after', action='store', default=10000000, type=int, dest='finish_after',
                         help='Finish after this many updates, default is 10000000')
-    parser.add_argument('--discount_lr_freq', action='store', default=2000, type=int, dest='discount_lr_freq',
+    parser.add_argument('--discount_lr_freq', action='store', default=10000, type=int, dest='discount_lr_freq',
                         help='The discount learning rate frequency, default is 2000')
     parser.add_argument('--fix_embedding', action='store_false', default=True, dest='fix_embedding',
                         help='Fix the source embedding, default to True, set to False')
