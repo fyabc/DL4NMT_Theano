@@ -33,7 +33,7 @@ def main(job_id, args):
         sort_by_len=args.curri,
 
         # Options from v-yanfa
-        convert_embedding=args.pre_load_file,
+        convert_embedding=args.convert_embedding,
         dump_before_train=args.dump_before_train,
         plot_graph=args.plot,
 
