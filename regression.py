@@ -34,9 +34,14 @@ from optimizers import Optimizers
 __author__ = 'fyabc'
 
 
-def build_loss(x, x_mask, context_old, context_new):
+def build_loss(x, x_mask, context_old, context_new, args):
+    # Context shape: T * BS * dim_hidden
+    # Mask shape: T * BS
     delta_context = (context_old - context_new) * x_mask[:, :, None]
-    loss = (delta_context ** 2).mean()
+    if args.sum_loss:
+        loss = (delta_context ** 2).sum() / delta_context.shape[0]
+    else:
+        loss = (delta_context ** 2).mean()
     f_loss = theano.function([x, x_mask], loss, profile=False)
 
     return loss, f_loss
@@ -105,8 +110,10 @@ def build_regression(args, top_options):
         _, context_new = new_model.input_to_context(input_)
         print('Done')
 
-        # Build MSE loss.
-        loss, f_loss = build_loss(x, x_mask, context_old, context_new)
+        # Build output and MSE loss.
+        f_context_old = theano.function([x, x_mask], context_old)
+        f_context_new = theano.function([x, x_mask], context_new)
+        loss, f_loss = build_loss(x, x_mask, context_old, context_new, args)
 
         # Compute gradient.
         print('Computing gradient...', end='')
@@ -204,6 +211,16 @@ def build_regression(args, top_options):
                 if np.mod(iteration, args.valid_freq) == 0:
                     validate(valid_text_iterator, f_loss)
 
+                    if args.debug and args.dump_hidden is not None:
+                        print('Dumping input and hidden state to {}...'.format(args.dump_hidden), end='')
+                        np.savez(
+                            args.dump_hidden,
+                            x=x, x_mask=x_mask,
+                            hidden_old=f_context_old(x, x_mask),
+                            hidden_new=f_context_new(x, x_mask),
+                        )
+                        print('Done')
+
                 if args.discount_lr_freq > 0 and np.mod(iteration, args.discount_lr_freq) == 0:
                     learning_rate *= 0.5
                     print('Discount learning rate to {}'.format(learning_rate))
@@ -260,6 +277,10 @@ def main():
                         help='Fix the source embedding, default to True, set to False')
     parser.add_argument('--debug', action='store_true', default=False, dest='debug',
                         help='Open debug mode, default is False, set to True')
+    parser.add_argument('--dump_hidden', action='store', default=None, dest='dump_hidden',
+                        help='Dump hidden state output to file (only available in debug mode), default is None')
+    parser.add_argument('-s', '--sum_loss', action='store_true', default=False, dest='sum_loss',
+                        help='Use sum loss instead of mean, default is False, set to True')
 
     args = parser.parse_args()
 
