@@ -90,6 +90,30 @@ def build_regression(args, top_options):
     old_model = NMTModel(old_options)
     new_model = NMTModel(new_options)
 
+    print('Loading data...', end='')
+    text_iterator = TextIterator(
+        old_options['datasets'][0],
+        old_options['datasets'][1],
+        old_options['vocab_filenames'][0],
+        old_options['vocab_filenames'][1],
+        old_options['batch_size'],
+        old_options['maxlen'],
+        old_options['n_words_src'],
+        old_options['n_words'],
+    )
+
+    valid_text_iterator = TextIterator(
+        old_options['valid_datasets'][0],
+        old_options['valid_datasets'][1],
+        old_options['vocab_filenames'][0],
+        old_options['vocab_filenames'][1],
+        old_options['valid_batch_size'],
+        old_options['maxlen'],
+        old_options['n_words_src'],
+        old_options['n_words'],
+    )
+    print('Done')
+
     if only_encoder:
         # Initialize and reload model parameters.
         print('Initializing and reloading model parameters...', end='')
@@ -129,30 +153,6 @@ def build_regression(args, top_options):
         lr = T.scalar(name='lr')
         f_grad_shared, f_update = Optimizers[args.regression_optimizer](
             lr, trainable_parameters, grads, [x, x_mask], loss)
-        print('Done')
-
-        print('Loading data...', end='')
-        text_iterator = TextIterator(
-            old_options['datasets'][0],
-            old_options['datasets'][1],
-            old_options['vocab_filenames'][0],
-            old_options['vocab_filenames'][1],
-            old_options['batch_size'],
-            old_options['maxlen'],
-            old_options['n_words_src'],
-            old_options['n_words'],
-        )
-
-        valid_text_iterator = TextIterator(
-            old_options['valid_datasets'][0],
-            old_options['valid_datasets'][1],
-            old_options['vocab_filenames'][0],
-            old_options['vocab_filenames'][1],
-            old_options['valid_batch_size'],
-            old_options['maxlen'],
-            old_options['n_words_src'],
-            old_options['n_words'],
-        )
         print('Done')
 
         print('Optimization')

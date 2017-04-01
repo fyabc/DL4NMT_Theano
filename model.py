@@ -129,13 +129,30 @@ class NMTModel(object):
     def reverse_input(x, x_mask):
         return x[::-1], x_mask[::-1]
 
-    def embedding(self, input_, n_timestep, n_samples):
-        """Embedding"""
+    def embedding(self, input_, n_timestep, n_samples, emb_name='Wemb'):
+        """Embedding layer: input -> embedding"""
 
-        return embedding(self.P, input_, self.O, n_timestep, n_samples)
+        return embedding(self.P, input_, self.O, n_timestep, n_samples, emb_name)
+
+    def feed_forward(self, input_, prefix, activation=tanh):
+        """Feed-forward layer."""
+
+        return fflayer(self.P, input_, self.O, prefix, activation)
 
     def gru_encoder(self, src_embedding, src_embedding_r, x_mask, xr_mask, dropout_params=None):
+        """GRU encoder layer: source embedding -> encoder context"""
+
         return gru_encoder(self.P, src_embedding, src_embedding_r, x_mask, xr_mask, self.O, dropout_params)
+
+    @staticmethod
+    def get_context_mean(context, x_mask):
+        """Get mean of context (across time) as initial state of decoder RNN
+        
+        Or you can use the last state of forward + backward encoder RNNs
+            # return concatenate([proj[0][-1], projr[0][-1]], axis=proj[0].ndim-2)
+        """
+
+        return (context * x_mask[:, :, None]).sum(0) / x_mask.sum(0)[:, None]
 
     def input_to_context(self, given_input=None):
         """Build the part of the model that from input to context vector.
@@ -152,12 +169,36 @@ class NMTModel(object):
 
         n_timestep, n_timestep_tgt, n_samples = self.input_dimensions(x, y)
 
+        # Word embedding for forward rnn and backward rnn (source)
         src_embedding = self.embedding(x, n_timestep, n_samples)
         src_embedding_r = self.embedding(x_r, n_timestep, n_samples)
 
         context = self.gru_encoder(src_embedding, src_embedding_r, x_mask, x_mask_r, dropout_params=None)
 
         return [x, x_mask, y, y_mask], context
+
+    def input_to_decoder_context(self, given_input=None):
+        """Build the part of the model that from input to context vector of decoder.
+        
+        :param given_input: List of input Theano tensors or None
+            If None, this method will create them by itself.
+        :return: tuple of input list and output
+        """
+
+        (x, x_mask, y, y_mask), context = self.input_to_context(given_input)
+
+        n_timestep, n_timestep_tgt, n_samples = self.input_dimensions(x, y)
+
+        context_mean = self.get_context_mean(context, x_mask)
+        # Initial decoder state
+        init_decoder_state = self.feed_forward(context_mean, prefix='ff_state', activation=tanh)
+
+        # Word embedding (target), we will shift the target sequence one time step
+        # to the right. This is done because of the bi-gram connections in the
+        # readout and decoder rnn. The first target will be all zeros and we will
+        # not condition on the last output.
+
+        # todo
 
     def save_whole_model(self, model_file, iteration):
         # save with iteration
