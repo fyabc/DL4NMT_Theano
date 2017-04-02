@@ -18,6 +18,7 @@ __author__ = 'fyabc'
 
 def _slice(_x, n, dim):
     """Utility function to slice a tensor."""
+
     if _x.ndim == 3:
         return _x[:, :, n * dim:(n + 1) * dim]
     return _x[:, n * dim:(n + 1) * dim]
@@ -264,54 +265,42 @@ def gru_cond_layer(tparams, state_below, O, prefix='gru', mask=None, context=Non
     """Conditional GRU layer with Attention"""
 
     assert context, 'Context must be provided'
-
+    assert context.ndim == 3, 'Context must be 3-d: #annotation * #sample * dim'
     if one_step:
         assert init_state, 'previous state must be provided'
 
+    # Dimensions
     n_steps = state_below.shape[0]
     if state_below.ndim == 3:
         n_samples = state_below.shape[1]
     else:
         n_samples = 1
-
-    # mask
-    if mask is None:
-        mask = T.alloc(1., state_below.shape[0], 1)
-
     dim = tparams[_p(prefix, 'Wcx')].shape[1]
 
-    # initial/previous state
+    # Mask
+    if mask is None:
+        mask = T.alloc(1., n_steps, 1)
+
+    # Initial/previous state
     if init_state is None:
         init_state = T.alloc(0., n_samples, dim)
 
-    # projected context
-    assert context.ndim == 3, \
-        'Context must be 3-d: #annotation x #sample x dim'
-    pctx_ = T.dot(context, tparams[_p(prefix, 'Wc_att')]) + \
-            tparams[_p(prefix, 'b_att')]
-
-    def _slice(_x, n, dim):
-        if _x.ndim == 3:
-            return _x[:, :, n * dim:(n + 1) * dim]
-        return _x[:, n * dim:(n + 1) * dim]
+    projected_context = T.dot(context, tparams[_p(prefix, 'Wc_att')]) + tparams[_p(prefix, 'b_att')]
 
     # projected x
     state_belowx = T.dot(state_below, tparams[_p(prefix, 'Wx')]) + tparams[_p(prefix, 'bx')]
     state_below_ = T.dot(state_below, tparams[_p(prefix, 'W')]) + tparams[_p(prefix, 'b')]
 
     def _step_slice(m_, x_, xx_,
-                    h_, ctx_, alpha_, pctx_, cc_,
+                    h_, ctx_, alpha_,
+                    projected_context_, context_,
                     U, Wc, W_comb_att, U_att, c_tt, Ux, Wcx, U_nl, Ux_nl, b_nl, bx_nl):
-        preact1 = T.dot(h_, U)
-        preact1 += x_
-        preact1 = T.nnet.sigmoid(preact1)
+        preact1 = T.nnet.sigmoid(T.dot(h_, U) + x_)
 
         r1 = _slice(preact1, 0, dim)
         u1 = _slice(preact1, 1, dim)
 
-        preactx1 = T.dot(h_, Ux)
-        preactx1 *= r1
-        preactx1 += xx_
+        preactx1 = T.dot(h_, Ux) * r1 + xx_
 
         h1 = T.tanh(preactx1)
 
@@ -320,37 +309,33 @@ def gru_cond_layer(tparams, state_below, O, prefix='gru', mask=None, context=Non
 
         # attention
         pstate_ = T.dot(h1, W_comb_att)
-        pctx__ = pctx_ + pstate_[None, :, :]
+        pctx__ = projected_context_ + pstate_[None, :, :]
         # pctx__ += xc_
         pctx__ = T.tanh(pctx__)
+
         alpha = T.dot(pctx__, U_att) + c_tt
         alpha = alpha.reshape([alpha.shape[0], alpha.shape[1]])
         alpha = T.exp(alpha)
         if context_mask:
             alpha = alpha * context_mask
         alpha = alpha / alpha.sum(0, keepdims=True)
-        ctx_ = (cc_ * alpha[:, :, None]).sum(0)  # current context
+        ctx_ = (context_ * alpha[:, :, None]).sum(0)  # current context
 
-        preact2 = T.dot(h1, U_nl) + b_nl
-        preact2 += T.dot(ctx_, Wc)
-        preact2 = T.nnet.sigmoid(preact2)
+        preact2 = T.nnet.sigmoid(T.dot(h1, U_nl) + b_nl + T.dot(ctx_, Wc))
 
         r2 = _slice(preact2, 0, dim)
         u2 = _slice(preact2, 1, dim)
 
-        preactx2 = T.dot(h1, Ux_nl) + bx_nl
-        preactx2 *= r2
-        preactx2 += T.dot(ctx_, Wcx)
+        preactx2 = (T.dot(h1, Ux_nl) + bx_nl) * r2 + T.dot(ctx_, Wcx)
 
         h2 = T.tanh(preactx2)
 
         h2 = u2 * h1 + (1. - u2) * h2
         h2 = m_[:, None] * h2 + (1. - m_)[:, None] * h1
 
-        return h2, ctx_, alpha.T  # pstate_, preact, preactx, r, u
+        return h2, ctx_, alpha.T
 
     seqs = [mask, state_below_, state_belowx]
-    # seqs = [mask, state_below_, state_belowx, state_belowc]
     _step = _step_slice
 
     shared_vars = [tparams[_p(prefix, 'U')],
@@ -366,28 +351,30 @@ def gru_cond_layer(tparams, state_below, O, prefix='gru', mask=None, context=Non
                    tparams[_p(prefix, 'bx_nl')]]
 
     if one_step:
-        rval = _step(*(seqs + [init_state, None, None, pctx_, context] +
-                       shared_vars))
+        result = _step(*(seqs + [init_state, None, None, projected_context, context] + shared_vars))
     else:
-        rval, updates = theano.scan(_step,
-                                    sequences=seqs,
-                                    outputs_info=[init_state,
-                                                  T.alloc(0., n_samples,
-                                                          context.shape[2]),
-                                                  T.alloc(0., n_samples,
-                                                          context.shape[0])],
-                                    non_sequences=[pctx_, context] + shared_vars,
-                                    name=_p(prefix, '_layers'),
-                                    n_steps=n_steps,
-                                    profile=profile,
-                                    strict=True)
-    return rval
+        result, updates = theano.scan(
+            _step,
+            sequences=seqs,
+            outputs_info=[init_state,
+                          T.alloc(0., n_samples,
+                                  context.shape[2]),
+                          T.alloc(0., n_samples,
+                                  context.shape[0])],
+            non_sequences=[projected_context, context] + shared_vars,
+            name=_p(prefix, '_layers'),
+            n_steps=n_steps,
+            profile=profile,
+            strict=True,
+        )
+    return result
 
 
 def gru_encoder(tparams, src_embedding, src_embedding_r, x_mask, xr_mask, O, dropout_params=None):
     """Multi-layer GRU encoder.
 
-    :return Context vector
+    :return Context vector: Theano tensor
+        Shape: 
     """
 
     global_f = src_embedding
@@ -434,6 +421,16 @@ def gru_encoder(tparams, src_embedding, src_embedding_r, x_mask, xr_mask, O, dro
         context = h_last
 
     return context
+
+
+def gru_decoder(tparams, tgt_embedding, y_mask, init_state, O, dropout_params=None):
+    """Multi-layer GRU decoder.
+    
+    :return Decoder context vector and hidden states
+    """
+
+    for layer_id in O['n_decoder_layers']:
+        pass
 
 
 # layers: 'name': ('parameter initializer', 'feedforward')

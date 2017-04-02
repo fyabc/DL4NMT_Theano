@@ -33,6 +33,9 @@ class ParameterInitializer(object):
         """Initialize the model parameters from input to context vector.
 
         :param parameters: OrderedDict of Theano shared variables to be initialized.
+        :param reload_: Reload old model or not
+        :param preload: The path of old model
+        :param load_embedding: Load old word embedding or not, default to True
         """
 
         np_parameters = OrderedDict()
@@ -69,12 +72,95 @@ class ParameterInitializer(object):
         # Init theano parameters
         init_tparams(np_parameters, parameters)
 
+    def init_input_to_decoder_context(self, parameters, reload_=None, preload=None, load_embedding=True):
+        """Initialize the model parameters from input to decoder context vector.
+
+        :param parameters: OrderedDict of Theano shared variables to be initialized.
+        :param reload_: Reload old model or not
+        :param preload: The path of old model
+        :param load_embedding: Load old word embedding or not, default to True
+        """
+
+        pass
+
 
 class NMTModel(object):
     """The model class.
 
     This is a light weight class, just contains some needed elements and model components.
     The main work is done by the caller.
+    
+    Shapes of some inputs, outputs and intermediate results:
+        [W]: dim_word, word vector dim, 100
+        [H]: dim, hidden size, 1000
+        [BS]: batch_size / n_samples, 80
+        [Ts]: n_timestep, 100
+        [Tt]: n_timestep_tgt, 100
+        [Hc]: context_dim, 2 * [H]
+        
+        x, x_mask: ([Ts], [BS])
+        y, y_mask: ([Tt], [BS])
+        
+        src_embedding: ([Ts], [BS], [W])
+        
+        # Encoder
+            # todo
+        
+        context: ([Ts], [BS], [Hc])
+        
+        context_mean: ([BS], [Hc])
+        init_state: ([BS], [H])
+        
+        tgt_embedding: ([Tt], [BS], [W])
+        
+        # Decoder
+            # Attention: context -> hidden
+            Wc_att: ([Hc], [Hc])
+            b_att: ([Hc])
+            projected_context: ([Tt], [BS], [Hc])
+            
+            # GRU1 (without attention)
+            # [H] + [H]: combine reset and update gates
+            U: ([H], [H] + [H])
+            b: ([H] + [H])
+            ProjectedTargetEmbedding: ([Tt], [BS], [H] + [H]) -> alias to x
+            x_t: ([BS], [H] + [H])
+            
+            Ux: ([H], [H])
+            bx: ([H])
+            ProjectedTargetEmbedding_proj: ([Tt], [BS], [H]) -> alias to x_proj
+            x_proj_t: ([BS], [H])
+            
+            r1_t, u1_t, h1_t: ([BS], [H])
+            
+            # Attention combined -> hidden
+            W_comb_att: ([H], [Hc])
+            pstate_: ([BS], [Hc])
+            pctx__: ([Tt], [BS], [Hc])
+            
+            U_att: ([Hc], 1)
+            c_tt: (1)
+            alpha: ([Tt], [BS])
+            
+            # Current context
+            ctx_: ([BS], [Hc])
+            
+            # GRU2 (with attention)
+            U_nl: ([H], [H] + [H])
+            b_nl: ([H] + [H])
+            Wc: ([Hc], [H] + [H])
+            
+            Ux_nl: ([H], [H])
+            bx_nl: ([H])
+            Wcx: ([Hc], [H])
+            
+            r2_t, u2_t, h2_t: ([BS], [H])
+            
+            h_t: ([BS], [H])
+            
+        hidden_decoder: ([Tt], [BS], [H])
+        context_decoder: ([Tt], [BS], [Hc])
+        alpha_decoder: ([Tt], [Bs], [Tt])
     """
 
     # This is a simple wrapper of layers.py now.
@@ -173,6 +259,7 @@ class NMTModel(object):
         src_embedding = self.embedding(x, n_timestep, n_samples)
         src_embedding_r = self.embedding(x_r, n_timestep, n_samples)
 
+        # Encoder
         context = self.gru_encoder(src_embedding, src_embedding_r, x_mask, x_mask_r, dropout_params=None)
 
         return [x, x_mask, y, y_mask], context
@@ -197,8 +284,12 @@ class NMTModel(object):
         # to the right. This is done because of the bi-gram connections in the
         # readout and decoder rnn. The first target will be all zeros and we will
         # not condition on the last output.
+        tgt_embedding = embedding(self.P, y, self.O, n_timestep_tgt, n_samples, 'Wemb_dec')
+        emb_shifted = T.zeros_like(tgt_embedding)
+        emb_shifted = T.set_subtensor(emb_shifted[1:], tgt_embedding[:-1])
+        tgt_embedding = emb_shifted
 
-        # todo
+        # Decoder - pass through the decoder conditional gru with attention
 
     def save_whole_model(self, model_file, iteration):
         # save with iteration

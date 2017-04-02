@@ -35,7 +35,7 @@ __author__ = 'fyabc'
 
 
 def build_loss(x, x_mask, context_old, context_new, args):
-    # Context shape: T * BS * dim_hidden
+    # Context shape: T * BS * (2 * dim_hidden)
     # Mask shape: T * BS
     delta_context = (context_old - context_new) * x_mask[:, :, None]
     if args.sum_loss:
