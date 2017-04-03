@@ -25,7 +25,7 @@ import theano
 import theano.tensor as T
 import numpy as np
 
-from model import NMTModel
+from model import NMTModel, ParameterInitializer
 from config import DefaultOptions
 from data_iterator import TextIterator
 from utils import *
@@ -35,8 +35,12 @@ __author__ = 'fyabc'
 
 
 def build_loss(x, x_mask, context_old, context_new, args):
-    # Context shape: T * BS * (2 * dim_hidden)
-    # Mask shape: T * BS
+    # Context shape: ([Ts], [BS], [Hc]))
+    # Mask shape: ([Ts], [BS])
+
+    f_context_old = theano.function([x, x_mask], context_old)
+    f_context_new = theano.function([x, x_mask], context_new)
+
     delta_context = (context_old - context_new) * x_mask[:, :, None]
     if args.sum_loss:
         loss = (delta_context ** 2).sum() / delta_context.shape[0]
@@ -44,10 +48,34 @@ def build_loss(x, x_mask, context_old, context_new, args):
         loss = (delta_context ** 2).mean()
     f_loss = theano.function([x, x_mask], loss, profile=False)
 
-    return loss, f_loss
+    return f_context_old, f_context_new, loss, f_loss
 
 
-def validate(iterator, f_loss):
+def build_decoder_loss(
+        x, x_mask, y, y_mask,
+        hidden_decoder_old, hidden_decoder_new, context_decoder_old, context_decoder_new,
+        args):
+    # Hidden shape: ([Tt], [BS], [H])
+    # Context shape: ([Ts], [BS], [Hc])
+    # Mask shape: ([Ts/t], [BS])
+
+    f_context_old = theano.function([x, x_mask, y, y_mask], context_decoder_old)
+    f_context_new = theano.function([x, x_mask, y, y_mask], context_decoder_new)
+
+    delta_context = (context_decoder_old - context_decoder_new) * x_mask[:, :, None]
+    delta_hidden = (hidden_decoder_old - hidden_decoder_new) * y_mask[:, :, None]
+
+    if args.sum_loss:
+        loss = (delta_context ** 2).sum() / delta_context.shape[0] + (delta_hidden ** 2).sum() / delta_hidden.shape[0]
+    else:
+        loss = (delta_context ** 2).mean() + (delta_hidden ** 2).mean()
+
+    f_loss = theano.function([x, x_mask, y, y_mask], loss, profile=False)
+
+    return f_context_old, f_context_new, loss, f_loss
+
+
+def validate(iterator, f_loss, only_encoder=True):
     cost = 0.0
     count = 0
 
@@ -57,7 +85,9 @@ def validate(iterator, f_loss):
         if x is None:
             continue
 
-        cost += f_loss(x, x_mask)
+        inputs = [x, x_mask] if only_encoder else [x, x_mask, y, y_mask]
+
+        cost += f_loss(*inputs)
         count += 1
 
     cost /= count
@@ -115,19 +145,22 @@ def build_regression(args, top_options):
     print('Done')
 
     if only_encoder:
-        # Initialize and reload model parameters.
-        print('Initializing and reloading model parameters...', end='')
-        old_model.initializer.init_input_to_context(old_model.P, reload_=True)
+        f_initialize = ParameterInitializer.init_input_to_context
+    else:
+        f_initialize = ParameterInitializer.init_input_to_decoder_context
 
-        # New model may reload the parameters or not
-        new_model.initializer.init_input_to_context(
-            new_model.P,
-            reload_=args.warm_start_file is not None,
-            preload=args.warm_start_file,
-        )
-        print('Done')
+    # Initialize and reload model parameters.
+    print('Initializing and reloading model parameters...', end='')
+    f_initialize(old_model.initializer, old_model.P, reload_=True)
+    f_initialize(
+        new_model.initializer, new_model.P,
+        reload_=args.warm_start_file is not None,
+        preload=args.warm_start_file,
+    )
+    print('Done')
 
-        # Build model.
+    # Build model.
+    if only_encoder:
         print('Building model...', end='')
         input_, context_old = old_model.input_to_context()
         x, x_mask, y, y_mask = input_
@@ -135,110 +168,125 @@ def build_regression(args, top_options):
         print('Done')
 
         # Build output and MSE loss.
-        f_context_old = theano.function([x, x_mask], context_old)
-        f_context_new = theano.function([x, x_mask], context_new)
-        loss, f_loss = build_loss(x, x_mask, context_old, context_new, args)
-
-        # Compute gradient.
-        print('Computing gradient...', end='')
-        trainable_parameters = new_model.P.copy()
-        if args.fix_embedding:
-            print('Fix word embedding!')
-            del trainable_parameters['Wemb']
-        grads = T.grad(loss, wrt=itemlist(trainable_parameters))
+        f_context_old, f_context_new, loss, f_loss = build_loss(x, x_mask, context_old, context_new, args)
+    else:
+        print('Building model...', end='')
+        input_, hidden_decoder_old, context_decoder_old = old_model.input_to_decoder_context()
+        x, x_mask, y, y_mask = input_
+        _, hidden_decoder_new, context_decoder_new = new_model.input_to_decoder_context(input_)
         print('Done')
 
-        # Build optimizer.
-        print('Building optimizers...', end='')
-        lr = T.scalar(name='lr')
-        f_grad_shared, f_update = Optimizers[args.regression_optimizer](
-            lr, trainable_parameters, grads, [x, x_mask], loss)
+        f_context_old, f_context_new, loss, f_loss = build_decoder_loss(
+            x, x_mask, y, y_mask,
+            hidden_decoder_old, hidden_decoder_new, context_decoder_old, context_decoder_new, args)
+
+    # Compute gradient.
+    print('Computing gradient...', end='')
+    trainable_parameters = new_model.P.copy()
+    if args.fix_embedding:
+        print('Fix word embedding!')
+        del trainable_parameters['Wemb']
+
+        if not only_encoder:
+            del trainable_parameters['Wemb_dec']
+    grads = T.grad(loss, wrt=itemlist(trainable_parameters))
+    print('Done')
+
+    # Build optimizer.
+    inputs = [x, x_mask] if only_encoder else [x, x_mask, y, y_mask]
+
+    # Build optimizer.
+    print('Building optimizers...', end='')
+    lr = T.scalar(name='lr')
+    f_grad_shared, f_update = Optimizers[args.regression_optimizer](
+        lr, trainable_parameters, grads, inputs, loss)
+    print('Done')
+
+    print('Optimization')
+    start_time = time.time()
+    iteration = 0
+    estop = False
+
+    if args.dump_before_train:
+        print('Dumping before train...', end='')
+        new_model.save_whole_model(args.model_file, iteration)
         print('Done')
 
-        print('Optimization')
-        start_time = time.time()
-        iteration = 0
-        estop = False
+    # Validate before train
+    validate(valid_text_iterator, f_loss, only_encoder)
 
-        if args.dump_before_train:
-            print('Dumping before train...', end='')
-            new_model.save_whole_model(args.model_file, iteration)
-            print('Done')
+    learning_rate = args.learning_rate
 
-        # Validate before train
-        validate(valid_text_iterator, f_loss)
+    for epoch in xrange(args.max_epoch):
+        n_samples = 0
 
-        learning_rate = args.learning_rate
+        for i, (x, y) in enumerate(text_iterator):
+            n_samples += len(x)
+            iteration += 1
 
-        for epoch in xrange(args.max_epoch):
-            n_samples = 0
+            x, x_mask, y, y_mask = prepare_data(x, y)
 
-            for i, (x, y) in enumerate(text_iterator):
-                n_samples += len(x)
-                iteration += 1
+            if x is None:
+                print('Minibatch with zero sample under length ', top_options['maxlen'])
+                iteration -= 1
+                continue
 
-                x, x_mask, y, y_mask = prepare_data(x, y)
+            inputs = [x, x_mask] if only_encoder else [x, x_mask, y, y_mask]
 
-                if x is None:
-                    print('Minibatch with zero sample under length ', top_options['maxlen'])
-                    iteration -= 1
-                    continue
+            if args.debug:
+                print('Cost before train: {}'.format(f_loss(*inputs)))
 
-                if args.debug:
-                    print('Cost before train: {}'.format(f_loss(x, x_mask)))
+            # Train!
+            cost = f_grad_shared(*inputs)
+            f_update(learning_rate)
 
-                # Train!
-                cost = f_grad_shared(x, x_mask)
-                f_update(learning_rate)
+            if args.debug:
+                print('Cost after train: {}'.format(f_loss(*inputs)))
 
-                if args.debug:
-                    print('Cost after train: {}'.format(f_loss(x, x_mask)))
+            if np.isnan(cost) or np.isinf(cost):
+                print('NaN detected')
+                return 1., 1., 1.
 
-                if np.isnan(cost) or np.isinf(cost):
-                    print('NaN detected')
-                    return 1., 1., 1.
+            # verbose
+            if np.mod(iteration, args.disp_freq) == 0:
+                print('Epoch {} Update {} Cost {:.6f} Time {:.6f}min'.format(
+                    epoch, iteration, float(cost), (time.time() - start_time) / 60.0,
+                ))
+                sys.stdout.flush()
 
-                # verbose
-                if np.mod(iteration, args.disp_freq) == 0:
-                    print('Epoch {} Update {} Cost {:.6f} Time {:.6f}min'.format(
-                        epoch, iteration, float(cost), (time.time() - start_time) / 60.0,
-                    ))
-                    sys.stdout.flush()
+            if np.mod(iteration, args.save_freq) == 0:
+                new_model.save_whole_model(args.model_file, iteration)
 
-                if np.mod(iteration, args.save_freq) == 0:
-                    new_model.save_whole_model(args.model_file, iteration)
+            if np.mod(iteration, args.valid_freq) == 0:
+                validate(valid_text_iterator, f_loss, only_encoder)
 
-                if np.mod(iteration, args.valid_freq) == 0:
-                    validate(valid_text_iterator, f_loss)
+                if args.debug and args.dump_hidden is not None:
+                    print('Dumping input and hidden state to {}...'.format(args.dump_hidden), end='')
+                    np.savez(
+                        args.dump_hidden,
+                        x=x, x_mask=x_mask,
+                        y=y, y_mask=y_mask,
+                        hidden_old=f_context_old(*inputs),
+                        hidden_new=f_context_new(*inputs),
+                    )
+                    print('Done')
 
-                    if args.debug and args.dump_hidden is not None:
-                        print('Dumping input and hidden state to {}...'.format(args.dump_hidden), end='')
-                        np.savez(
-                            args.dump_hidden,
-                            x=x, x_mask=x_mask,
-                            hidden_old=f_context_old(x, x_mask),
-                            hidden_new=f_context_new(x, x_mask),
-                        )
-                        print('Done')
+            if args.discount_lr_freq > 0 and np.mod(iteration, args.discount_lr_freq) == 0:
+                learning_rate *= 0.5
+                print('Discount learning rate to {}'.format(learning_rate))
 
-                if args.discount_lr_freq > 0 and np.mod(iteration, args.discount_lr_freq) == 0:
-                    learning_rate *= 0.5
-                    print('Discount learning rate to {}'.format(learning_rate))
-
-                # finish after this many updates
-                if iteration >= args.finish_after:
-                    print ('Finishing after {} iterations!'.format(iteration))
-                    estop = True
-                    break
-
-            print('Seen {} samples'.format(n_samples))
-
-            if estop:
+            # finish after this many updates
+            if iteration >= args.finish_after:
+                print ('Finishing after {} iterations!'.format(iteration))
+                estop = True
                 break
 
-        return 0.
-    else:
-        raise Exception('Do not support decoder regression now, need to be implemented')
+        print('Seen {} samples'.format(n_samples))
+
+        if estop:
+            break
+
+    return 0.
 
 
 def main():

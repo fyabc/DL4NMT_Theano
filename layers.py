@@ -102,30 +102,35 @@ def param_init_gru(O, params, prefix='gru', nin=None, dim=None, **kwargs):
         dim = O['dim_proj']
 
     layer_id = kwargs.pop('layer_id', 0)
+    context_dim = kwargs.pop('context_dim', None)
 
     # embedding to gates transformation weights, biases
-    W = np.concatenate([normal_weight(nin, dim), normal_weight(nin, dim)], axis=1)
-    params[_p(prefix, 'W', layer_id)] = W
+    params[_p(prefix, 'W', layer_id)] = np.concatenate([normal_weight(nin, dim), normal_weight(nin, dim)], axis=1)
     params[_p(prefix, 'b', layer_id)] = np.zeros((2 * dim,), dtype=fX)
 
     # recurrent transformation weights for gates
-    U = np.concatenate([orthogonal_weight(dim),
-                        orthogonal_weight(dim)], axis=1)
-    params[_p(prefix, 'U', layer_id)] = U
+    params[_p(prefix, 'U', layer_id)] = np.concatenate([orthogonal_weight(dim),
+                                                        orthogonal_weight(dim)], axis=1)
 
     # embedding to hidden state proposal weights, biases
-    Wx = normal_weight(nin, dim)
-    params[_p(prefix, 'Wx', layer_id)] = Wx
+    params[_p(prefix, 'Wx', layer_id)] = normal_weight(nin, dim)
     params[_p(prefix, 'bx', layer_id)] = np.zeros((dim,), dtype=fX)
 
     # recurrent transformation weights for hidden state proposal
-    Ux = orthogonal_weight(dim)
-    params[_p(prefix, 'Ux', layer_id)] = Ux
+    params[_p(prefix, 'Ux', layer_id)] = orthogonal_weight(dim)
+
+    if context_dim is not None:
+        params[_p(prefix, 'Wc', layer_id)] = np.concatenate([normal_weight(context_dim, dim),
+                                                             normal_weight(context_dim, dim)], axis=1)
+        params[_p(prefix, 'Wcx', layer_id)] = normal_weight(context_dim, dim)
 
     return params
 
 
-def _gru_step_slice(src_mask, x_, xx_, ht_1, U, Ux):
+def _gru_step_slice(
+        src_mask, x_, xx_,
+        ht_1,
+        U, Ux):
     """GRU step function to be used by scan
 
     arguments (0) | sequences (3) | outputs-info (1) | non-seqs (2)
@@ -152,21 +157,26 @@ def _gru_step_slice(src_mask, x_, xx_, ht_1, U, Ux):
 def _gru_step_slice_attention(
         mask, x_, xx_,
         ht_1,
-        context, U, Ux):
-    """GRU step function with attention."""
+        context, U, Ux, Wc, Wcx):
+    """GRU step function with attention.
+    
+    context: ([BS], [Hc])
+    Wc: ([Hc], [H] + [H])
+    Wcx: ([Hc], [H])
+    """
 
     # todo: add context
 
     _dim = Ux.shape[1]
 
-    preact = T.dot(ht_1, U) + x_
+    preact = T.nnet.sigmoid(T.dot(ht_1, U) + x_ + T.dot(context, Wc))
 
     # reset and update gates
-    r = T.nnet.sigmoid(_slice(preact, 0, _dim))
-    u = T.nnet.sigmoid(_slice(preact, 1, _dim))
+    r = _slice(preact, 0, _dim)
+    u = _slice(preact, 1, _dim)
 
     # hidden state proposal
-    ht_tilde = T.tanh(T.dot(ht_1, Ux) * r + xx_)
+    ht_tilde = T.tanh(T.dot(ht_1, Ux) * r + xx_ + T.dot(context, Wcx))
 
     # leaky integrate and obtain next hidden state
     ht = u * ht_1 + (1. - u) * ht_tilde
@@ -208,9 +218,22 @@ def gru_layer(tparams, state_below, O, prefix='gru', mask=None, **kwargs):
     # prepare scan arguments
     seqs = [mask, state_below_, state_belowx]
     init_states = [T.alloc(0., n_samples, dim)]
-    _step = _gru_step_slice
-    shared_vars = [tparams[_p(prefix, 'U', layer_id)],
-                   tparams[_p(prefix, 'Ux', layer_id)]]
+
+    if context is None:
+        shared_vars = [
+            tparams[_p(prefix, 'U', layer_id)],
+            tparams[_p(prefix, 'Ux', layer_id)],
+        ]
+        _step = _gru_step_slice
+    else:
+        shared_vars = [
+            context,
+            tparams[_p(prefix, 'U', layer_id)],
+            tparams[_p(prefix, 'Ux', layer_id)],
+            tparams[_p(prefix, 'Wc', layer_id)],
+            tparams[_p(prefix, 'Wcx', layer_id)],
+        ]
+        _step = _gru_step_slice_attention
 
     outputs, updates = theano.scan(
         _step,
@@ -430,7 +453,7 @@ def gru_encoder(tparams, src_embedding, src_embedding_r, x_mask, xr_mask, O, dro
     """Multi-layer GRU encoder.
 
     :return Context vector: Theano tensor
-        Shape: 
+        Shape: ([Ts], [BS], [Hc])
     """
 
     global_f = src_embedding
@@ -499,7 +522,7 @@ def gru_decoder(tparams, tgt_embedding, y_mask, init_state, context, x_mask, O, 
             global_f = hidden_decoder
 
         hidden_decoder = gru_layer(tparams, global_f, O, 'decoder', y_mask, layer_id=layer_id,
-                                   dropout_params=dropout_params, context=context_decoder)
+                                   dropout_params=dropout_params, context=context_decoder)[0]
 
     return hidden_decoder, context_decoder, alpha_decoder
 
@@ -562,11 +585,12 @@ def init_params(O):
 
     params = OrderedDict()
 
-    # embedding
+    # Embedding
     params['Wemb'] = normal_weight(O['n_words_src'], O['dim_word'])
     params['Wemb_dec'] = normal_weight(O['n_words'], O['dim_word'])
 
-    # encoder: bidirectional RNN
+    # Encoder: bidirectional RNN
+
     if O['encoder_many_bidirectional']:
         for layer_id in xrange(O['n_encoder_layers']):
             if layer_id == 0:
@@ -585,12 +609,21 @@ def init_params(O):
                 n_in = 2 * O['dim']
                 params = get_init(O['encoder'])(O, params, prefix='encoder', nin=n_in, dim=n_in, layer_id=layer_id)
 
+    # Decoder
+
     context_dim = 2 * O['dim']
+
     # init_state, init_cell
     params = get_init('ff')(O, params, prefix='ff_state', nin=context_dim, nout=O['dim'])
-    # decoder
+
+    # decoder first layer
     params = get_init(O['decoder'])(O, params, prefix='decoder', nin=O['dim_word'], dim=O['dim'], dimctx=context_dim)
-    # readout
+
+    # decoder other layers
+    for layer_id in xrange(1, O['n_decoder_layers']):
+        params = param_init_gru(O, params, prefix='decoder', nin=O['dim'], dim=O['dim'], layer_id=layer_id,
+                                context_dim=context_dim)
+    # Readout
     params = get_init('ff')(O, params, prefix='ff_logit_lstm', nin=O['dim'], nout=O['dim_word'], orthogonal=False)
     params = get_init('ff')(O, params, prefix='ff_logit_prev', nin=O['dim_word'], nout=O['dim_word'], orthogonal=False)
     params = get_init('ff')(O, params, prefix='ff_logit_ctx', nin=context_dim, nout=O['dim_word'], orthogonal=False)
@@ -754,6 +787,7 @@ __all__ = [
     'param_init_gru_cond',
     'gru_cond_layer',
     'gru_encoder',
+    'gru_decoder',
     'layers',
     'get_layer',
     'get_build',

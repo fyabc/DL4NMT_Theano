@@ -81,7 +81,58 @@ class ParameterInitializer(object):
         :param load_embedding: Load old word embedding or not, default to True
         """
 
-        pass
+        np_parameters = OrderedDict()
+
+        # Source embedding
+        self.init_embedding(np_parameters, 'Wemb', self.O['n_words_src'], self.O['dim_word'])
+
+        # Encoder: bidirectional RNN
+        for layer_id in xrange(self.O['n_encoder_layers']):
+            if layer_id == 0:
+                n_in = self.O['dim_word']
+            else:
+                n_in = self.O['dim']
+            np_parameters = get_init(self.O['encoder'])(self.O, np_parameters, prefix='encoder', nin=n_in,
+                                                        dim=self.O['dim'], layer_id=layer_id)
+            np_parameters = get_init(self.O['encoder'])(self.O, np_parameters, prefix='encoder_r', nin=n_in,
+                                                        dim=self.O['dim'], layer_id=layer_id)
+
+        # Target embedding
+        self.init_embedding(np_parameters, 'Wemb_dec', self.O['n_words'], self.O['dim_word'])
+
+        # Decoder
+        context_dim = 2 * self.O['dim']
+
+        # init_state, init_cell
+        params = get_init('ff')(self.O, np_parameters, prefix='ff_state', nin=context_dim, nout=self.O['dim'])
+
+        # decoder first layer
+        params = get_init(self.O['decoder'])(self.O, np_parameters, prefix='decoder', nin=self.O['dim_word'],
+                                             dim=self.O['dim'], dimctx=context_dim)
+
+        # decoder other layers
+        for layer_id in xrange(1, self.O['n_decoder_layers']):
+            params = param_init_gru(self.O, params, prefix='decoder', nin=self.O['dim'], dim=self.O['dim'],
+                                    layer_id=layer_id, context_dim=context_dim)
+
+        # Reload parameters
+        reload_ = self.O['reload_'] if reload_ is None else reload_
+        preload = self.O['preload'] if preload is None else preload
+        if reload_ and os.path.exists(preload):
+            print('Reloading model parameters')
+            np_parameters = load_params(preload, np_parameters)
+        else:
+            if load_embedding:
+                # [NOTE] Important: Load embedding even in random init case
+                print('Loading embedding')
+                old_params = np.load(self.O['preload'])
+                np_parameters['Wemb'] = old_params['Wemb']
+                np_parameters['Wemb_dec'] = old_params['Wemb_dec']
+
+        print_params(np_parameters)
+
+        # Init theano parameters
+        init_tparams(np_parameters, parameters)
 
 
 class NMTModel(object):
@@ -290,6 +341,12 @@ class NMTModel(object):
         tgt_embedding = emb_shifted
 
         # Decoder - pass through the decoder conditional gru with attention
+        hidden_decoder, context_decoder, _ = gru_decoder(
+            self.P, tgt_embedding, y_mask, init_decoder_state, context, x_mask, self.O,
+            dropout_params=None,
+        )
+
+        return [x, x_mask, y, y_mask], hidden_decoder, context_decoder
 
     def save_whole_model(self, model_file, iteration):
         # save with iteration
