@@ -190,11 +190,11 @@ def gru_layer(tparams, state_below, O, prefix='gru', mask=None, **kwargs):
     """GRU layer
     
     input:
-        state_below: ([T], [BS], x)     # x = [W] for src_embedding
-        mask: ([T], [BS])
-        context: ([T], [BS], [Hc])
+        state_below: ([Ts/t], [BS], x)     # x = [W] for src_embedding
+        mask: ([Ts/t], [BS])
+        context: ([Tt], [BS], [Hc])
     output: a list
-        output[0]: context, ([T], [BS], [H])
+        output[0]: hidden, ([Ts/t], [BS], [H])
     """
 
     layer_id = kwargs.pop('layer_id', 0)
@@ -206,7 +206,7 @@ def gru_layer(tparams, state_below, O, prefix='gru', mask=None, **kwargs):
     n_samples = state_below.shape[1] if state_below.ndim == 3 else 1
     dim = tparams[_p(prefix, 'Ux', layer_id)].shape[1]
 
-    mask = T.alloc(1., state_below.shape[0], 1) if mask is None else mask
+    mask = T.alloc(1., n_steps, 1) if mask is None else mask
 
     # state_below is the input word embeddings
     # input to the gates, concatenated

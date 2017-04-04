@@ -98,6 +98,9 @@ def build_regression(args, top_options):
     :param top_options: Options from top-level (like options in train_nmt.py)
     """
 
+    theano.config.optimizer = 'fast_compile'
+    theano.config.exception_verbosity = 'high'
+
     # Initialize and load options.
     old_options = DefaultOptions.copy()
     old_options.update(top_options)
