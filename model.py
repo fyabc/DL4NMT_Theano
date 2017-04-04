@@ -28,6 +28,32 @@ class ParameterInitializer(object):
     def init_embedding(np_parameters, name, n_in, n_out):
         np_parameters[name] = normal_weight(n_in, n_out)
 
+    def init_encoder(self, np_parameters):
+        if self.O['encoder_many_bidirectional']:
+            for layer_id in xrange(self.O['n_encoder_layers']):
+                if layer_id == 0:
+                    n_in = self.O['dim_word']
+                else:
+                    n_in = self.O['dim']
+                np_parameters = get_init(self.O['encoder'])(self.O, np_parameters, prefix='encoder', nin=n_in,
+                                                            dim=self.O['dim'], layer_id=layer_id)
+                np_parameters = get_init(self.O['encoder'])(self.O, np_parameters, prefix='encoder_r', nin=n_in,
+                                                            dim=self.O['dim'], layer_id=layer_id)
+        else:
+            for layer_id in xrange(self.O['n_encoder_layers']):
+                if layer_id == 0:
+                    n_in = self.O['dim_word']
+                    np_parameters = get_init(self.O['encoder'])(self.O, np_parameters, prefix='encoder', nin=n_in,
+                                                                dim=self.O['dim'], layer_id=0)
+                    np_parameters = get_init(self.O['encoder'])(self.O, np_parameters, prefix='encoder_r', nin=n_in,
+                                                                dim=self.O['dim'], layer_id=0)
+                else:
+                    n_in = 2 * self.O['dim']
+                    np_parameters = get_init(self.O['encoder'])(self.O, np_parameters, prefix='encoder', nin=n_in,
+                                                                dim=n_in, layer_id=layer_id)
+
+        return np_parameters
+
     def init_input_to_context(self, parameters, reload_=None, preload=None,
                               load_embedding=True):
         """Initialize the model parameters from input to context vector.
@@ -44,15 +70,7 @@ class ParameterInitializer(object):
         self.init_embedding(np_parameters, 'Wemb', self.O['n_words_src'], self.O['dim_word'])
 
         # Encoder: bidirectional RNN
-        for layer_id in xrange(self.O['n_encoder_layers']):
-            if layer_id == 0:
-                n_in = self.O['dim_word']
-            else:
-                n_in = self.O['dim']
-            np_parameters = get_init(self.O['encoder'])(self.O, np_parameters, prefix='encoder', nin=n_in,
-                                                        dim=self.O['dim'], layer_id=layer_id)
-            np_parameters = get_init(self.O['encoder'])(self.O, np_parameters, prefix='encoder_r', nin=n_in,
-                                                        dim=self.O['dim'], layer_id=layer_id)
+        np_parameters = self.init_encoder(np_parameters)
 
         # Reload parameters
         reload_ = self.O['reload_'] if reload_ is None else reload_
@@ -87,15 +105,7 @@ class ParameterInitializer(object):
         self.init_embedding(np_parameters, 'Wemb', self.O['n_words_src'], self.O['dim_word'])
 
         # Encoder: bidirectional RNN
-        for layer_id in xrange(self.O['n_encoder_layers']):
-            if layer_id == 0:
-                n_in = self.O['dim_word']
-            else:
-                n_in = self.O['dim']
-            np_parameters = get_init(self.O['encoder'])(self.O, np_parameters, prefix='encoder', nin=n_in,
-                                                        dim=self.O['dim'], layer_id=layer_id)
-            np_parameters = get_init(self.O['encoder'])(self.O, np_parameters, prefix='encoder_r', nin=n_in,
-                                                        dim=self.O['dim'], layer_id=layer_id)
+        np_parameters = self.init_encoder(np_parameters)
 
         # Target embedding
         self.init_embedding(np_parameters, 'Wemb_dec', self.O['n_words'], self.O['dim_word'])
@@ -104,16 +114,16 @@ class ParameterInitializer(object):
         context_dim = 2 * self.O['dim']
 
         # init_state, init_cell
-        params = get_init('ff')(self.O, np_parameters, prefix='ff_state', nin=context_dim, nout=self.O['dim'])
+        np_parameters = get_init('ff')(self.O, np_parameters, prefix='ff_state', nin=context_dim, nout=self.O['dim'])
 
         # decoder first layer
-        params = get_init(self.O['decoder'])(self.O, np_parameters, prefix='decoder', nin=self.O['dim_word'],
-                                             dim=self.O['dim'], dimctx=context_dim)
+        np_parameters = get_init(self.O['decoder'])(self.O, np_parameters, prefix='decoder', nin=self.O['dim_word'],
+                                                    dim=self.O['dim'], dimctx=context_dim)
 
         # decoder other layers
         for layer_id in xrange(1, self.O['n_decoder_layers']):
-            params = param_init_gru(self.O, params, prefix='decoder', nin=self.O['dim'], dim=self.O['dim'],
-                                    layer_id=layer_id, context_dim=context_dim)
+            np_parameters = param_init_gru(self.O, np_parameters, prefix='decoder', nin=self.O['dim'],
+                                           dim=self.O['dim'], layer_id=layer_id, context_dim=context_dim)
 
         # Reload parameters
         reload_ = self.O['reload_'] if reload_ is None else reload_
