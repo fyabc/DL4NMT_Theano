@@ -3,7 +3,7 @@
 
 __author__ = 'fyabc'
 
-# Dict of options (Copied from nmt.py)
+# Dict of default options (Copied from nmt.py)
 DefaultOptions = dict(
     dim_word=100,  # word vector dimensionality
     dim=1000,  # the number of LSTM units
@@ -50,7 +50,7 @@ DefaultOptions = dict(
     #     1. encoder_many_bidirectional = True (default):
     #         forward1 -> forward2 -> forward3 -> ...
     #         backward1 -> backward2 -> backward3 -> ...
-    #     2. encoder_many_bidirectional = False (default):
+    #     2. encoder_many_bidirectional = False:
     #         forward1 + backward1 -> forward2 -> forward3 -> ...
     encoder_many_bidirectional=True,
 )

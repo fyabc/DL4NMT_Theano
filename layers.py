@@ -134,6 +134,9 @@ def _gru_step_slice(
     """GRU step function to be used by scan
 
     arguments (0) | sequences (3) | outputs-info (1) | non-seqs (2)
+
+    ht_1: ([BS], [H])
+    U: ([H], [H] + [H])
     """
 
     _dim = Ux.shape[1]
@@ -198,16 +201,14 @@ def gru_layer(tparams, state_below, O, prefix='gru', mask=None, **kwargs):
 
     layer_id = kwargs.pop('layer_id', 0)
     dropout_params = kwargs.pop('dropout_params', None)
-
-    # todo: add context
     context = kwargs.pop('context', None)
+    one_step = kwargs.pop('one_step', False)
 
     n_steps = state_below.shape[0]
     n_samples = state_below.shape[1] if state_below.ndim == 3 else 1
     dim = tparams[_p(prefix, 'Ux', layer_id)].shape[1]
 
-    if mask is None:
-        mask = T.alloc(1., state_below.shape[0], 1)
+    mask = T.alloc(1., state_below.shape[0], 1) if mask is None else mask
 
     # state_below is the input word embeddings
     # input to the gates, concatenated
@@ -217,7 +218,7 @@ def gru_layer(tparams, state_below, O, prefix='gru', mask=None, **kwargs):
 
     # prepare scan arguments
     seqs = [mask, state_below_, state_belowx]
-    init_states = [T.alloc(0., n_samples, dim)]
+    init_states = [kwargs.pop('init_states', T.alloc(0., n_samples, dim))]
 
     if context is None:
         shared_vars = [
@@ -235,16 +236,19 @@ def gru_layer(tparams, state_below, O, prefix='gru', mask=None, **kwargs):
         ]
         _step = _gru_step_slice_attention
 
-    outputs, updates = theano.scan(
-        _step,
-        sequences=seqs,
-        outputs_info=init_states,
-        non_sequences=shared_vars,
-        name=_p(prefix, '_layers', layer_id),
-        n_steps=n_steps,
-        profile=profile,
-        strict=True,
-    )
+    if one_step:
+        outputs = _step(*(seqs + init_states + shared_vars))
+    else:
+        outputs, _ = theano.scan(
+            _step,
+            sequences=seqs,
+            outputs_info=init_states,
+            non_sequences=shared_vars,
+            name=_p(prefix, '_layers', layer_id),
+            n_steps=n_steps,
+            profile=profile,
+            strict=True,
+        )
 
     if dropout_params:
         outputs = dropout_layer(outputs, *dropout_params)
@@ -427,7 +431,7 @@ def gru_cond_layer(tparams, state_below, O, prefix='gru', mask=None, context=Non
     if one_step:
         result = _step(*(seqs + [init_state, None, None, projected_context, context] + shared_vars))
     else:
-        result, updates = theano.scan(
+        result, _ = theano.scan(
             _step,
             sequences=seqs,
             outputs_info=[init_state,
@@ -521,17 +525,17 @@ def gru_decoder(tparams, tgt_embedding, y_mask, init_state, context, x_mask, O, 
             # [NOTE] Add more connections (fast-forward, highway, ...) here
             global_f = hidden_decoder
 
-        hidden_decoder = gru_layer(tparams, global_f, O, 'decoder', y_mask, layer_id=layer_id,
-                                   dropout_params=dropout_params, context=context_decoder)[0]
+        hidden_decoder = gru_layer(tparams, global_f, O, 'decoder', mask=None, layer_id=layer_id,
+                                   dropout_params=dropout_params, context=context_decoder, init_states=init_state)[0]
 
     return hidden_decoder, context_decoder, alpha_decoder
 
 
-def get_word_probability(tparams, hidden_decoder, context_decoder, tgt_embedding, O):
+def get_word_probability(tparams, hidden_decoder, context_decoder, tgt_embedding, O, **kwargs):
     """Compute word probabilities."""
 
-    trng = RandomStreams(1234)
-    use_noise = theano.shared(np.float32(0.))
+    trng = kwargs.pop('trng', RandomStreams(1234))
+    use_noise = kwargs.pop('use_noise', theano.shared(np.float32(0.)))
 
     logit_lstm = get_build('ff')(tparams, hidden_decoder, O, prefix='ff_logit_lstm', activ='linear')
     logit_prev = get_build('ff')(tparams, tgt_embedding, O, prefix='ff_logit_prev', activ='linear')
@@ -659,10 +663,6 @@ def build_model(tparams, O):
 
     # mean of the context (across time) will be used to initialize decoder rnn
     ctx_mean = (ctx * x_mask[:, :, None]).sum(0) / x_mask.sum(0)[:, None]
-
-    # or you can use the last state of forward + backward encoder rnns
-    # ctx_mean = concatenate([proj[0][-1], projr[0][-1]], axis=proj[0].ndim-2)
-
     # initial decoder state
     init_state = get_build('ff')(tparams, ctx_mean, O, prefix='ff_state', activ=tanh)
 
@@ -715,7 +715,6 @@ def build_sampler(tparams, O, trng, use_noise):
 
     # get the input for decoder rnn initializer mlp
     ctx_mean = ctx.mean(0)
-    # ctx_mean = concatenate([proj[0][-1],projr[0][-1]], axis=proj[0].ndim-2)
     init_state = get_build('ff')(tparams, ctx_mean, O,
                                  prefix='ff_state', activ='tanh')
 
@@ -734,28 +733,24 @@ def build_sampler(tparams, O, trng, use_noise):
                    tparams['Wemb_dec'][y])
 
     # apply one step of conditional gru with attention
-    proj = get_build(O['decoder'])(tparams, emb, O,
-                                   prefix='decoder',
-                                   mask=None, context=ctx,
-                                   one_step=True,
-                                   init_state=init_state)
+    proj = gru_decoder(
+        tparams, emb, y_mask=None, init_state=init_state, context=ctx, x_mask=None, O=O,
+        dropout_params=None, one_step=True,
+    )
+
     # get the next hidden state
     next_state = proj[0]
 
     # get the weighted averages of context for this target word y
     ctxs = proj[1]
 
-    logit_lstm = get_build('ff')(tparams, next_state, O,
-                                 prefix='ff_logit_lstm', activ='linear')
-    logit_prev = get_build('ff')(tparams, emb, O,
-                                 prefix='ff_logit_prev', activ='linear')
-    logit_ctx = get_build('ff')(tparams, ctxs, O,
-                                prefix='ff_logit_ctx', activ='linear')
+    logit_lstm = get_build('ff')(tparams, next_state, O, prefix='ff_logit_lstm', activ='linear')
+    logit_prev = get_build('ff')(tparams, emb, O, prefix='ff_logit_prev', activ='linear')
+    logit_ctx = get_build('ff')(tparams, ctxs, O, prefix='ff_logit_ctx', activ='linear')
     logit = T.tanh(logit_lstm + logit_prev + logit_ctx)
     if O['use_dropout']:
         logit = dropout_layer(logit, use_noise, trng)
-    logit = get_build('ff')(tparams, logit, O,
-                            prefix='ff_logit', activ='linear')
+    logit = get_build('ff')(tparams, logit, O, prefix='ff_logit', activ='linear')
 
     # compute the softmax probability
     next_probs = T.nnet.softmax(logit)

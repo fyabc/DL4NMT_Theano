@@ -42,10 +42,7 @@ def build_loss(x, x_mask, context_old, context_new, args):
     f_context_new = theano.function([x, x_mask], context_new)
 
     delta_context = (context_old - context_new) * x_mask[:, :, None]
-    if args.sum_loss:
-        loss = (delta_context ** 2).sum() / delta_context.shape[0]
-    else:
-        loss = (delta_context ** 2).mean()
+    loss = (delta_context ** 2).sum() / delta_context.shape[0]
     f_loss = theano.function([x, x_mask], loss, profile=False)
 
     return f_context_old, f_context_new, loss, f_loss
@@ -65,10 +62,7 @@ def build_decoder_loss(
     delta_context = (context_decoder_old - context_decoder_new) * x_mask[:, :, None]
     delta_hidden = (hidden_decoder_old - hidden_decoder_new) * y_mask[:, :, None]
 
-    if args.sum_loss:
-        loss = (delta_context ** 2).sum() / delta_context.shape[0] + (delta_hidden ** 2).sum() / delta_hidden.shape[0]
-    else:
-        loss = (delta_context ** 2).mean() + (delta_hidden ** 2).mean()
+    loss = (delta_context ** 2).sum() / delta_context.shape[0] + (delta_hidden ** 2).sum() / delta_hidden.shape[0]
 
     f_loss = theano.function([x, x_mask, y, y_mask], loss, profile=False)
 
@@ -113,6 +107,7 @@ def build_regression(args, top_options):
     new_options = old_options.copy()
     new_options['n_encoder_layers'] = args.n_encoder_layers
     new_options['n_decoder_layers'] = args.n_decoder_layers
+    new_options['encoder_many_bidirectional'] = args.connection_type == 1
 
     only_encoder = new_options['n_decoder_layers'] == old_options['n_decoder_layers']
 
@@ -327,8 +322,9 @@ def main():
                         help='Open debug mode, default is False, set to True')
     parser.add_argument('--dump_hidden', action='store', default=None, dest='dump_hidden',
                         help='Dump hidden state output to file (only available in debug mode), default is None')
-    parser.add_argument('-s', '--sum_loss', action='store_true', default=False, dest='sum_loss',
-                        help='Use sum loss instead of mean, default is False, set to True')
+    parser.add_argument('--conn', action='store', default=1, type=int, dest='connection_type',
+                        help='Connection type, default is 1 (divided bidirectional GRU);\n'
+                             '2 is bidirectional only in first layer, other layers are forward')
 
     args = parser.parse_args()
 

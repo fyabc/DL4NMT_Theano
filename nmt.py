@@ -196,6 +196,7 @@ def train(dim_word=100,  # word vector dimensionality
           n_decoder_layers=1,
           encoder_many_bidirectional=True,
           ):
+
     # Model options: load and save
     model_options = locals().copy()
     print 'Top options: '
@@ -351,7 +352,6 @@ def train(dim_word=100,  # word vector dimensionality
 
     estop = False
     history_errs = []
-    # reload history
 
     if dump_before_train:
         print 'Dumping before train...',
@@ -361,9 +361,6 @@ def train(dim_word=100,  # word vector dimensionality
                  uidx=uidx, **unzip(tparams))
         save_options(model_options, uidx, saveto)
         print 'Done'
-
-    # if saveFreq == -1:
-    #     saveFreq = len(train[0]) / batch_size
 
     start_time = time.time()
 
