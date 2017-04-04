@@ -372,7 +372,7 @@ def train(dim_word=100,  # word vector dimensionality
             uidx += 1
             use_noise.set_value(1.)
 
-            x, x_mask, y, y_mask = prepare_data(x, y)
+            x, x_mask, y, y_mask = prepare_data(x, y, maxlen=maxlen)
 
             if x is None:
                 print 'Minibatch with zero sample under length ', maxlen

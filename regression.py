@@ -69,12 +69,12 @@ def build_decoder_loss(
     return f_context_old, f_context_new, loss, f_loss
 
 
-def validate(iterator, f_loss, only_encoder=True):
+def validate(iterator, f_loss, only_encoder=True, maxlen=None):
     cost = 0.0
     count = 0
 
     for x, y in iterator:
-        x, x_mask, y, y_mask = prepare_data(x, y)
+        x, x_mask, y, y_mask = prepare_data(x, y, maxlen=maxlen)
 
         if x is None:
             continue
@@ -208,7 +208,7 @@ def build_regression(args, top_options):
         print('Done')
 
     # Validate before train
-    validate(valid_text_iterator, f_loss, only_encoder)
+    validate(valid_text_iterator, f_loss, only_encoder, top_options['maxlen'])
 
     learning_rate = args.learning_rate
 
@@ -219,7 +219,7 @@ def build_regression(args, top_options):
             n_samples += len(x)
             iteration += 1
 
-            x, x_mask, y, y_mask = prepare_data(x, y)
+            x, x_mask, y, y_mask = prepare_data(x, y, maxlen=top_options['maxlen'])
 
             if x is None:
                 print('Minibatch with zero sample under length ', top_options['maxlen'])
@@ -253,7 +253,7 @@ def build_regression(args, top_options):
                 new_model.save_whole_model(args.model_file, iteration)
 
             if np.mod(iteration, args.valid_freq) == 0:
-                validate(valid_text_iterator, f_loss, only_encoder)
+                validate(valid_text_iterator, f_loss, only_encoder, top_options['maxlen'])
 
                 if args.debug and args.dump_hidden is not None:
                     print('Dumping input and hidden state to {}...'.format(args.dump_hidden), end='')
