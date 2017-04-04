@@ -158,17 +158,15 @@ def _gru_step_slice(
 
 
 def _gru_step_slice_attention(
-        mask, x_, xx_,
+        mask, x_, xx_, context,
         ht_1,
-        context, U, Ux, Wc, Wcx):
+        U, Ux, Wc, Wcx):
     """GRU step function with attention.
     
     context: ([BS], [Hc])
     Wc: ([Hc], [H] + [H])
     Wcx: ([Hc], [H])
     """
-
-    # todo: add context
 
     _dim = Ux.shape[1]
 
@@ -217,18 +215,18 @@ def gru_layer(tparams, state_below, O, prefix='gru', mask=None, **kwargs):
     state_belowx = T.dot(state_below, tparams[_p(prefix, 'Wx', layer_id)]) + tparams[_p(prefix, 'bx', layer_id)]
 
     # prepare scan arguments
-    seqs = [mask, state_below_, state_belowx]
     init_states = [kwargs.pop('init_states', T.alloc(0., n_samples, dim))]
 
     if context is None:
+        seqs = [mask, state_below_, state_belowx]
         shared_vars = [
             tparams[_p(prefix, 'U', layer_id)],
             tparams[_p(prefix, 'Ux', layer_id)],
         ]
         _step = _gru_step_slice
     else:
+        seqs = [mask, state_below_, state_belowx, context]
         shared_vars = [
-            context,
             tparams[_p(prefix, 'U', layer_id)],
             tparams[_p(prefix, 'Ux', layer_id)],
             tparams[_p(prefix, 'Wc', layer_id)],
