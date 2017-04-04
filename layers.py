@@ -524,7 +524,8 @@ def gru_decoder(tparams, tgt_embedding, y_mask, init_state, context, x_mask, O, 
             global_f = hidden_decoder
 
         hidden_decoder = gru_layer(tparams, global_f, O, 'decoder', mask=None, layer_id=layer_id,
-                                   dropout_params=dropout_params, context=context_decoder, init_states=init_state)[0]
+                                   dropout_params=dropout_params, context=context_decoder, init_states=init_state,
+                                   one_step=one_step)[0]
 
     return hidden_decoder, context_decoder, alpha_decoder
 

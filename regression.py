@@ -59,7 +59,7 @@ def build_decoder_loss(
     f_context_old = theano.function([x, x_mask, y, y_mask], context_decoder_old)
     f_context_new = theano.function([x, x_mask, y, y_mask], context_decoder_new)
 
-    delta_context = (context_decoder_old - context_decoder_new) * x_mask[:, :, None]
+    delta_context = (context_decoder_old - context_decoder_new) * y_mask[:, :, None]
     delta_hidden = (hidden_decoder_old - hidden_decoder_new) * y_mask[:, :, None]
 
     loss = (delta_context ** 2).sum() / delta_context.shape[0] + (delta_hidden ** 2).sum() / delta_hidden.shape[0]
@@ -97,9 +97,6 @@ def build_regression(args, top_options):
     :param args: Options from the argument parser
     :param top_options: Options from top-level (like options in train_nmt.py)
     """
-
-    theano.config.optimizer = 'fast_compile'
-    theano.config.exception_verbosity = 'high'
 
     # Initialize and load options.
     old_options = DefaultOptions.copy()
