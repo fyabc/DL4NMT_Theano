@@ -24,6 +24,7 @@ DefaultOptions = dict(
     batch_size=16,
     saveto='model.npz',
     saveFreq=1000,  # save the parameters after every saveFreq updates
+    validFreq=10000,
     datasets=('/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.en.tok',
               '/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.fr.tok'),
     valid_datasets=('./data/dev/dev_en.tok',

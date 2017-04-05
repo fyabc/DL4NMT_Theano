@@ -173,6 +173,7 @@ def train(dim_word=100,  # word vector dimensionality
           batch_size=16,
           saveto='model.npz',
           saveFreq=1000,  # save the parameters after every saveFreq updates
+          validFreq=10000,
           datasets=('/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.en.tok',
                     '/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.fr.tok'),
           picked_train_idxes_file=r'',
@@ -419,6 +420,10 @@ def train(dim_word=100,  # word vector dimensionality
                     print 'Done'
                     sys.stdout.flush()
             # generate some samples with the model and display them
+
+            if np.mod(uidx, validFreq) == 0:
+                # todo: validation
+                pass
 
             # finish after this many updates
             if uidx >= finish_after:

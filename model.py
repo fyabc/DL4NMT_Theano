@@ -154,7 +154,7 @@ class NMTModel(object):
     Shapes of some inputs, outputs and intermediate results:
         [W]: dim_word, word vector dim, 100
         [H]: dim, hidden size, 1000
-        [BS]: batch_size / n_samples, 80
+        [BS]: batch_size or n_samples, 80
         [Ts]: n_timestep, 100
         [Tt]: n_timestep_tgt, 100
         [Hc]: context_dim, 2 * [H]

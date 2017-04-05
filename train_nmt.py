@@ -52,6 +52,7 @@ def main():
         batch_size=80,
         dispFreq=2500,
         saveFreq=10000,
+        validFreq=10000,
         datasets=[r'.\data\train\filtered_en-fr.en',
                   r'.\data\train\filtered_en-fr.fr'],
         use_dropout=False,
