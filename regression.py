@@ -69,11 +69,29 @@ def build_decoder_loss(
     return f_context_old, f_context_new, loss, f_loss
 
 
-def validate(iterator, f_loss, only_encoder=True, maxlen=None):
-    cost = 0.0
+def validate(iterator, small_train_iterator, f_loss, only_encoder=True, maxlen=None):
+    valid_cost = 0.0
     count = 0
 
     for x, y in iterator:
+        x, x_mask, y, y_mask = prepare_data(x, y, maxlen=maxlen)
+
+        if x is None:
+            continue
+
+        inputs = [x, x_mask] if only_encoder else [x, x_mask, y, y_mask]
+
+        valid_cost += f_loss(*inputs)
+        count += 1
+
+    valid_cost /= count
+
+    print('Valid average loss per batch: {}'.format(valid_cost))
+
+    cost = 0.0
+    count = 0
+
+    for x, y in small_train_iterator:
         x, x_mask, y, y_mask = prepare_data(x, y, maxlen=maxlen)
 
         if x is None:
@@ -86,9 +104,9 @@ def validate(iterator, f_loss, only_encoder=True, maxlen=None):
 
     cost /= count
 
-    print('Valid average loss per batch: {}'.format(cost))
+    print('Small train average loss per batch: {}'.format(cost))
 
-    return cost
+    return valid_cost
 
 
 def build_regression(args, top_options):
@@ -119,6 +137,17 @@ def build_regression(args, top_options):
     text_iterator = TextIterator(
         old_options['datasets'][0],
         old_options['datasets'][1],
+        old_options['vocab_filenames'][0],
+        old_options['vocab_filenames'][1],
+        old_options['batch_size'],
+        old_options['maxlen'],
+        old_options['n_words_src'],
+        old_options['n_words'],
+    )
+
+    small_train_iterator = TextIterator(
+        old_options['small_train_datasets'][0],
+        old_options['small_train_datasets'][1],
         old_options['vocab_filenames'][0],
         old_options['vocab_filenames'][1],
         old_options['batch_size'],
@@ -208,7 +237,7 @@ def build_regression(args, top_options):
         print('Done')
 
     # Validate before train
-    validate(valid_text_iterator, f_loss, only_encoder, top_options['maxlen'])
+    validate(valid_text_iterator, small_train_iterator, f_loss, only_encoder, top_options['maxlen'])
 
     learning_rate = args.learning_rate
 
@@ -253,7 +282,7 @@ def build_regression(args, top_options):
                 new_model.save_whole_model(args.model_file, iteration)
 
             if np.mod(iteration, args.valid_freq) == 0:
-                validate(valid_text_iterator, f_loss, only_encoder, top_options['maxlen'])
+                validate(valid_text_iterator, small_train_iterator, f_loss, only_encoder, top_options['maxlen'])
 
                 if args.debug and args.dump_hidden is not None:
                     print('Dumping input and hidden state to {}...'.format(args.dump_hidden), end='')

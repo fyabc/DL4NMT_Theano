@@ -26,6 +26,10 @@ DefaultOptions = dict(
     saveFreq=1000,  # save the parameters after every saveFreq updates
     datasets=('/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.en.tok',
               '/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.fr.tok'),
+    valid_datasets=('./data/dev/dev_en.tok',
+                    './data/dev/dev_fr.tok'),
+    small_train_datasets=('./data/train/small_en-fr.en',
+                          './data/train/small_en-fr.fr'),
     picked_train_idxes_file=r'',
     use_dropout=False,
     reload_=False,
