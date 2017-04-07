@@ -15,9 +15,10 @@ import theano.tensor as tensor
 
 from constants import profile, fX
 from data_iterator import TextIterator
-from layers import init_params, build_model, build_sampler
+from layers import init_params
 from optimizers import *
 from utils import *
+from model import NMTModel
 
 
 def gen_sample(tparams, f_init, f_next, x, options, trng=None, k=1, maxlen=30,
@@ -29,8 +30,7 @@ def gen_sample(tparams, f_init, f_next, x, options, trng=None, k=1, maxlen=30,
 
     # k is the beam size we have
     if k > 1:
-        assert not stochastic, \
-            'Beam search does not support stochastic sampling'
+        assert not stochastic, 'Beam search does not support stochastic sampling'
 
     sample = []
     sample_score = []
@@ -278,15 +278,16 @@ def train(dim_word=100,  # word vector dimensionality
 
     tparams = init_tparams(params)
 
+    model = NMTModel(model_options, given_params=tparams)
+
     trng, use_noise, \
         x, x_mask, y, y_mask, \
         opt_ret, \
-        cost, x_emb = \
-        build_model(tparams, model_options)
+        cost, x_emb = model.build_model()
     inps = [x, x_mask, y, y_mask]
 
     print 'Building sampler'
-    f_init, f_next = build_sampler(tparams, model_options, trng, use_noise)
+    f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise)
 
     # before any regularizer
     print 'Building f_log_probs...',
@@ -296,7 +297,7 @@ def train(dim_word=100,  # word vector dimensionality
     sys.stdout.flush()
     cost = cost.mean()
 
-    cost = l2_regularization(cost, tparams, decay_c)
+    cost = l2_regularization(cost, model.P, decay_c)
 
     cost = regularize_alpha_weights(cost, alpha_c, model_options, x_mask, y_mask, opt_ret)
 
@@ -314,7 +315,7 @@ def train(dim_word=100,  # word vector dimensionality
         print 'Done'
 
     print 'Computing gradient...',
-    grads = tensor.grad(cost, wrt=itemlist(tparams))
+    grads = tensor.grad(cost, wrt=itemlist(model.P))
     print 'Done'
     sys.stdout.flush()
 
@@ -323,7 +324,7 @@ def train(dim_word=100,  # word vector dimensionality
     # compile the optimizer, the actual computational graph is compiled here
     lr = tensor.scalar(name='lr')
     print 'Building optimizers...',
-    f_grad_shared, f_update = eval(optimizer)(lr, tparams, grads, inps, cost)
+    f_grad_shared, f_update = eval(optimizer)(lr, model.P, grads, inps, cost)
     print 'Done'
 
     print 'Optimization'
@@ -343,7 +344,7 @@ def train(dim_word=100,  # word vector dimensionality
         saveto_uidx = '{}.iter{}.npz'.format(
             os.path.splitext(saveto)[0], uidx)
         np.savez(saveto_uidx, history_errs=history_errs,
-                 uidx=uidx, **unzip(tparams))
+                 uidx=uidx, **unzip(model.P))
         save_options(model_options, uidx, saveto)
         print 'Done'
 
@@ -399,7 +400,7 @@ def train(dim_word=100,  # word vector dimensionality
                     saveto_uidx = '{}.iter{}.npz'.format(
                         os.path.splitext(saveto)[0], uidx)
                     np.savez(saveto_uidx, history_errs=history_errs,
-                             uidx=uidx, **unzip(tparams))
+                             uidx=uidx, **unzip(model.P))
                     save_options(model_options, uidx, saveto)
                     print 'Done'
                     sys.stdout.flush()
@@ -421,7 +422,7 @@ def train(dim_word=100,  # word vector dimensionality
             break
 
     if best_p is not None:
-        zipp(best_p, tparams)
+        zipp(best_p, model.P)
 
     use_noise.set_value(0.)
 

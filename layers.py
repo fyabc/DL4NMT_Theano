@@ -6,7 +6,6 @@ from collections import OrderedDict
 import numpy as np
 import theano
 from theano import tensor as T
-from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
 from constants import fX, profile
 from utils import _p, normal_weight, orthogonal_weight, concatenate
@@ -47,15 +46,6 @@ def dropout_layer(state_before, use_noise, trng, dropout_rate=0.5):
     return projection
 
 
-def embedding(tparams, state_below, O, n_timestep, n_samples, emb_name='Wemb'):
-    """Embedding"""
-
-    emb = tparams[emb_name][state_below.flatten()]
-    emb = emb.reshape([n_timestep, n_samples, O['dim_word']])
-
-    return emb
-
-
 def attention_layer(context_mask, et, ht_1, We_att, Wh_att, Wb_att, U_att, Ub_att):
     """Attention"""
 
@@ -74,8 +64,8 @@ def attention_layer(context_mask, et, ht_1, We_att, Wh_att, Wb_att, U_att, Ub_at
     return ctx_t
 
 
-def param_init_fflayer(O, params, prefix='ff', nin=None, nout=None,
-                       orthogonal=True):
+def param_init_feed_forward(O, params, prefix='ff', nin=None, nout=None,
+                            orthogonal=True):
     """feedforward layer: affine transformation + point-wise nonlinearity"""
 
     if nin is None:
@@ -88,8 +78,8 @@ def param_init_fflayer(O, params, prefix='ff', nin=None, nout=None,
     return params
 
 
-def fflayer(tparams, state_below, O, prefix='rconv',
-            activ=tanh, **kwargs):
+def feed_forward(tparams, state_below, O, prefix='rconv',
+                 activ=tanh, **kwargs):
     if isinstance(activ, (str, unicode)):
         activ = eval(activ)
     return activ(T.dot(state_below, tparams[_p(prefix, 'W')]) + tparams[_p(prefix, 'b')])
@@ -530,41 +520,9 @@ def gru_decoder(tparams, tgt_embedding, y_mask, init_state, context, x_mask, O, 
     return hidden_decoder, context_decoder, alpha_decoder
 
 
-def get_word_probability(tparams, hidden_decoder, context_decoder, tgt_embedding, O, **kwargs):
-    """Compute word probabilities."""
-
-    trng = kwargs.pop('trng', RandomStreams(1234))
-    use_noise = kwargs.pop('use_noise', theano.shared(np.float32(0.)))
-
-    logit_lstm = get_build('ff')(tparams, hidden_decoder, O, prefix='ff_logit_lstm', activ='linear')
-    logit_prev = get_build('ff')(tparams, tgt_embedding, O, prefix='ff_logit_prev', activ='linear')
-    logit_ctx = get_build('ff')(tparams, context_decoder, O, prefix='ff_logit_ctx', activ='linear')
-    logit = T.tanh(logit_lstm + logit_prev + logit_ctx)  # n_timestep * n_sample * dim_word
-    if O['use_dropout']:
-        logit = dropout_layer(logit, use_noise, trng)
-    logit = get_build('ff')(tparams, logit, O, prefix='ff_logit', activ='linear')  # n_timestep * n_sample * n_words
-    logit_shp = logit.shape
-    probs = T.nnet.softmax(logit.reshape([logit_shp[0] * logit_shp[1],
-                                          logit_shp[2]]))
-
-    return trng, use_noise, probs
-
-
-def build_cost(y, y_mask, probs, O):
-    """Build the cost from probabilities and target."""
-
-    y_flat = y.flatten()
-    y_flat_idx = T.arange(y_flat.shape[0]) * O['n_words'] + y_flat
-    cost = -T.log(probs.flatten()[y_flat_idx])
-    cost = cost.reshape([y.shape[0], y.shape[1]])
-    cost = (cost * y_mask).sum(0)
-
-    return cost
-
-
-# layers: 'name': ('parameter initializer', 'feedforward')
+# layers: 'name': ('parameter initializer', 'builder')
 layers = {
-    'ff': (param_init_fflayer, fflayer),
+    'ff': (param_init_feed_forward, feed_forward),
     'gru': (param_init_gru, gru_layer),
     'gru_cond': (param_init_gru_cond, gru_cond_layer),
 }
@@ -635,147 +593,12 @@ def init_params(O):
     return params
 
 
-def build_model(tparams, O):
-    """Build a training model."""
-
-    opt_ret = {}
-
-    # description string: #words * #samples
-    x = T.matrix('x', dtype='int64')
-    x_mask = T.matrix('x_mask', dtype=fX)
-    y = T.matrix('y', dtype='int64')
-    y_mask = T.matrix('y_mask', dtype=fX)
-
-    # for the backward rnn, we just need to invert x and x_mask
-    xr = x[::-1]
-    xr_mask = x_mask[::-1]
-
-    n_timestep = x.shape[0]
-    n_timestep_tgt = y.shape[0]
-    n_samples = x.shape[1]
-
-    # word embedding for forward rnn and backward rnn (source)
-    src_embedding = embedding(tparams, x, O, n_timestep, n_samples)
-    src_embedding_r = embedding(tparams, xr, O, n_timestep, n_samples)
-
-    ctx = gru_encoder(tparams, src_embedding, src_embedding_r, x_mask, xr_mask, O, dropout_params=None)
-
-    # mean of the context (across time) will be used to initialize decoder rnn
-    ctx_mean = (ctx * x_mask[:, :, None]).sum(0) / x_mask.sum(0)[:, None]
-    # initial decoder state
-    init_state = get_build('ff')(tparams, ctx_mean, O, prefix='ff_state', activ=tanh)
-
-    # word embedding (target), we will shift the target sequence one time step
-    # to the right. This is done because of the bi-gram connections in the
-    # readout and decoder rnn. The first target will be all zeros and we will
-    # not condition on the last output.
-    tgt_embedding = embedding(tparams, y, O, n_timestep_tgt, n_samples, 'Wemb_dec')
-    emb_shifted = T.zeros_like(tgt_embedding)
-    emb_shifted = T.set_subtensor(emb_shifted[1:], tgt_embedding[:-1])
-    tgt_embedding = emb_shifted
-
-    # Decoder - pass through the decoder conditional gru with attention
-    hidden_decoder, context_decoder, opt_ret['dec_alphas'] = gru_decoder(
-        tparams, tgt_embedding, y_mask, init_state, ctx, x_mask, O,
-        dropout_params=None,
-    )
-
-    trng, use_noise, probs = get_word_probability(tparams, hidden_decoder, context_decoder, tgt_embedding, O)
-
-    cost = build_cost(y, y_mask, probs, O)
-
-    # Plot computation graph
-    if O['plot_graph'] is not None:
-        print 'Plotting pre-compile graph...',
-        theano.printing.pydotprint(
-            cost,
-            outfile='pictures/pre_compile_{}'.format(O['plot_graph']),
-            var_with_name_simple=True,
-        )
-        print 'Done'
-
-    return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost, ctx_mean
-
-
-def build_sampler(tparams, O, trng, use_noise):
-    """Build a sampler."""
-
-    x = T.matrix('x', dtype='int64')
-    xr = x[::-1]
-    n_timestep = x.shape[0]
-    n_samples = x.shape[1]
-
-    # Word embedding for forward rnn and backward rnn (source)
-    src_embedding = embedding(tparams, x, O, n_timestep, n_samples)
-    src_embedding_r = embedding(tparams, xr, O, n_timestep, n_samples)
-
-    # Encoder
-    ctx = gru_encoder(tparams, src_embedding, src_embedding_r, None, None, O, dropout_params=None)
-
-    # get the input for decoder rnn initializer mlp
-    ctx_mean = ctx.mean(0)
-    init_state = get_build('ff')(tparams, ctx_mean, O,
-                                 prefix='ff_state', activ='tanh')
-
-    print 'Building f_init...',
-    outs = [init_state, ctx]
-    f_init = theano.function([x], outs, name='f_init', profile=profile)
-    print 'Done'
-
-    # x: 1 x 1
-    y = T.vector('y_sampler', dtype='int64')
-    init_state = T.matrix('init_state', dtype=fX)
-
-    # if it's the first word, emb should be all zero and it is indicated by -1
-    emb = T.switch(y[:, None] < 0,
-                   T.alloc(0., 1, tparams['Wemb_dec'].shape[1]),
-                   tparams['Wemb_dec'][y])
-
-    # apply one step of conditional gru with attention
-    proj = gru_decoder(
-        tparams, emb, y_mask=None, init_state=init_state, context=ctx, x_mask=None, O=O,
-        dropout_params=None, one_step=True,
-    )
-
-    # get the next hidden state
-    next_state = proj[0]
-
-    # get the weighted averages of context for this target word y
-    ctxs = proj[1]
-
-    logit_lstm = get_build('ff')(tparams, next_state, O, prefix='ff_logit_lstm', activ='linear')
-    logit_prev = get_build('ff')(tparams, emb, O, prefix='ff_logit_prev', activ='linear')
-    logit_ctx = get_build('ff')(tparams, ctxs, O, prefix='ff_logit_ctx', activ='linear')
-    logit = T.tanh(logit_lstm + logit_prev + logit_ctx)
-    if O['use_dropout']:
-        logit = dropout_layer(logit, use_noise, trng)
-    logit = get_build('ff')(tparams, logit, O, prefix='ff_logit', activ='linear')
-
-    # compute the softmax probability
-    next_probs = T.nnet.softmax(logit)
-
-    # sample from softmax distribution to get the sample
-    next_sample = trng.multinomial(pvals=next_probs).argmax(1)
-
-    # compile a function to do the whole thing above, next word probability,
-    # sampled word for the next target, next hidden state to be used
-    print 'Building f_next..',
-    inps = [y, ctx, init_state]
-    outs = [next_probs, next_sample, next_state]
-    f_next = theano.function(inps, outs, name='f_next', profile=profile)
-    print 'Done'
-
-    return f_init, f_next
-
-
 __all__ = [
     'tanh',
     'linear',
-    'dropout_layer',
-    'embedding',
     'attention_layer',
-    'param_init_fflayer',
-    'fflayer',
+    'param_init_feed_forward',
+    'feed_forward',
     'param_init_gru',
     'gru_layer',
     'param_init_gru_cond',
@@ -787,6 +610,4 @@ __all__ = [
     'get_build',
     'get_init',
     'init_params',
-    'build_model',
-    'build_sampler',
 ]

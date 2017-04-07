@@ -11,6 +11,7 @@ import theano
 import theano.tensor as T
 import numpy as np
 import cPickle as pkl
+from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
 from constants import fX, profile
 from utils import *
@@ -227,15 +228,192 @@ class NMTModel(object):
     # This is a simple wrapper of layers.py now.
     # todo: Move code from layers.py to here.
 
-    def __init__(self, options):
+    def __init__(self, options, given_params=None):
         # Dict of options
         self.O = options
 
         # Dict of parameters (Theano shared variables)
-        self.P = OrderedDict()
+        self.P = OrderedDict() if given_params is None else given_params
 
         # Instance of ParameterInitializer, init the parameters.
         self.initializer = ParameterInitializer(options)
+
+    def input_to_context(self, given_input=None):
+        """Build the part of the model that from input to context vector.
+
+        Used for regression of deeper encoder.
+
+        :param given_input: List of input Theano tensors or None
+            If None, this method will create them by itself.
+        :returns tuple of input list and output
+        """
+
+        x, x_mask, y, y_mask = self.get_input() if given_input is None else given_input
+
+        # For the backward rnn, we just need to invert x and x_mask
+        x_r, x_mask_r = self.reverse_input(x, x_mask)
+
+        n_timestep, n_timestep_tgt, n_samples = self.input_dimensions(x, y)
+
+        # Word embedding for forward rnn and backward rnn (source)
+        src_embedding = self.embedding(x, n_timestep, n_samples)
+        src_embedding_r = self.embedding(x_r, n_timestep, n_samples)
+
+        # Encoder
+        context = self.gru_encoder(src_embedding, src_embedding_r, x_mask, x_mask_r, dropout_params=None)
+
+        return [x, x_mask, y, y_mask], context
+
+    def input_to_decoder_context(self, given_input=None):
+        """Build the part of the model that from input to context vector of decoder.
+
+        :param given_input: List of input Theano tensors or None
+            If None, this method will create them by itself.
+        :return: tuple of input list and output
+        """
+
+        (x, x_mask, y, y_mask), context = self.input_to_context(given_input)
+
+        n_timestep, n_timestep_tgt, n_samples = self.input_dimensions(x, y)
+
+        # Mean of the context (across time) will be used to initialize decoder rnn
+        context_mean = self.get_context_mean(context, x_mask)
+        # Initial decoder state
+        init_decoder_state = self.feed_forward(context_mean, prefix='ff_state', activation=tanh)
+
+        # Word embedding (target), we will shift the target sequence one time step
+        # to the right. This is done because of the bi-gram connections in the
+        # readout and decoder rnn. The first target will be all zeros and we will
+        # not condition on the last output.
+        tgt_embedding = self.embedding(y, n_timestep_tgt, n_samples, 'Wemb_dec')
+        emb_shifted = T.zeros_like(tgt_embedding)
+        emb_shifted = T.set_subtensor(emb_shifted[1:], tgt_embedding[:-1])
+        tgt_embedding = emb_shifted
+
+        # Decoder - pass through the decoder conditional gru with attention
+        hidden_decoder, context_decoder, _ = gru_decoder(
+            self.P, tgt_embedding, y_mask, init_decoder_state, context, x_mask, self.O,
+            dropout_params=None,
+        )
+
+        return [x, x_mask, y, y_mask], hidden_decoder, context_decoder
+
+    def build_model(self):
+        """Build a training model."""
+
+        opt_ret = {}
+
+        (x, x_mask, y, y_mask), context = self.input_to_context()
+
+        n_timestep, n_timestep_tgt, n_samples = self.input_dimensions(x, y)
+
+        context_mean = self.get_context_mean(context, x_mask)
+        # Initial decoder state
+        init_decoder_state = self.feed_forward(context_mean, prefix='ff_state', activation=tanh)
+
+        # Word embedding (target), we will shift the target sequence one time step
+        # to the right. This is done because of the bi-gram connections in the
+        # readout and decoder rnn. The first target will be all zeros and we will
+        # not condition on the last output.
+        tgt_embedding = self.embedding(y, n_timestep_tgt, n_samples, 'Wemb_dec')
+        emb_shifted = T.zeros_like(tgt_embedding)
+        emb_shifted = T.set_subtensor(emb_shifted[1:], tgt_embedding[:-1])
+        tgt_embedding = emb_shifted
+
+        # Decoder - pass through the decoder conditional gru with attention
+        hidden_decoder, context_decoder, opt_ret['dec_alphas'] = gru_decoder(
+            self.P, tgt_embedding, y_mask, init_decoder_state, context, x_mask, self.O,
+            dropout_params=None,
+        )
+
+        trng, use_noise, probs = self.get_word_probability(hidden_decoder, context_decoder, tgt_embedding)
+
+        cost = self.build_cost(y, y_mask, probs)
+
+        # Plot computation graph
+        if self.O['plot_graph'] is not None:
+            print('Plotting pre-compile graph...', end='')
+            theano.printing.pydotprint(
+                cost,
+                outfile='pictures/pre_compile_{}'.format(self.O['plot_graph']),
+                var_with_name_simple=True,
+            )
+            print('Done')
+
+        return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost, context_mean
+    
+    def build_sampler(self, **kwargs):
+        """Build a sampler."""
+        
+        trng = kwargs.pop('trng', RandomStreams(1234))
+        use_noise = kwargs.pop('use_noise', theano.shared(np.float32(0.)))
+
+        x = T.matrix('x', dtype='int64')
+        xr = x[::-1]
+        n_timestep = x.shape[0]
+        n_samples = x.shape[1]
+
+        # Word embedding for forward rnn and backward rnn (source)
+        src_embedding = self.embedding(x, n_timestep, n_samples)
+        src_embedding_r = self.embedding(xr, n_timestep, n_samples)
+
+        # Encoder
+        ctx = gru_encoder(self.P, src_embedding, src_embedding_r, None, None, self.O, dropout_params=None)
+
+        # Get the input for decoder rnn initializer mlp
+        ctx_mean = ctx.mean(0)
+        init_state = get_build('ff')(self.P, ctx_mean, self.O,
+                                     prefix='ff_state', activ='tanh')
+
+        print('Building f_init...', end='')
+        outs = [init_state, ctx]
+        f_init = theano.function([x], outs, name='f_init', profile=profile)
+        print('Done')
+
+        # x: 1 x 1
+        y = T.vector('y_sampler', dtype='int64')
+        init_state = T.matrix('init_state', dtype=fX)
+
+        # If it's the first word, emb should be all zero and it is indicated by -1
+        emb = T.switch(y[:, None] < 0,
+                       T.alloc(0., 1, self.P['Wemb_dec'].shape[1]),
+                       self.P['Wemb_dec'][y])
+
+        # Apply one step of conditional gru with attention
+        proj = gru_decoder(
+            self.P, emb, y_mask=None, init_state=init_state, context=ctx, x_mask=None, O=self.O,
+            dropout_params=None, one_step=True,
+        )
+
+        # Get the next hidden state
+        next_state = proj[0]
+
+        # Get the weighted averages of context for this target word y
+        ctxs = proj[1]
+
+        logit_lstm = self.feed_forward(next_state, prefix='ff_logit_lstm', activation=linear)
+        logit_prev = self.feed_forward(emb, prefix='ff_logit_prev', activation=linear)
+        logit_ctx = self.feed_forward(ctxs, prefix='ff_logit_ctx', activation=linear)
+        logit = T.tanh(logit_lstm + logit_prev + logit_ctx)
+        if self.O['use_dropout']:
+            logit = self.dropout(logit, use_noise, trng)
+        logit = self.feed_forward(logit, prefix='ff_logit', activation=linear)
+
+        # Compute the softmax probability
+        next_probs = T.nnet.softmax(logit)
+
+        # Sample from softmax distribution to get the sample
+        next_sample = trng.multinomial(pvals=next_probs).argmax(1)
+
+        # Compile a function to do the whole thing above, next word probability,
+        # sampled word for the next target, next hidden state to be used
+        print('Building f_next..', end='')
+        inps = [y, ctx, init_state]
+        outs = [next_probs, next_sample, next_state]
+        f_next = theano.function(inps, outs, name='f_next', profile=profile)
+        print('Done')
+
+        return f_init, f_next
 
     # Methods to build the each component of the model
 
@@ -284,82 +462,115 @@ class NMTModel(object):
 
         return emb
 
+    @staticmethod
+    def dropout(input_, use_noise, trng, dropout_rate=0.5):
+        """Dropout"""
+
+        projection = T.switch(
+            use_noise,
+            input_ * trng.binomial(input_.shape, p=(1. - dropout_rate), n=1,
+                                   dtype=input_.dtype),
+            input_ * (1. - dropout_rate))
+        return projection
+
     def feed_forward(self, input_, prefix, activation=tanh):
         """Feed-forward layer."""
 
-        return fflayer(self.P, input_, self.O, prefix, activation)
-
-    def gru_encoder(self, src_embedding, src_embedding_r, x_mask, xr_mask, dropout_params=None):
-        """GRU encoder layer: source embedding -> encoder context"""
-
-        return gru_encoder(self.P, src_embedding, src_embedding_r, x_mask, xr_mask, self.O, dropout_params)
+        if isinstance(activation, (str, unicode)):
+            activation = eval(activation)
+        return activation(T.dot(input_, self.P[_p(prefix, 'W')]) + self.P[_p(prefix, 'b')])
 
     @staticmethod
     def get_context_mean(context, x_mask):
         """Get mean of context (across time) as initial state of decoder RNN
-        
+
         Or you can use the last state of forward + backward encoder RNNs
             # return concatenate([proj[0][-1], projr[0][-1]], axis=proj[0].ndim-2)
         """
 
         return (context * x_mask[:, :, None]).sum(0) / x_mask.sum(0)[:, None]
 
-    def input_to_context(self, given_input=None):
-        """Build the part of the model that from input to context vector.
-
-        Used for regression of deeper encoder.
-
-        :param given_input: List of input Theano tensors or None
-            If None, this method will create them by itself.
-        :returns tuple of input list and output
-        """
-
-        x, x_mask, y, y_mask = self.get_input() if given_input is None else given_input
-        x_r, x_mask_r = self.reverse_input(x, x_mask)
-
-        n_timestep, n_timestep_tgt, n_samples = self.input_dimensions(x, y)
-
-        # Word embedding for forward rnn and backward rnn (source)
-        src_embedding = self.embedding(x, n_timestep, n_samples)
-        src_embedding_r = self.embedding(x_r, n_timestep, n_samples)
-
-        # Encoder
-        context = self.gru_encoder(src_embedding, src_embedding_r, x_mask, x_mask_r, dropout_params=None)
-
-        return [x, x_mask, y, y_mask], context
-
-    def input_to_decoder_context(self, given_input=None):
-        """Build the part of the model that from input to context vector of decoder.
+    def gru_encoder(self, src_embedding, src_embedding_r, x_mask, xr_mask, dropout_params=None):
+        """GRU encoder layer: source embedding -> encoder context
         
-        :param given_input: List of input Theano tensors or None
-            If None, this method will create them by itself.
-        :return: tuple of input list and output
+        :return Context vector: Theano tensor
+            Shape: ([Ts], [BS], [Hc])
         """
 
-        (x, x_mask, y, y_mask), context = self.input_to_context(given_input)
+        global_f = src_embedding
+        global_f_r = src_embedding_r
 
-        n_timestep, n_timestep_tgt, n_samples = self.input_dimensions(x, y)
+        if self.O['encoder_many_bidirectional']:
+            # First layer
+            h_last = get_build(self.O['encoder'])(self.P, global_f, self.O, prefix='encoder', mask=x_mask, layer_id=0,
+                                                  dropout_params=dropout_params)[0]
+            h_last_r = get_build(self.O['encoder'])(self.P, global_f_r, self.O, prefix='encoder_r', mask=xr_mask,
+                                                    layer_id=0, dropout_params=dropout_params)[0]
 
-        context_mean = self.get_context_mean(context, x_mask)
-        # Initial decoder state
-        init_decoder_state = self.feed_forward(context_mean, prefix='ff_state', activation=tanh)
+            # Other layers
+            for layer_id in xrange(1, self.O['n_encoder_layers']):
+                if True:
+                    # [NOTE] Add more connections (fast-forward, highway, ...) here
+                    global_f, global_f_r = h_last, h_last_r
 
-        # Word embedding (target), we will shift the target sequence one time step
-        # to the right. This is done because of the bi-gram connections in the
-        # readout and decoder rnn. The first target will be all zeros and we will
-        # not condition on the last output.
-        tgt_embedding = embedding(self.P, y, self.O, n_timestep_tgt, n_samples, 'Wemb_dec')
-        emb_shifted = T.zeros_like(tgt_embedding)
-        emb_shifted = T.set_subtensor(emb_shifted[1:], tgt_embedding[:-1])
-        tgt_embedding = emb_shifted
+                h_last = get_build(self.O['encoder'])(self.P, global_f, self.O, prefix='encoder', mask=None,
+                                                      layer_id=layer_id, dropout_params=dropout_params)[0]
+                h_last_r = get_build(self.O['encoder'])(self.P, global_f_r, self.O, prefix='encoder_r', mask=None,
+                                                        layer_id=layer_id, dropout_params=dropout_params)[0]
 
-        # Decoder - pass through the decoder conditional gru with attention
-        hidden_decoder, context_decoder, _ = gru_decoder(
-            self.P, tgt_embedding, y_mask, init_decoder_state, context, x_mask, self.O,
-            dropout_params=None,
-        )
+            # Context will be the concatenation of forward and backward RNNs
+            context = concatenate([h_last, h_last_r[::-1]], axis=h_last.ndim - 1)
+        else:
+            # First layer
+            h_last = get_build(self.O['encoder'])(self.P, global_f, self.O, prefix='encoder', mask=x_mask, layer_id=0,
+                                                  dropout_params=dropout_params)[0]
+            h_last_r = get_build(self.O['encoder'])(self.P, global_f_r, self.O, prefix='encoder_r', mask=xr_mask,
+                                                    layer_id=0, dropout_params=dropout_params)[0]
 
-        return [x, x_mask, y, y_mask], hidden_decoder, context_decoder
+            h_last = concatenate([h_last, h_last_r[::-1]], axis=h_last.ndim - 1)
+
+            # Other layers
+            for layer_id in xrange(1, self.O['n_encoder_layers']):
+                if True:
+                    # [NOTE] Add more connections (fast-forward, highway, ...) here
+                    global_f = h_last
+                h_last = get_build(self.O['encoder'])(self.P, global_f, self.O, prefix='encoder', mask=None,
+                                                      layer_id=layer_id, dropout_params=dropout_params)[0]
+
+            context = h_last
+
+        return context
+    
+    def get_word_probability(self, hidden_decoder, context_decoder, tgt_embedding, **kwargs):
+        """Compute word probabilities."""
+
+        trng = kwargs.pop('trng', RandomStreams(1234))
+        use_noise = kwargs.pop('use_noise', theano.shared(np.float32(0.)))
+
+        logit_lstm = self.feed_forward(hidden_decoder, prefix='ff_logit_lstm', activation=linear)
+        logit_prev = self.feed_forward(tgt_embedding, prefix='ff_logit_prev', activation=linear)
+        logit_ctx = self.feed_forward(context_decoder, prefix='ff_logit_ctx', activation=linear)
+        logit = T.tanh(logit_lstm + logit_prev + logit_ctx)  # n_timestep * n_sample * dim_word
+        if self.O['use_dropout']:
+            logit = self.dropout(logit, use_noise, trng)
+        # n_timestep * n_sample * n_words
+        logit = self.feed_forward(logit, prefix='ff_logit', activation=linear)
+        logit_shp = logit.shape
+        probs = T.nnet.softmax(logit.reshape([logit_shp[0] * logit_shp[1],
+                                              logit_shp[2]]))
+
+        return trng, use_noise, probs
+
+    def build_cost(self, y, y_mask, probs):
+        """Build the cost from probabilities and target."""
+
+        y_flat = y.flatten()
+        y_flat_idx = T.arange(y_flat.shape[0]) * self.O['n_words'] + y_flat
+        cost = -T.log(probs.flatten()[y_flat_idx])
+        cost = cost.reshape([y.shape[0], y.shape[1]])
+        cost = (cost * y_mask).sum(0)
+
+        return cost
 
     def save_whole_model(self, model_file, iteration):
         # save with iteration

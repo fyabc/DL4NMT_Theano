@@ -3,18 +3,17 @@ Translates a source file using a translation model.
 """
 
 import argparse
-from pprint import pprint
 import cPickle as pkl
+from multiprocessing import Process, Queue
+from pprint import pprint
 
 import numpy
 import theano
 
-from nmt import (build_sampler, gen_sample, load_params,
-                 init_tparams)
-from layers import init_params, build_sampler
 from config import DefaultOptions
-
-from multiprocessing import Process, Queue
+from layers import init_params
+from nmt import gen_sample, load_params, init_tparams
+from model import NMTModel
 
 
 def translate_model(queue, rqueue, pid, model, options, k, normalize):
@@ -29,12 +28,14 @@ def translate_model(queue, rqueue, pid, model, options, k, normalize):
     params = load_params(model, params)
     tparams = init_tparams(params)
 
+    model = NMTModel(options, given_params=tparams)
+
     # word index
-    f_init, f_next = build_sampler(tparams, options, trng, use_noise)
+    f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise)
 
     def _translate(seq):
         # sample given an input sequence and obtain scores
-        sample, score = gen_sample(tparams, f_init, f_next,
+        sample, score = gen_sample(model.P, f_init, f_next,
                                    numpy.array(seq).reshape([len(seq), 1]),
                                    options, trng=trng, k=k, maxlen=200,
                                    stochastic=False, argmax=False)
