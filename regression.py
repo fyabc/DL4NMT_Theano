@@ -213,7 +213,14 @@ def build_regression(args, top_options):
 
         if not only_encoder:
             del trainable_parameters['Wemb_dec']
+
+    # Build L2 regularization.
+    l2_regularization(loss, trainable_parameters, args.decay_c)
+
     grads = T.grad(loss, wrt=itemlist(trainable_parameters))
+
+    # Apply gradient clipping.
+    apply_gradient_clipping(args.clip_c, grads)
     print('Done')
 
     # Build optimizer.
@@ -354,6 +361,10 @@ def main():
     parser.add_argument('--conn', action='store', default=1, type=int, dest='connection_type',
                         help='Connection type, default is 1 (divided bidirectional GRU);\n'
                              '2 is bidirectional only in first layer, other layers are forward')
+    parser.add_argument('--decay_c', action="store", metavar="decay_c", dest="decay_c", type=float, default=0.0,
+                        help='The L2 regularization rate, default is 0.0.')
+    parser.add_argument('--clip_c', action="store", metavar="clip_c", dest="clip_c", type=float, default=1.0,
+                        help='The gradient clipping rate, default is 1.0.')
 
     args = parser.parse_args()
 

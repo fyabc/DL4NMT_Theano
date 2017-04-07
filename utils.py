@@ -12,6 +12,8 @@ import theano
 import theano.tensor as tensor
 import numpy as np
 
+from constants import fX
+
 
 def zipp(params, tparams):
     """Push parameters to Theano shared variables"""
@@ -154,6 +156,29 @@ def apply_gradient_clipping(clip_c, grads):
                                            g))
         grads = new_grads
     return grads
+
+
+def l2_regularization(cost, tparams, decay_c):
+    """Apply L2 regularization on weights."""
+    if decay_c > 0.:
+        decay_c = theano.shared(np.float32(decay_c), name='decay_c')
+        weight_decay = 0.
+        for kk, vv in tparams.iteritems():
+            weight_decay += (vv ** 2).sum()
+        weight_decay *= decay_c
+        cost += weight_decay
+    return cost
+
+
+def regularize_alpha_weights(cost, alpha_c, model_options, x_mask, y_mask, opt_ret):
+    """Regularize the alpha weights."""
+    if alpha_c > 0. and not model_options['decoder'].endswith('simple'):
+        alpha_c = theano.shared(np.float32(alpha_c), name='alpha_c')
+        alpha_reg = alpha_c * (
+            (tensor.cast(y_mask.sum(0) // x_mask.sum(0), fX)[:, None] -
+             opt_ret['dec_alphas'].sum(0)) ** 2).sum(1).mean()
+        cost += alpha_reg
+    return cost
 
 
 # batch preparation
@@ -301,6 +326,8 @@ __all__ = [
     'uniform_weight',
     'concatenate',
     'apply_gradient_clipping',
+    'l2_regularization',
+    'regularize_alpha_weights',
     'prepare_data',
     'get_minibatches_idx',
     'print_params',

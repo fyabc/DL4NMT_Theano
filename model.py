@@ -279,7 +279,10 @@ class NMTModel(object):
     def embedding(self, input_, n_timestep, n_samples, emb_name='Wemb'):
         """Embedding layer: input -> embedding"""
 
-        return embedding(self.P, input_, self.O, n_timestep, n_samples, emb_name)
+        emb = self.P[emb_name][input_.flatten()]
+        emb = emb.reshape([n_timestep, n_samples, self.O['dim_word']])
+
+        return emb
 
     def feed_forward(self, input_, prefix, activation=tanh):
         """Feed-forward layer."""

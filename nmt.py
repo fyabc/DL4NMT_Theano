@@ -17,8 +17,7 @@ from constants import profile, fX
 from data_iterator import TextIterator
 from layers import init_params, build_model, build_sampler
 from optimizers import *
-from utils import load_params, init_tparams, zipp, unzip, itemlist, prepare_data, print_params, load_options, \
-    apply_gradient_clipping, save_options, search_start_uidx
+from utils import *
 
 
 def gen_sample(tparams, f_init, f_next, x, options, trng=None, k=1, maxlen=30,
@@ -297,24 +296,10 @@ def train(dim_word=100,  # word vector dimensionality
     sys.stdout.flush()
     cost = cost.mean()
 
-    # apply L2 regularization on weights
-    if decay_c > 0.:
-        decay_c = theano.shared(np.float32(decay_c), name='decay_c')
-        weight_decay = 0.
-        for kk, vv in tparams.iteritems():
-            weight_decay += (vv ** 2).sum()
-        weight_decay *= decay_c
-        cost += weight_decay
+    cost = l2_regularization(cost, tparams, decay_c)
 
-    # regularize the alpha weights
-    if alpha_c > 0. and not model_options['decoder'].endswith('simple'):
-        alpha_c = theano.shared(np.float32(alpha_c), name='alpha_c')
-        alpha_reg = alpha_c * (
-            (tensor.cast(y_mask.sum(0) // x_mask.sum(0), fX)[:, None] -
-             opt_ret['dec_alphas'].sum(0)) ** 2).sum(1).mean()
-        cost += alpha_reg
+    cost = regularize_alpha_weights(cost, alpha_c, model_options, x_mask, y_mask, opt_ret)
 
-    # after all regularizers - compile the computational graph for cost
     print 'Building f_cost...',
     f_cost = theano.function(inps, cost, profile=profile)
     print 'Done'
@@ -333,7 +318,6 @@ def train(dim_word=100,  # word vector dimensionality
     print 'Done'
     sys.stdout.flush()
 
-    # apply gradient clipping here
     grads = apply_gradient_clipping(clip_c, grads)
 
     # compile the optimizer, the actual computational graph is compiled here
