@@ -319,7 +319,7 @@ def train(dim_word=100,  # word vector dimensionality
     print 'Done'
     sys.stdout.flush()
 
-    grads = apply_gradient_clipping(clip_c, grads)
+    grads, _ = apply_gradient_clipping(clip_c, grads)
 
     # compile the optimizer, the actual computational graph is compiled here
     lr = tensor.scalar(name='lr')

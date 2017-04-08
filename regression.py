@@ -220,7 +220,8 @@ def build_regression(args, top_options):
     grads = T.grad(loss, wrt=itemlist(trainable_parameters))
 
     # Apply gradient clipping.
-    apply_gradient_clipping(args.clip_c, grads)
+    _, g2 = apply_gradient_clipping(args.clip_c, grads)
+    f_g2 = theano.function([x, x_mask] if only_encoder else [x, x_mask, y, y_mask], g2, profile=False)
     print('Done')
 
     # Build optimizer.
@@ -283,6 +284,8 @@ def build_regression(args, top_options):
                 print('Epoch {} Update {} Cost {:.6f} Time {:.6f}min'.format(
                     epoch, iteration, float(cost), (time.time() - start_time) / 60.0,
                 ))
+                if True:
+                    print('G2 value: {:.6f}'.format(float(f_g2(*inputs))))
                 sys.stdout.flush()
 
             if np.mod(iteration, args.save_freq) == 0:

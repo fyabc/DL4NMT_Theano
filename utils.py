@@ -155,7 +155,7 @@ def apply_gradient_clipping(clip_c, grads):
                                            g / tensor.sqrt(g2) * clip_c,
                                            g))
         grads = new_grads
-    return grads
+    return grads, g2
 
 
 def l2_regularization(cost, tparams, decay_c):
