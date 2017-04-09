@@ -441,6 +441,115 @@ def gru_cond_layer(tparams, state_below, O, prefix='gru', mask=None, context=Non
     return result
 
 
+def param_init_lstm(O, params, prefix='lstm', nin=None, dim=None, **kwargs):
+    if nin is None:
+        nin = O['dim_proj']
+    if dim is None:
+        dim = O['dim_proj']
+
+    layer_id = kwargs.pop('layer_id', 0)
+    context_dim = kwargs.pop('context_dim', None)
+
+    params[_p(prefix, 'W', layer_id)] = np.concatenate([
+        orthogonal_weight(dim),
+        orthogonal_weight(dim),
+        orthogonal_weight(dim),
+        orthogonal_weight(dim),
+    ], axis=1)
+
+    params[_p(prefix, 'U', layer_id)] = np.concatenate([
+        orthogonal_weight(dim),
+        orthogonal_weight(dim),
+        orthogonal_weight(dim),
+        orthogonal_weight(dim),
+    ], axis=1)
+
+    params[_p(prefix, 'b', layer_id)] = np.zeros((4 * dim,), dtype=fX)
+
+    if context_dim is not None:
+        # todo Add context
+        pass
+
+    return params
+
+
+def _lstm_step_slice(
+        mask_, x_,
+        h_, c_,
+        U):
+    _dim = U.shape[1] // 4
+
+    preact = T.dot(h_, U) + x_
+
+    i = T.nnet.sigmoid(_slice(preact, 0, _dim))
+    f = T.nnet.sigmoid(_slice(preact, 1, _dim))
+    o = T.nnet.sigmoid(_slice(preact, 2, _dim))
+    c = T.tanh(_slice(preact, 3, _dim))
+
+    c = f * c_ + i * c
+    c = mask_[:, None] * c + (1. - mask_)[:, None] * c_
+
+    h = o * T.tanh(c)
+    h = mask_[:, None] * h + (1. - mask_)[:, None] * h_
+
+    return h, c
+
+
+def lstm_layer(tparams, state_below, O, prefix='lstm', mask=None, **kwargs):
+    """LSTM layer
+    
+    inputs and outputs are same as GRU layer.
+    """
+
+    layer_id = kwargs.pop('layer_id', 0)
+    dropout_params = kwargs.pop('dropout_params', None)
+    context = kwargs.pop('context', None)
+    one_step = kwargs.pop('one_step', False)
+
+    n_steps = state_below.shape[0]
+    n_samples = state_below.shape[1] if state_below.ndim == 3 else 1
+    dim = tparams[_p(prefix, 'U', layer_id)].shape[1] // 4
+
+    mask = T.alloc(1., n_steps, 1) if mask is None else mask
+
+    state_below = T.dot(state_below, tparams[_p(prefix, 'W', layer_id)]) + tparams[_p(prefix, 'b', layer_id)]
+
+    # prepare scan arguments
+    init_states = [kwargs.pop('init_states', T.alloc(0., n_samples, dim)),
+                   T.alloc(0., n_samples, dim)]
+
+    # todo Add context
+
+    seqs = [mask, state_below]
+    shared_vars = [tparams[_p(prefix, 'U', layer_id)]]
+    _step = _lstm_step_slice
+
+    if one_step:
+        outputs = _step(*(seqs + init_states + shared_vars))
+    else:
+        outputs, _ = theano.scan(
+            _step,
+            sequences=seqs,
+            outputs_info=init_states,
+            non_sequences=shared_vars,
+            name=_p(prefix, '_layers', layer_id),
+            n_steps=n_steps,
+            profile=profile,
+            strict=True,
+        )
+
+    if dropout_params:
+        outputs = dropout_layer(outputs, *dropout_params)
+
+    # [NOTE] Be compatible with GRU conditional layer
+    outputs = [outputs]
+
+    return outputs
+
+
+# todo: implement residual connection
+
+
 def gru_encoder(tparams, src_embedding, src_embedding_r, x_mask, xr_mask, O, dropout_params=None):
     """Multi-layer GRU encoder.
 
@@ -525,6 +634,7 @@ layers = {
     'ff': (param_init_feed_forward, feed_forward),
     'gru': (param_init_gru, gru_layer),
     'gru_cond': (param_init_gru_cond, gru_cond_layer),
+    'lstm': (param_init_lstm, lstm_layer),
 }
 
 

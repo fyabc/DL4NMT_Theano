@@ -58,4 +58,8 @@ DefaultOptions = dict(
     #     2. encoder_many_bidirectional = False:
     #         forward1 + backward1 -> forward2 -> forward3 -> ...
     encoder_many_bidirectional=True,
+
+    # Attention at which decoder layer (default is 0)
+    # todo: implement attention at other layers
+    attention_at=0,
 )
