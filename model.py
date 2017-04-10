@@ -570,9 +570,9 @@ class NMTModel(object):
                     # [NOTE] Add more connections (fast-forward, highway, ...) here
                     input_, input_r = h_last, h_last_r
 
-                h_last = get_build(self.O['unit'])(self.P, input_, self.O, prefix='encoder', mask=None,
+                h_last = get_build(self.O['unit'])(self.P, input_, self.O, prefix='encoder', mask=x_mask,
                                                    layer_id=layer_id, dropout_params=dropout_params)[0]
-                h_last_r = get_build(self.O['unit'])(self.P, input_r, self.O, prefix='encoder_r', mask=None,
+                h_last_r = get_build(self.O['unit'])(self.P, input_r, self.O, prefix='encoder_r', mask=xr_mask,
                                                      layer_id=layer_id, dropout_params=dropout_params)[0]
 
             # Context will be the concatenation of forward and backward RNNs
@@ -616,14 +616,14 @@ class NMTModel(object):
 
             hidden_decoder = get_build(self.O['unit'])(
                 # todo
-                self.P, input_, self.O, prefix='encoder', mask=None if layer_id > 0 else y_mask, layer_id=layer_id,
+                self.P, input_, self.O, prefix='encoder', mask=y_mask, layer_id=layer_id,
                 dropout_params=dropout_params, one_step=one_step, init_state=init_state, context=None,
             )
 
         # Attention layer
         input_ = hidden_decoder
         hidden_decoder, context_decoder, alpha_decoder = get_build(self.O['unit'] + '_cond')(
-            self.P, input_, self.O, prefix='decoder', mask=None if attention_layer_id > 0 else y_mask, context=context,
+            self.P, input_, self.O, prefix='decoder', mask=y_mask, context=context,
             context_mask=x_mask, one_step=one_step, init_state=init_state, dropout_params=dropout_params,
         )
 
@@ -634,7 +634,7 @@ class NMTModel(object):
                 input_ = hidden_decoder
 
             hidden_decoder = get_build(self.O['unit'])(
-                self.P, input_, self.O, prefix='decoder', mask=None, layer_id=layer_id,
+                self.P, input_, self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
                 dropout_params=dropout_params, context=context_decoder, init_states=init_state,
                 one_step=one_step)[0]
 
