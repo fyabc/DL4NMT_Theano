@@ -11,8 +11,7 @@ import numpy
 import theano
 
 from config import DefaultOptions
-from layers import init_params
-from nmt import gen_sample, load_params, init_tparams
+from nmt import gen_sample, load_params
 from model import NMTModel
 
 
@@ -21,14 +20,13 @@ def translate_model(queue, rqueue, pid, model, options, k, normalize):
     trng = RandomStreams(1234)
     use_noise = theano.shared(numpy.float32(0.))
 
-    # allocate model parameters
-    params = init_params(options)
+    model = NMTModel(options)
 
+    # allocate model parameters
+    params = model.initializer.init_params()
     # load model parameters and set theano shared variables
     params = load_params(model, params)
-    tparams = init_tparams(params)
-
-    model = NMTModel(options, given_params=tparams)
+    model.init_tparams(params)
 
     # word index
     f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise)

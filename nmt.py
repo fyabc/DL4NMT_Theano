@@ -15,7 +15,6 @@ import theano.tensor as tensor
 
 from constants import profile, fX
 from data_iterator import TextIterator
-from layers import init_params
 from optimizers import *
 from utils import *
 from model import NMTModel
@@ -218,8 +217,10 @@ def train(dim_word=100,  # word vector dimensionality
     )
 
     print 'Building model'
-    params = init_params(model_options)
-    # reload parameters
+    model = NMTModel(model_options)
+    params = model.initializer.init_params()
+
+    # Reload parameters
     if reload_ and os.path.exists(preload):
         print 'Reloading model parameters'
         params = load_params(preload, params)
@@ -276,10 +277,9 @@ def train(dim_word=100,  # word vector dimensionality
     if True:
         print_params(params)
 
-    tparams = init_tparams(params)
+    model.init_tparams(params)
 
-    model = NMTModel(model_options, given_params=tparams)
-
+    # Build model
     trng, use_noise, \
         x, x_mask, y, y_mask, \
         opt_ret, \

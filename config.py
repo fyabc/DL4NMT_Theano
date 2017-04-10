@@ -7,8 +7,11 @@ __author__ = 'fyabc'
 DefaultOptions = dict(
     dim_word=100,  # word vector dimensionality
     dim=1000,  # the number of LSTM units
+
+    # These 2 options are deprecated
     encoder='gru',
     decoder='gru_cond',
+
     n_words_src=30000,
     n_words=30000,
     patience=10,  # early stopping patience
@@ -61,5 +64,8 @@ DefaultOptions = dict(
 
     # Attention at which decoder layer (default is 0)
     # todo: implement attention at other layers
-    attention_at=0,
+    attention_layer_id=0,
+
+    # Unit type, LSTM or GRU (Attention unit type = unit type + '_cond')
+    unit='gru',
 )

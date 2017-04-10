@@ -36,22 +36,49 @@ class ParameterInitializer(object):
                     n_in = self.O['dim_word']
                 else:
                     n_in = self.O['dim']
-                np_parameters = get_init(self.O['encoder'])(self.O, np_parameters, prefix='encoder', nin=n_in,
-                                                            dim=self.O['dim'], layer_id=layer_id)
-                np_parameters = get_init(self.O['encoder'])(self.O, np_parameters, prefix='encoder_r', nin=n_in,
-                                                            dim=self.O['dim'], layer_id=layer_id)
+                np_parameters = get_init(self.O['unit'])(self.O, np_parameters, prefix='encoder', nin=n_in,
+                                                         dim=self.O['dim'], layer_id=layer_id)
+                np_parameters = get_init(self.O['unit'])(self.O, np_parameters, prefix='encoder_r', nin=n_in,
+                                                         dim=self.O['dim'], layer_id=layer_id)
         else:
             for layer_id in xrange(self.O['n_encoder_layers']):
                 if layer_id == 0:
                     n_in = self.O['dim_word']
-                    np_parameters = get_init(self.O['encoder'])(self.O, np_parameters, prefix='encoder', nin=n_in,
-                                                                dim=self.O['dim'], layer_id=0)
-                    np_parameters = get_init(self.O['encoder'])(self.O, np_parameters, prefix='encoder_r', nin=n_in,
-                                                                dim=self.O['dim'], layer_id=0)
+                    np_parameters = get_init(self.O['unit'])(self.O, np_parameters, prefix='encoder', nin=n_in,
+                                                             dim=self.O['dim'], layer_id=0)
+                    np_parameters = get_init(self.O['unit'])(self.O, np_parameters, prefix='encoder_r', nin=n_in,
+                                                             dim=self.O['dim'], layer_id=0)
                 else:
                     n_in = 2 * self.O['dim']
-                    np_parameters = get_init(self.O['encoder'])(self.O, np_parameters, prefix='encoder', nin=n_in,
-                                                                dim=n_in, layer_id=layer_id)
+                    np_parameters = get_init(self.O['unit'])(self.O, np_parameters, prefix='encoder', nin=n_in,
+                                                             dim=n_in, layer_id=layer_id)
+
+        return np_parameters
+
+    def init_decoder(self, np_parameters):
+        context_dim = 2 * self.O['dim']
+        attention_layer_id = self.O['attention_layer_id']
+
+        # init_state, init_cell
+        np_parameters = get_init('ff')(self.O, np_parameters, prefix='ff_state', nin=context_dim, nout=self.O['dim'])
+
+        # Layers before attention layer
+        for layer_id in xrange(0, attention_layer_id):
+            np_parameters = get_init(self.O['unit'])(
+                self.O, np_parameters, prefix='decoder', nin=self.O['dim_word'] if layer_id == 0 else self.O['dim'],
+                dim=self.O['dim'], layer_id=layer_id, context_dim=None)
+
+        # Attention layer
+        np_parameters = get_init(self.O['unit'] + '_cond')(
+            self.O, np_parameters, prefix='decoder',
+            nin=self.O['dim_word'] if attention_layer_id == 0 else self.O['dim'],
+            dim=self.O['dim'], dimctx=context_dim, layer_id=attention_layer_id)
+
+        # Layers after attention layer
+        for layer_id in xrange(attention_layer_id + 1, self.O['n_decoder_layers']):
+            np_parameters = get_init(self.O['unit'])(
+                self.O, np_parameters, prefix='decoder', nin=self.O['dim'],
+                dim=self.O['dim'], layer_id=layer_id, context_dim=context_dim)
 
         return np_parameters
 
@@ -112,19 +139,7 @@ class ParameterInitializer(object):
         self.init_embedding(np_parameters, 'Wemb_dec', self.O['n_words'], self.O['dim_word'])
 
         # Decoder
-        context_dim = 2 * self.O['dim']
-
-        # init_state, init_cell
-        np_parameters = get_init('ff')(self.O, np_parameters, prefix='ff_state', nin=context_dim, nout=self.O['dim'])
-
-        # decoder first layer
-        np_parameters = get_init(self.O['decoder'])(self.O, np_parameters, prefix='decoder', nin=self.O['dim_word'],
-                                                    dim=self.O['dim'], dimctx=context_dim)
-
-        # decoder other layers
-        for layer_id in xrange(1, self.O['n_decoder_layers']):
-            np_parameters = param_init_gru(self.O, np_parameters, prefix='decoder', nin=self.O['dim'],
-                                           dim=self.O['dim'], layer_id=layer_id, context_dim=context_dim)
+        np_parameters = self.init_decoder(np_parameters)
 
         # Reload parameters
         reload_ = self.O['reload_'] if reload_ is None else reload_
@@ -144,6 +159,46 @@ class ParameterInitializer(object):
 
         # Init theano parameters
         init_tparams(np_parameters, parameters)
+
+    def init_params(self):
+        np_parameters = OrderedDict()
+
+        # Source embedding
+        self.init_embedding(np_parameters, 'Wemb', self.O['n_words_src'], self.O['dim_word'])
+
+        # Encoder: bidirectional RNN
+        np_parameters = self.init_encoder(np_parameters)
+
+        # Target embedding
+        self.init_embedding(np_parameters, 'Wemb_dec', self.O['n_words'], self.O['dim_word'])
+
+        # Decoder
+        np_parameters = self.init_decoder(np_parameters)
+
+        # Readout
+        context_dim = 2 * self.O['dim']
+        np_parameters = self.init_feed_forward(np_parameters, prefix='ff_logit_lstm', nin=self.O['dim'],
+                                               nout=self.O['dim_word'], orthogonal=False)
+        np_parameters = self.init_feed_forward(np_parameters, prefix='ff_logit_prev', nin=self.O['dim_word'],
+                                               nout=self.O['dim_word'], orthogonal=False)
+        np_parameters = self.init_feed_forward(np_parameters, prefix='ff_logit_ctx', nin=context_dim,
+                                               nout=self.O['dim_word'], orthogonal=False)
+        np_parameters = self.init_feed_forward(np_parameters, prefix='ff_logit', nin=self.O['dim_word'],
+                                               nout=self.O['n_words'])
+
+        return np_parameters
+
+    def init_feed_forward(self, params, prefix='ff', nin=None, nout=None, orthogonal=True):
+        """feed-forward layer: affine transformation + point-wise nonlinearity"""
+
+        if nin is None:
+            nin = self.O['dim_proj']
+        if nout is None:
+            nout = self.O['dim_proj']
+        params[_p(prefix, 'W')] = normal_weight(nin, nout, scale=0.01, orthogonal=orthogonal)
+        params[_p(prefix, 'b')] = np.zeros((nout,), dtype=fX)
+
+        return params
 
 
 class NMTModel(object):
@@ -260,7 +315,7 @@ class NMTModel(object):
         src_embedding_r = self.embedding(x_r, n_timestep, n_samples)
 
         # Encoder
-        context = self.gru_encoder(src_embedding, src_embedding_r, x_mask, x_mask_r, dropout_params=None)
+        context = self.encoder(src_embedding, src_embedding_r, x_mask, x_mask_r, dropout_params=None)
 
         return [x, x_mask, y, y_mask], context
 
@@ -291,12 +346,15 @@ class NMTModel(object):
         tgt_embedding = emb_shifted
 
         # Decoder - pass through the decoder conditional gru with attention
-        hidden_decoder, context_decoder, _ = gru_decoder(
-            self.P, tgt_embedding, y_mask, init_decoder_state, context, x_mask, self.O,
+        hidden_decoder, context_decoder, _ = self.decoder(
+            tgt_embedding, y_mask, init_decoder_state, context, x_mask,
             dropout_params=None,
         )
 
         return [x, x_mask, y, y_mask], hidden_decoder, context_decoder
+
+    def init_tparams(self, np_parameters):
+        self.P = init_tparams(np_parameters)
 
     def build_model(self):
         """Build a training model."""
@@ -321,8 +379,8 @@ class NMTModel(object):
         tgt_embedding = emb_shifted
 
         # Decoder - pass through the decoder conditional gru with attention
-        hidden_decoder, context_decoder, opt_ret['dec_alphas'] = gru_decoder(
-            self.P, tgt_embedding, y_mask, init_decoder_state, context, x_mask, self.O,
+        hidden_decoder, context_decoder, opt_ret['dec_alphas'] = self.decoder(
+            tgt_embedding, y_mask, init_decoder_state, context, x_mask,
             dropout_params=None,
         )
 
@@ -341,10 +399,10 @@ class NMTModel(object):
             print('Done')
 
         return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost, context_mean
-    
+
     def build_sampler(self, **kwargs):
         """Build a sampler."""
-        
+
         trng = kwargs.pop('trng', RandomStreams(1234))
         use_noise = kwargs.pop('use_noise', theano.shared(np.float32(0.)))
 
@@ -358,12 +416,11 @@ class NMTModel(object):
         src_embedding_r = self.embedding(xr, n_timestep, n_samples)
 
         # Encoder
-        ctx = gru_encoder(self.P, src_embedding, src_embedding_r, None, None, self.O, dropout_params=None)
+        ctx = self.encoder(src_embedding, src_embedding_r, None, None, dropout_params=None)
 
         # Get the input for decoder rnn initializer mlp
         ctx_mean = ctx.mean(0)
-        init_state = get_build('ff')(self.P, ctx_mean, self.O,
-                                     prefix='ff_state', activ='tanh')
+        init_state = self.feed_forward(ctx_mean, prefix='ff_state', activation=tanh)
 
         print('Building f_init...', end='')
         outs = [init_state, ctx]
@@ -380,8 +437,8 @@ class NMTModel(object):
                        self.P['Wemb_dec'][y])
 
         # Apply one step of conditional gru with attention
-        proj = gru_decoder(
-            self.P, emb, y_mask=None, init_state=init_state, context=ctx, x_mask=None, O=self.O,
+        proj = self.decoder(
+            emb, y_mask=None, init_state=init_state, context=ctx, x_mask=None,
             dropout_params=None, one_step=True,
         )
 
@@ -490,42 +547,42 @@ class NMTModel(object):
 
         return (context * x_mask[:, :, None]).sum(0) / x_mask.sum(0)[:, None]
 
-    def gru_encoder(self, src_embedding, src_embedding_r, x_mask, xr_mask, dropout_params=None):
+    def encoder(self, src_embedding, src_embedding_r, x_mask, xr_mask, dropout_params=None):
         """GRU encoder layer: source embedding -> encoder context
         
         :return Context vector: Theano tensor
             Shape: ([Ts], [BS], [Hc])
         """
 
-        global_f = src_embedding
-        global_f_r = src_embedding_r
+        input_ = src_embedding
+        input_r = src_embedding_r
 
         if self.O['encoder_many_bidirectional']:
             # First layer
-            h_last = get_build(self.O['encoder'])(self.P, global_f, self.O, prefix='encoder', mask=x_mask, layer_id=0,
-                                                  dropout_params=dropout_params)[0]
-            h_last_r = get_build(self.O['encoder'])(self.P, global_f_r, self.O, prefix='encoder_r', mask=xr_mask,
-                                                    layer_id=0, dropout_params=dropout_params)[0]
+            h_last = get_build(self.O['unit'])(self.P, input_, self.O, prefix='encoder', mask=x_mask, layer_id=0,
+                                               dropout_params=dropout_params)[0]
+            h_last_r = get_build(self.O['unit'])(self.P, input_r, self.O, prefix='encoder_r', mask=xr_mask,
+                                                 layer_id=0, dropout_params=dropout_params)[0]
 
             # Other layers
             for layer_id in xrange(1, self.O['n_encoder_layers']):
                 if True:
                     # [NOTE] Add more connections (fast-forward, highway, ...) here
-                    global_f, global_f_r = h_last, h_last_r
+                    input_, input_r = h_last, h_last_r
 
-                h_last = get_build(self.O['encoder'])(self.P, global_f, self.O, prefix='encoder', mask=None,
-                                                      layer_id=layer_id, dropout_params=dropout_params)[0]
-                h_last_r = get_build(self.O['encoder'])(self.P, global_f_r, self.O, prefix='encoder_r', mask=None,
-                                                        layer_id=layer_id, dropout_params=dropout_params)[0]
+                h_last = get_build(self.O['unit'])(self.P, input_, self.O, prefix='encoder', mask=None,
+                                                   layer_id=layer_id, dropout_params=dropout_params)[0]
+                h_last_r = get_build(self.O['unit'])(self.P, input_r, self.O, prefix='encoder_r', mask=None,
+                                                     layer_id=layer_id, dropout_params=dropout_params)[0]
 
             # Context will be the concatenation of forward and backward RNNs
             context = concatenate([h_last, h_last_r[::-1]], axis=h_last.ndim - 1)
         else:
             # First layer
-            h_last = get_build(self.O['encoder'])(self.P, global_f, self.O, prefix='encoder', mask=x_mask, layer_id=0,
-                                                  dropout_params=dropout_params)[0]
-            h_last_r = get_build(self.O['encoder'])(self.P, global_f_r, self.O, prefix='encoder_r', mask=xr_mask,
-                                                    layer_id=0, dropout_params=dropout_params)[0]
+            h_last = get_build(self.O['unit'])(self.P, input_, self.O, prefix='encoder', mask=x_mask, layer_id=0,
+                                               dropout_params=dropout_params)[0]
+            h_last_r = get_build(self.O['unit'])(self.P, input_r, self.O, prefix='encoder_r', mask=xr_mask,
+                                                 layer_id=0, dropout_params=dropout_params)[0]
 
             h_last = concatenate([h_last, h_last_r[::-1]], axis=h_last.ndim - 1)
 
@@ -533,14 +590,56 @@ class NMTModel(object):
             for layer_id in xrange(1, self.O['n_encoder_layers']):
                 if True:
                     # [NOTE] Add more connections (fast-forward, highway, ...) here
-                    global_f = h_last
-                h_last = get_build(self.O['encoder'])(self.P, global_f, self.O, prefix='encoder', mask=None,
-                                                      layer_id=layer_id, dropout_params=dropout_params)[0]
+                    input_ = h_last
+                h_last = get_build(self.O['unit'])(self.P, input_, self.O, prefix='encoder', mask=None,
+                                                   layer_id=layer_id, dropout_params=dropout_params)[0]
 
             context = h_last
 
         return context
-    
+
+    def decoder(self, tgt_embedding, y_mask, init_state, context, x_mask, dropout_params=None, one_step=False):
+        """Multi-layer GRU decoder.
+
+        :return Decoder context vector and hidden states
+        """
+
+        hidden_decoder = tgt_embedding
+
+        attention_layer_id = self.O['attention_layer_id']
+
+        # Layers before attention layer
+        for layer_id in xrange(0, attention_layer_id):
+            if True:
+                # [NOTE] Add more connections (fast-forward, highway, ...) here
+                input_ = hidden_decoder
+
+            hidden_decoder = get_build(self.O['unit'])(
+                # todo
+                self.P, input_, self.O, prefix='encoder', mask=None if layer_id > 0 else y_mask, layer_id=layer_id,
+                dropout_params=dropout_params, one_step=one_step, init_state=init_state, context=None,
+            )
+
+        # Attention layer
+        input_ = hidden_decoder
+        hidden_decoder, context_decoder, alpha_decoder = get_build(self.O['unit'] + '_cond')(
+            self.P, input_, self.O, prefix='decoder', mask=None if attention_layer_id > 0 else y_mask, context=context,
+            context_mask=x_mask, one_step=one_step, init_state=init_state, dropout_params=dropout_params,
+        )
+
+        # Layers after attention layer
+        for layer_id in xrange(attention_layer_id + 1, self.O['n_decoder_layers']):
+            if True:
+                # [NOTE] Add more connections (fast-forward, highway, ...) here
+                input_ = hidden_decoder
+
+            hidden_decoder = get_build(self.O['unit'])(
+                self.P, input_, self.O, prefix='decoder', mask=None, layer_id=layer_id,
+                dropout_params=dropout_params, context=context_decoder, init_states=init_state,
+                one_step=one_step)[0]
+
+        return hidden_decoder, context_decoder, alpha_decoder
+
     def get_word_probability(self, hidden_decoder, context_decoder, tgt_embedding, **kwargs):
         """Compute word probabilities."""
 
@@ -572,11 +671,14 @@ class NMTModel(object):
 
         return cost
 
-    def save_whole_model(self, model_file, iteration):
+    def save_whole_model(self, model_file, iteration=-1):
         # save with iteration
-        save_filename = '{}_iter{}.iter160000.npz'.format(
-            os.path.splitext(model_file)[0], iteration,
-        )
+        if iteration == -1:
+            save_filename = '{}.iter0.npz'.format(os.path.splitext(model_file)[0])
+        else:
+            save_filename = '{}_iter{}.iter0.npz'.format(
+                os.path.splitext(model_file)[0], iteration,
+            )
 
         print('Saving the new model at iteration {} to {}...'.format(iteration, save_filename), end='')
 
@@ -592,3 +694,15 @@ class NMTModel(object):
 
         print('Done')
         sys.stdout.flush()
+
+    def load_whole_model(self, model_file, iteration=-1):
+        if iteration == -1:
+            load_filename = '{}.iter0.npz'.format(os.path.splitext(model_file)[0])
+        else:
+            load_filename = '{}_iter{}.iter0.npz'.format(
+                os.path.splitext(model_file)[0], iteration,
+            )
+
+        for k, v in np.load(load_filename).iteritems():
+            if k in self.P:
+                self.P[k].set_value(v)

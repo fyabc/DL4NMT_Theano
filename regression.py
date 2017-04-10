@@ -62,7 +62,8 @@ def build_decoder_loss(
     delta_context = (context_decoder_old - context_decoder_new) * y_mask[:, :, None]
     delta_hidden = (hidden_decoder_old - hidden_decoder_new) * y_mask[:, :, None]
 
-    loss = (delta_context ** 2).sum() / delta_context.shape[0] + (delta_hidden ** 2).sum() / delta_hidden.shape[0]
+    loss = (delta_context ** 2).sum() / delta_context.shape[0] / delta_context.shape[1] + \
+           (delta_hidden ** 2).sum() / delta_hidden.shape[0] / delta_hidden.shape[1]
 
     f_loss = theano.function([x, x_mask, y, y_mask], loss, profile=False)
 
@@ -245,7 +246,7 @@ def build_regression(args, top_options):
         print('Done')
 
     # Validate before train
-    validate(valid_text_iterator, small_train_iterator, f_loss, only_encoder, top_options['maxlen'])
+    best_val_cost = validate(valid_text_iterator, small_train_iterator, f_loss, only_encoder, top_options['maxlen'])
 
     learning_rate = args.learning_rate
 
@@ -277,7 +278,16 @@ def build_regression(args, top_options):
 
             if np.isnan(cost) or np.isinf(cost):
                 print('NaN detected')
-                return 1., 1., 1.
+
+                learning_rate *= 0.5
+                print('Discount learning rate to {}'.format(learning_rate))
+
+                print('Reloading best model {}...'.format(args.model_file), end='')
+                new_model.load_whole_model(args.model_file, iteration=-1)
+                print('Done')
+
+                print('Training restart')
+                continue
 
             # verbose
             if np.mod(iteration, args.disp_freq) == 0:
@@ -288,11 +298,15 @@ def build_regression(args, top_options):
                     print('G2 value: {:.6f}'.format(float(f_g2(*inputs))))
                 sys.stdout.flush()
 
-            if np.mod(iteration, args.save_freq) == 0:
+            if args.save_freq > 0 and np.mod(iteration, args.save_freq) == 0:
                 new_model.save_whole_model(args.model_file, iteration)
 
             if np.mod(iteration, args.valid_freq) == 0:
-                validate(valid_text_iterator, small_train_iterator, f_loss, only_encoder, top_options['maxlen'])
+                curr_val_cost = validate(valid_text_iterator, small_train_iterator, f_loss,
+                                         only_encoder, top_options['maxlen'])
+                if curr_val_cost < best_val_cost:
+                    best_val_cost = curr_val_cost
+                    new_model.save_whole_model(args.model_file, iteration=-1)
 
                 if args.debug and args.dump_hidden is not None:
                     print('Dumping input and hidden state to {}...'.format(args.dump_hidden), end='')

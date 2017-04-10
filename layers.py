@@ -248,7 +248,7 @@ def gru_layer(tparams, state_below, O, prefix='gru', mask=None, **kwargs):
 
 
 def param_init_gru_cond(O, params, prefix='gru_cond', nin=None, dim=None, dimctx=None, nin_nonlin=None,
-                        dim_nonlin=None):
+                        dim_nonlin=None, **kwargs):
     if nin is None:
         nin = O['dim']
     if dim is None:
@@ -259,54 +259,55 @@ def param_init_gru_cond(O, params, prefix='gru_cond', nin=None, dim=None, dimctx
         nin_nonlin = nin
     if dim_nonlin is None:
         dim_nonlin = dim
+    layer_id = kwargs.pop('layer_id', 0)
 
     W = np.concatenate([normal_weight(nin, dim),
                         normal_weight(nin, dim)], axis=1)
-    params[_p(prefix, 'W')] = W
-    params[_p(prefix, 'b')] = np.zeros((2 * dim,), dtype=fX)
+    params[_p(prefix, 'W', layer_id)] = W
+    params[_p(prefix, 'b', layer_id)] = np.zeros((2 * dim,), dtype=fX)
     U = np.concatenate([orthogonal_weight(dim_nonlin),
                         orthogonal_weight(dim_nonlin)], axis=1)
-    params[_p(prefix, 'U')] = U
+    params[_p(prefix, 'U', layer_id)] = U
 
     Wx = normal_weight(nin_nonlin, dim_nonlin)
-    params[_p(prefix, 'Wx')] = Wx
+    params[_p(prefix, 'Wx', layer_id)] = Wx
     Ux = orthogonal_weight(dim_nonlin)
-    params[_p(prefix, 'Ux')] = Ux
-    params[_p(prefix, 'bx')] = np.zeros((dim_nonlin,), dtype=fX)
+    params[_p(prefix, 'Ux', layer_id)] = Ux
+    params[_p(prefix, 'bx', layer_id)] = np.zeros((dim_nonlin,), dtype=fX)
 
     U_nl = np.concatenate([orthogonal_weight(dim_nonlin),
                            orthogonal_weight(dim_nonlin)], axis=1)
-    params[_p(prefix, 'U_nl')] = U_nl
-    params[_p(prefix, 'b_nl')] = np.zeros((2 * dim_nonlin,), dtype=fX)
+    params[_p(prefix, 'U_nl', layer_id)] = U_nl
+    params[_p(prefix, 'b_nl', layer_id)] = np.zeros((2 * dim_nonlin,), dtype=fX)
 
     Ux_nl = orthogonal_weight(dim_nonlin)
-    params[_p(prefix, 'Ux_nl')] = Ux_nl
-    params[_p(prefix, 'bx_nl')] = np.zeros((dim_nonlin,), dtype=fX)
+    params[_p(prefix, 'Ux_nl', layer_id)] = Ux_nl
+    params[_p(prefix, 'bx_nl', layer_id)] = np.zeros((dim_nonlin,), dtype=fX)
 
     # context to LSTM
     Wc = normal_weight(dimctx, dim * 2)
-    params[_p(prefix, 'Wc')] = Wc
+    params[_p(prefix, 'Wc', layer_id)] = Wc
 
     Wcx = normal_weight(dimctx, dim)
-    params[_p(prefix, 'Wcx')] = Wcx
+    params[_p(prefix, 'Wcx', layer_id)] = Wcx
 
     # attention: combined -> hidden
     W_comb_att = normal_weight(dim, dimctx)
-    params[_p(prefix, 'W_comb_att')] = W_comb_att
+    params[_p(prefix, 'W_comb_att', layer_id)] = W_comb_att
 
     # attention: context -> hidden
     Wc_att = normal_weight(dimctx)
-    params[_p(prefix, 'Wc_att')] = Wc_att
+    params[_p(prefix, 'Wc_att', layer_id)] = Wc_att
 
     # attention: hidden bias
     b_att = np.zeros((dimctx,), dtype=fX)
-    params[_p(prefix, 'b_att')] = b_att
+    params[_p(prefix, 'b_att', layer_id)] = b_att
 
     # attention:
     U_att = normal_weight(dimctx, 1)
-    params[_p(prefix, 'U_att')] = U_att
+    params[_p(prefix, 'U_att', layer_id)] = U_att
     c_att = np.zeros((1,), dtype=fX)
-    params[_p(prefix, 'c_tt')] = c_att
+    params[_p(prefix, 'c_tt', layer_id)] = c_att
 
     return params
 
@@ -328,6 +329,8 @@ def gru_cond_layer(tparams, state_below, O, prefix='gru', mask=None, context=Non
         alpha_decoder: ([Tt], [Bs], [Tt]), weights (alignment matrix)
     """
 
+    layer_id = kwargs.pop('layer_id', 0)
+
     assert context, 'Context must be provided'
     assert context.ndim == 3, 'Context must be 3-d: #annotation * #sample * dim'
     if one_step:
@@ -339,7 +342,7 @@ def gru_cond_layer(tparams, state_below, O, prefix='gru', mask=None, context=Non
         n_samples = state_below.shape[1]
     else:
         n_samples = 1
-    dim = tparams[_p(prefix, 'Wcx')].shape[1]
+    dim = tparams[_p(prefix, 'Wcx', layer_id)].shape[1]
     dropout_params = kwargs.pop('dropout_params', None)
 
     # Mask
@@ -350,11 +353,11 @@ def gru_cond_layer(tparams, state_below, O, prefix='gru', mask=None, context=Non
     if init_state is None:
         init_state = T.alloc(0., n_samples, dim)
 
-    projected_context = T.dot(context, tparams[_p(prefix, 'Wc_att')]) + tparams[_p(prefix, 'b_att')]
+    projected_context = T.dot(context, tparams[_p(prefix, 'Wc_att', layer_id)]) + tparams[_p(prefix, 'b_att', layer_id)]
 
     # projected x
-    state_belowx = T.dot(state_below, tparams[_p(prefix, 'Wx')]) + tparams[_p(prefix, 'bx')]
-    state_below_ = T.dot(state_below, tparams[_p(prefix, 'W')]) + tparams[_p(prefix, 'b')]
+    state_belowx = T.dot(state_below, tparams[_p(prefix, 'Wx', layer_id)]) + tparams[_p(prefix, 'bx', layer_id)]
+    state_below_ = T.dot(state_below, tparams[_p(prefix, 'W', layer_id)]) + tparams[_p(prefix, 'b', layer_id)]
 
     def _step_slice(m_, x_, xx_,
                     h_, ctx_, alpha_,
@@ -404,17 +407,17 @@ def gru_cond_layer(tparams, state_below, O, prefix='gru', mask=None, context=Non
     seqs = [mask, state_below_, state_belowx]
     _step = _step_slice
 
-    shared_vars = [tparams[_p(prefix, 'U')],
-                   tparams[_p(prefix, 'Wc')],
-                   tparams[_p(prefix, 'W_comb_att')],
-                   tparams[_p(prefix, 'U_att')],
-                   tparams[_p(prefix, 'c_tt')],
-                   tparams[_p(prefix, 'Ux')],
-                   tparams[_p(prefix, 'Wcx')],
-                   tparams[_p(prefix, 'U_nl')],
-                   tparams[_p(prefix, 'Ux_nl')],
-                   tparams[_p(prefix, 'b_nl')],
-                   tparams[_p(prefix, 'bx_nl')]]
+    shared_vars = [tparams[_p(prefix, 'U', layer_id)],
+                   tparams[_p(prefix, 'Wc', layer_id)],
+                   tparams[_p(prefix, 'W_comb_att', layer_id)],
+                   tparams[_p(prefix, 'U_att', layer_id)],
+                   tparams[_p(prefix, 'c_tt', layer_id)],
+                   tparams[_p(prefix, 'Ux', layer_id)],
+                   tparams[_p(prefix, 'Wcx', layer_id)],
+                   tparams[_p(prefix, 'U_nl', layer_id)],
+                   tparams[_p(prefix, 'Ux_nl', layer_id)],
+                   tparams[_p(prefix, 'b_nl', layer_id)],
+                   tparams[_p(prefix, 'bx_nl', layer_id)]]
 
     if one_step:
         result = _step(*(seqs + [init_state, None, None, projected_context, context] + shared_vars))
@@ -451,10 +454,10 @@ def param_init_lstm(O, params, prefix='lstm', nin=None, dim=None, **kwargs):
     context_dim = kwargs.pop('context_dim', None)
 
     params[_p(prefix, 'W', layer_id)] = np.concatenate([
-        orthogonal_weight(dim),
-        orthogonal_weight(dim),
-        orthogonal_weight(dim),
-        orthogonal_weight(dim),
+        normal_weight(nin, dim),
+        normal_weight(nin, dim),
+        normal_weight(nin, dim),
+        normal_weight(nin, dim),
     ], axis=1)
 
     params[_p(prefix, 'U', layer_id)] = np.concatenate([
@@ -550,85 +553,6 @@ def lstm_layer(tparams, state_below, O, prefix='lstm', mask=None, **kwargs):
 # todo: implement residual connection
 
 
-def gru_encoder(tparams, src_embedding, src_embedding_r, x_mask, xr_mask, O, dropout_params=None):
-    """Multi-layer GRU encoder.
-
-    :return Context vector: Theano tensor
-        Shape: ([Ts], [BS], [Hc])
-    """
-
-    global_f = src_embedding
-    global_f_r = src_embedding_r
-
-    if O['encoder_many_bidirectional']:
-        # First layer
-        h_last = get_build(O['encoder'])(tparams, global_f, O, prefix='encoder', mask=x_mask, layer_id=0,
-                                         dropout_params=dropout_params)[0]
-        h_last_r = get_build(O['encoder'])(tparams, global_f_r, O, prefix='encoder_r', mask=xr_mask, layer_id=0,
-                                           dropout_params=dropout_params)[0]
-
-        # Other layers
-        for layer_id in xrange(1, O['n_encoder_layers']):
-            if True:
-                # [NOTE] Add more connections (fast-forward, highway, ...) here
-                global_f, global_f_r = h_last, h_last_r
-
-            h_last = get_build(O['encoder'])(tparams, global_f, O, prefix='encoder', mask=None, layer_id=layer_id,
-                                             dropout_params=dropout_params)[0]
-            h_last_r = get_build(O['encoder'])(tparams, global_f_r, O, prefix='encoder_r', mask=None, layer_id=layer_id,
-                                               dropout_params=dropout_params)[0]
-
-        # Context will be the concatenation of forward and backward RNNs
-        context = concatenate([h_last, h_last_r[::-1]], axis=h_last.ndim - 1)
-    else:
-        # First layer
-        h_last = get_build(O['encoder'])(tparams, global_f, O, prefix='encoder', mask=x_mask, layer_id=0,
-                                         dropout_params=dropout_params)[0]
-        h_last_r = get_build(O['encoder'])(tparams, global_f_r, O, prefix='encoder_r', mask=xr_mask, layer_id=0,
-                                           dropout_params=dropout_params)[0]
-
-        h_last = concatenate([h_last, h_last_r[::-1]], axis=h_last.ndim - 1)
-
-        # Other layers
-        for layer_id in xrange(1, O['n_encoder_layers']):
-            if True:
-                # [NOTE] Add more connections (fast-forward, highway, ...) here
-                global_f = h_last
-            h_last = get_build(O['encoder'])(tparams, global_f, O, prefix='encoder', mask=None, layer_id=layer_id,
-                                             dropout_params=dropout_params)[0]
-
-        context = h_last
-
-    return context
-
-
-def gru_decoder(tparams, tgt_embedding, y_mask, init_state, context, x_mask, O, dropout_params=None, one_step=False):
-    """Multi-layer GRU decoder.
-    
-    :return Decoder context vector and hidden states
-    """
-
-    global_f = tgt_embedding
-
-    # First layer (with attention)
-    hidden_decoder, context_decoder, alpha_decoder = get_build(O['decoder'])(
-        tparams, global_f, O, prefix='decoder', mask=y_mask, context=context,
-        context_mask=x_mask, one_step=one_step, init_state=init_state, dropout_params=dropout_params,
-    )
-
-    # Other layers (without attention)
-    for layer_id in xrange(1, O['n_decoder_layers']):
-        if True:
-            # [NOTE] Add more connections (fast-forward, highway, ...) here
-            global_f = hidden_decoder
-
-        hidden_decoder = gru_layer(tparams, global_f, O, 'decoder', mask=None, layer_id=layer_id,
-                                   dropout_params=dropout_params, context=context_decoder, init_states=init_state,
-                                   one_step=one_step)[0]
-
-    return hidden_decoder, context_decoder, alpha_decoder
-
-
 # layers: 'name': ('parameter initializer', 'builder')
 layers = {
     'ff': (param_init_feed_forward, feed_forward),
@@ -651,58 +575,6 @@ def get_build(name):
     return layers[name][1]
 
 
-def init_params(O):
-    """Initialize all parameters"""
-
-    params = OrderedDict()
-
-    # Embedding
-    params['Wemb'] = normal_weight(O['n_words_src'], O['dim_word'])
-    params['Wemb_dec'] = normal_weight(O['n_words'], O['dim_word'])
-
-    # Encoder: bidirectional RNN
-
-    if O['encoder_many_bidirectional']:
-        for layer_id in xrange(O['n_encoder_layers']):
-            if layer_id == 0:
-                n_in = O['dim_word']
-            else:
-                n_in = O['dim']
-            params = get_init(O['encoder'])(O, params, prefix='encoder', nin=n_in, dim=O['dim'], layer_id=layer_id)
-            params = get_init(O['encoder'])(O, params, prefix='encoder_r', nin=n_in, dim=O['dim'], layer_id=layer_id)
-    else:
-        for layer_id in xrange(O['n_encoder_layers']):
-            if layer_id == 0:
-                n_in = O['dim_word']
-                params = get_init(O['encoder'])(O, params, prefix='encoder', nin=n_in, dim=O['dim'], layer_id=0)
-                params = get_init(O['encoder'])(O, params, prefix='encoder_r', nin=n_in, dim=O['dim'], layer_id=0)
-            else:
-                n_in = 2 * O['dim']
-                params = get_init(O['encoder'])(O, params, prefix='encoder', nin=n_in, dim=n_in, layer_id=layer_id)
-
-    # Decoder
-
-    context_dim = 2 * O['dim']
-
-    # init_state, init_cell
-    params = get_init('ff')(O, params, prefix='ff_state', nin=context_dim, nout=O['dim'])
-
-    # decoder first layer
-    params = get_init(O['decoder'])(O, params, prefix='decoder', nin=O['dim_word'], dim=O['dim'], dimctx=context_dim)
-
-    # decoder other layers
-    for layer_id in xrange(1, O['n_decoder_layers']):
-        params = param_init_gru(O, params, prefix='decoder', nin=O['dim'], dim=O['dim'], layer_id=layer_id,
-                                context_dim=context_dim)
-    # Readout
-    params = get_init('ff')(O, params, prefix='ff_logit_lstm', nin=O['dim'], nout=O['dim_word'], orthogonal=False)
-    params = get_init('ff')(O, params, prefix='ff_logit_prev', nin=O['dim_word'], nout=O['dim_word'], orthogonal=False)
-    params = get_init('ff')(O, params, prefix='ff_logit_ctx', nin=context_dim, nout=O['dim_word'], orthogonal=False)
-    params = get_init('ff')(O, params, prefix='ff_logit', nin=O['dim_word'], nout=O['n_words'])
-
-    return params
-
-
 __all__ = [
     'tanh',
     'linear',
@@ -713,11 +585,8 @@ __all__ = [
     'gru_layer',
     'param_init_gru_cond',
     'gru_cond_layer',
-    'gru_encoder',
-    'gru_decoder',
     'layers',
     'get_layer',
     'get_build',
     'get_init',
-    'init_params',
 ]
