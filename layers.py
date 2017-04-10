@@ -498,6 +498,28 @@ def _lstm_step_slice(
     return h, c
 
 
+def _lstm_step_slice_attention(
+        mask_, x_, context,
+        h_, c_,
+        U, Wc):
+    _dim = U.shape[1] // 4
+
+    preact = T.dot(h_, U) + x_ + T.dot(context, Wc)
+
+    i = T.nnet.sigmoid(_slice(preact, 0, _dim))
+    f = T.nnet.sigmoid(_slice(preact, 1, _dim))
+    o = T.nnet.sigmoid(_slice(preact, 2, _dim))
+    c = T.tanh(_slice(preact, 3, _dim))
+
+    c = f * c_ + i * c
+    c = mask_[:, None] * c + (1. - mask_)[:, None] * c_
+
+    h = o * T.tanh(c)
+    h = mask_[:, None] * h + (1. - mask_)[:, None] * h_
+
+    return h, c
+
+
 def lstm_layer(tparams, state_below, O, prefix='lstm', mask=None, **kwargs):
     """LSTM layer
     
@@ -523,9 +545,15 @@ def lstm_layer(tparams, state_below, O, prefix='lstm', mask=None, **kwargs):
 
     # todo Add context
 
-    seqs = [mask, state_below]
-    shared_vars = [tparams[_p(prefix, 'U', layer_id)]]
-    _step = _lstm_step_slice
+    if context is None:
+        seqs = [mask, state_below]
+        shared_vars = [tparams[_p(prefix, 'U', layer_id)]]
+        _step = _lstm_step_slice
+    else:
+        seqs = [mask, state_below, context]
+        shared_vars = [tparams[_p(prefix, 'U', layer_id)],
+                       tparams[_p(prefix, 'Wc', layer_id)]]
+        _step = _lstm_step_slice_attention
 
     if one_step:
         outputs = _step(*(seqs + init_states + shared_vars))
@@ -548,6 +576,11 @@ def lstm_layer(tparams, state_below, O, prefix='lstm', mask=None, **kwargs):
     outputs = [outputs]
 
     return outputs
+
+
+def lstm_cond_layer(tparams, state_below, O, prefix='lstm', mask=None, context=None, one_step=False, init_memory=None,
+                    init_state=None, context_mask=None, **kwargs):
+    pass
 
 
 # todo: implement residual connection

@@ -591,7 +591,9 @@ class NMTModel(object):
                 if True:
                     # [NOTE] Add more connections (fast-forward, highway, ...) here
                     input_ = h_last
-                h_last = get_build(self.O['unit'])(self.P, input_, self.O, prefix='encoder', mask=None,
+
+                # FIXME: mask modified from None to x_mask
+                h_last = get_build(self.O['unit'])(self.P, input_, self.O, prefix='encoder', mask=x_mask,
                                                    layer_id=layer_id, dropout_params=dropout_params)[0]
 
             context = h_last
