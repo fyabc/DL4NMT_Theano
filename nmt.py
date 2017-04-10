@@ -194,6 +194,9 @@ def train(dim_word=100,  # word vector dimensionality
           n_encoder_layers=1,
           n_decoder_layers=1,
           encoder_many_bidirectional=True,
+
+          attention_layer_id=0,
+          unit='gru',
           ):
 
     # Model options: load and save

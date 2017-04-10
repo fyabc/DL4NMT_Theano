@@ -246,6 +246,7 @@ def build_regression(args, top_options):
         print('Done')
 
     # Validate before train
+    new_model.save_whole_model(args.model_file, iteration=-1)
     best_val_cost = validate(valid_text_iterator, small_train_iterator, f_loss, only_encoder, top_options['maxlen'])
 
     learning_rate = args.learning_rate
@@ -382,6 +383,10 @@ def main():
                         help='The L2 regularization rate, default is 0.0.')
     parser.add_argument('--clip_c', action="store", metavar="clip_c", dest="clip_c", type=float, default=1.0,
                         help='The gradient clipping rate, default is 1.0.')
+    parser.add_argument('--unit', action='store', metavar='unit', dest='unit', type=str, default='gru',
+                        help='The unit type, default is "gru", can be set to "lstm".')
+    parser.add_argument('--attention', action='store', metavar='index', dest='attention_layer_id', type=int, default=0,
+                        help='Attention layer index, default is 0')
 
     args = parser.parse_args()
 
@@ -419,6 +424,9 @@ def main():
         # [NOTE]: This is for old model, settings for new model are in args
         n_encoder_layers=1,
         n_decoder_layers=1,
+
+        attention_layer_id=args.attention_layer_id,
+        unit=args.unit,
     ))
 
 

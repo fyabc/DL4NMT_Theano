@@ -60,7 +60,7 @@ class ParameterInitializer(object):
         attention_layer_id = self.O['attention_layer_id']
 
         # init_state, init_cell
-        np_parameters = get_init('ff')(self.O, np_parameters, prefix='ff_state', nin=context_dim, nout=self.O['dim'])
+        np_parameters = self.init_feed_forward(np_parameters, prefix='ff_state', nin=context_dim, nout=self.O['dim'])
 
         # Layers before attention layer
         for layer_id in xrange(0, attention_layer_id):

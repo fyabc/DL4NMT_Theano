@@ -31,6 +31,10 @@ def main():
     parser.add_argument('--conn', action='store', default=1, type=int, dest='connection_type',
                         help='Connection type, default is 1 (divided bidirectional GRU);\n'
                              '2 is bidirectional only in first layer, other layers are forward')
+    parser.add_argument('--unit', action='store', metavar='unit', dest='unit', type=str, default='gru',
+                        help='The unit type, default is "gru", can be set to "lstm".')
+    parser.add_argument('--attention', action='store', metavar='index', dest='attention_layer_id', type=int, default=0,
+                        help='Attention layer index, default is 0')
 
     args = parser.parse_args()
     print 'Command line arguments:'
@@ -68,6 +72,9 @@ def main():
         n_encoder_layers=args.n_encoder_layers,
         n_decoder_layers=args.n_decoder_layers,
         encoder_many_bidirectional=args.connection_type == 1,
+
+        attention_layer_id=args.attention_layer_id,
+        unit=args.unit,
     )
 
 
