@@ -25,7 +25,7 @@ def translate_model(queue, rqueue, pid, model, options, k, normalize):
     # allocate model parameters
     params = model.initializer.init_params()
     # load model parameters and set theano shared variables
-    params = load_params(model, params)
+    params = load_params(options['preload'], params)
     model.init_tparams(params)
 
     # word index
