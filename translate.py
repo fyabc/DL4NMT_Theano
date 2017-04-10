@@ -15,7 +15,7 @@ from nmt import gen_sample, load_params
 from model import NMTModel
 
 
-def translate_model(queue, rqueue, pid, model, options, k, normalize):
+def translate_model(queue, rqueue, pid, model_name, options, k, normalize):
     from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
     trng = RandomStreams(1234)
     use_noise = theano.shared(numpy.float32(0.))
@@ -25,7 +25,7 @@ def translate_model(queue, rqueue, pid, model, options, k, normalize):
     # allocate model parameters
     params = model.initializer.init_params()
     # load model parameters and set theano shared variables
-    params = load_params(options['preload'], params)
+    params = load_params(model_name, params)
     model.init_tparams(params)
 
     # word index
