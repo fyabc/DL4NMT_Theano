@@ -554,49 +554,81 @@ class NMTModel(object):
             Shape: ([Ts], [BS], [Hc])
         """
 
+        residual = self.O['residual']
+
         input_ = src_embedding
         input_r = src_embedding_r
 
+        # List of inputs and outputs of each layer (for residual)
+        inputs = []
+        outputs = []
+
         if self.O['encoder_many_bidirectional']:
             # First layer
-            h_last = get_build(self.O['unit'])(self.P, input_, self.O, prefix='encoder', mask=x_mask, layer_id=0,
+            inputs.append((input_, input_r))
+
+            h_last = get_build(self.O['unit'])(self.P, inputs[-1][0], self.O, prefix='encoder', mask=x_mask, layer_id=0,
                                                dropout_params=dropout_params)[0]
-            h_last_r = get_build(self.O['unit'])(self.P, input_r, self.O, prefix='encoder_r', mask=xr_mask,
+            h_last_r = get_build(self.O['unit'])(self.P, inputs[-1][1], self.O, prefix='encoder_r', mask=xr_mask,
                                                  layer_id=0, dropout_params=dropout_params)[0]
+
+            outputs.append((h_last, h_last_r))
 
             # Other layers
             for layer_id in xrange(1, self.O['n_encoder_layers']):
-                if True:
-                    # [NOTE] Add more connections (fast-forward, highway, ...) here
-                    input_, input_r = h_last, h_last_r
+                if residual == 'layer_wise':
+                    if layer_id == 1:
+                        # [NOTE] Do not add residual on layer 1
+                        inputs.append(outputs[-1])
+                    else:
+                        # output of last layer + input of last layer
+                        inputs.append((
+                            outputs[-1][0] + inputs[-1][0],
+                            outputs[-1][1] + inputs[-1][1],
+                        ))
+                else:
+                    inputs.append(outputs[-1])
 
-                h_last = get_build(self.O['unit'])(self.P, input_, self.O, prefix='encoder', mask=x_mask,
+                h_last = get_build(self.O['unit'])(self.P, inputs[-1][0], self.O, prefix='encoder', mask=x_mask,
                                                    layer_id=layer_id, dropout_params=dropout_params)[0]
-                h_last_r = get_build(self.O['unit'])(self.P, input_r, self.O, prefix='encoder_r', mask=xr_mask,
+                h_last_r = get_build(self.O['unit'])(self.P, inputs[-1][1], self.O, prefix='encoder_r', mask=xr_mask,
                                                      layer_id=layer_id, dropout_params=dropout_params)[0]
 
+                outputs.append((h_last, h_last_r))
+
             # Context will be the concatenation of forward and backward RNNs
-            context = concatenate([h_last, h_last_r[::-1]], axis=h_last.ndim - 1)
+            context = concatenate([outputs[-1][0], outputs[-1][1][::-1]], axis=h_last.ndim - 1)
         else:
             # First layer
-            h_last = get_build(self.O['unit'])(self.P, input_, self.O, prefix='encoder', mask=x_mask, layer_id=0,
-                                               dropout_params=dropout_params)[0]
-            h_last_r = get_build(self.O['unit'])(self.P, input_r, self.O, prefix='encoder_r', mask=xr_mask,
-                                                 layer_id=0, dropout_params=dropout_params)[0]
+            inputs.append((input_, input_r))
 
+            h_last = get_build(self.O['unit'])(self.P, inputs[-1][0], self.O, prefix='encoder', mask=x_mask, layer_id=0,
+                                               dropout_params=dropout_params)[0]
+            h_last_r = get_build(self.O['unit'])(self.P, inputs[-1][1], self.O, prefix='encoder_r', mask=xr_mask,
+                                                 layer_id=0, dropout_params=dropout_params)[0]
             h_last = concatenate([h_last, h_last_r[::-1]], axis=h_last.ndim - 1)
+
+            outputs.append(h_last)
 
             # Other layers
             for layer_id in xrange(1, self.O['n_encoder_layers']):
-                if True:
-                    # [NOTE] Add more connections (fast-forward, highway, ...) here
-                    input_ = h_last
+                if residual == 'layer_wise':
+                    if layer_id == 1:
+                        # [NOTE] Do not add residual on layer 1
+                        inputs.append(outputs[-1])
+                    else:
+                        # output of last layer + input of last layer
+                        inputs.append(outputs[-1] + inputs[-1])
+                else:
+                    inputs.append(outputs[-1])
 
                 # FIXME: mask modified from None to x_mask
-                h_last = get_build(self.O['unit'])(self.P, input_, self.O, prefix='encoder', mask=x_mask,
+                h_last = get_build(self.O['unit'])(self.P, inputs[-1], self.O, prefix='encoder', mask=x_mask,
                                                    layer_id=layer_id, dropout_params=dropout_params)[0]
 
-            context = h_last
+                outputs.append(h_last)
+
+            context = outputs[-1]
 
         return context
 
@@ -606,41 +638,67 @@ class NMTModel(object):
         :return Decoder context vector and hidden states
         """
 
-        hidden_decoder = tgt_embedding
-
         attention_layer_id = self.O['attention_layer_id']
+        residual = self.O['residual']
+
+        # List of inputs and outputs of each layer (for residual)
+        inputs = []
+        outputs = []
 
         # Layers before attention layer
         for layer_id in xrange(0, attention_layer_id):
-            if True:
-                # [NOTE] Add more connections (fast-forward, highway, ...) here
-                input_ = hidden_decoder
+            # [NOTE] Do not add residual on layer 0 and 1
+            if layer_id == 0:
+                inputs.append(tgt_embedding)
+            elif layer_id == 1:
+                inputs.append(outputs[-1])
+            else:
+                if residual == 'layer_wise':
+                    # output of last layer + input of last layer
+                    inputs.append(outputs[-1] + inputs[-1])
 
             hidden_decoder = get_build(self.O['unit'])(
                 # todo
-                self.P, input_, self.O, prefix='encoder', mask=y_mask, layer_id=layer_id,
+                self.P, inputs[-1], self.O, prefix='encoder', mask=y_mask, layer_id=layer_id,
                 dropout_params=dropout_params, one_step=one_step, init_state=init_state, context=None,
             )
 
+            outputs.append(hidden_decoder)
+
         # Attention layer
-        input_ = hidden_decoder
+        if residual == 'layer_wise':
+            if attention_layer_id <= 1:
+                inputs.append(outputs[-1])
+            else:
+                inputs.append(outputs[-1] + inputs[-1])
+        else:
+            inputs.append(outputs[-1])
+
         hidden_decoder, context_decoder, alpha_decoder = get_build(self.O['unit'] + '_cond')(
-            self.P, input_, self.O, prefix='decoder', mask=y_mask, context=context,
+            self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, context=context,
             context_mask=x_mask, one_step=one_step, init_state=init_state, dropout_params=dropout_params,
         )
 
+        outputs.append(hidden_decoder)
+
         # Layers after attention layer
         for layer_id in xrange(attention_layer_id + 1, self.O['n_decoder_layers']):
-            if True:
-                # [NOTE] Add more connections (fast-forward, highway, ...) here
-                input_ = hidden_decoder
+            if residual == 'layer_wise':
+                if layer_id <= 1:
+                    inputs.append(outputs[-1])
+                else:
+                    inputs.append(outputs[-1] + inputs[-1])
+            else:
+                inputs.append(outputs[-1])
 
             hidden_decoder = get_build(self.O['unit'])(
-                self.P, input_, self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
+                self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
                 dropout_params=dropout_params, context=context_decoder, init_states=init_state,
                 one_step=one_step)[0]
 
-        return hidden_decoder, context_decoder, alpha_decoder
+            outputs.append(hidden_decoder)
+
+        return outputs[-1], context_decoder, alpha_decoder
 
     def get_word_probability(self, hidden_decoder, context_decoder, tgt_embedding, **kwargs):
         """Compute word probabilities."""

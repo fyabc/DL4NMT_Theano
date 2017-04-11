@@ -78,11 +78,11 @@ def param_init_feed_forward(O, params, prefix='ff', nin=None, nout=None,
     return params
 
 
-def feed_forward(tparams, state_below, O, prefix='rconv',
+def feed_forward(P, state_below, O, prefix='rconv',
                  activ=tanh, **kwargs):
     if isinstance(activ, (str, unicode)):
         activ = eval(activ)
-    return activ(T.dot(state_below, tparams[_p(prefix, 'W')]) + tparams[_p(prefix, 'b')])
+    return activ(T.dot(state_below, P[_p(prefix, 'W')]) + P[_p(prefix, 'b')])
 
 
 def param_init_gru(O, params, prefix='gru', nin=None, dim=None, **kwargs):
@@ -176,7 +176,7 @@ def _gru_step_slice_attention(
     return ht
 
 
-def gru_layer(tparams, state_below, O, prefix='gru', mask=None, **kwargs):
+def gru_layer(P, state_below, O, prefix='gru', mask=None, **kwargs):
     """GRU layer
     
     input:
@@ -194,15 +194,15 @@ def gru_layer(tparams, state_below, O, prefix='gru', mask=None, **kwargs):
 
     n_steps = state_below.shape[0]
     n_samples = state_below.shape[1] if state_below.ndim == 3 else 1
-    dim = tparams[_p(prefix, 'Ux', layer_id)].shape[1]
+    dim = P[_p(prefix, 'Ux', layer_id)].shape[1]
 
     mask = T.alloc(1., n_steps, 1) if mask is None else mask
 
     # state_below is the input word embeddings
     # input to the gates, concatenated
-    state_below_ = T.dot(state_below, tparams[_p(prefix, 'W', layer_id)]) + tparams[_p(prefix, 'b', layer_id)]
+    state_below_ = T.dot(state_below, P[_p(prefix, 'W', layer_id)]) + P[_p(prefix, 'b', layer_id)]
     # input to compute the hidden state proposal
-    state_belowx = T.dot(state_below, tparams[_p(prefix, 'Wx', layer_id)]) + tparams[_p(prefix, 'bx', layer_id)]
+    state_belowx = T.dot(state_below, P[_p(prefix, 'Wx', layer_id)]) + P[_p(prefix, 'bx', layer_id)]
 
     # prepare scan arguments
     init_states = [kwargs.pop('init_states', T.alloc(0., n_samples, dim))]
@@ -210,17 +210,17 @@ def gru_layer(tparams, state_below, O, prefix='gru', mask=None, **kwargs):
     if context is None:
         seqs = [mask, state_below_, state_belowx]
         shared_vars = [
-            tparams[_p(prefix, 'U', layer_id)],
-            tparams[_p(prefix, 'Ux', layer_id)],
+            P[_p(prefix, 'U', layer_id)],
+            P[_p(prefix, 'Ux', layer_id)],
         ]
         _step = _gru_step_slice
     else:
         seqs = [mask, state_below_, state_belowx, context]
         shared_vars = [
-            tparams[_p(prefix, 'U', layer_id)],
-            tparams[_p(prefix, 'Ux', layer_id)],
-            tparams[_p(prefix, 'Wc', layer_id)],
-            tparams[_p(prefix, 'Wcx', layer_id)],
+            P[_p(prefix, 'U', layer_id)],
+            P[_p(prefix, 'Ux', layer_id)],
+            P[_p(prefix, 'Wc', layer_id)],
+            P[_p(prefix, 'Wcx', layer_id)],
         ]
         _step = _gru_step_slice_attention
 
@@ -312,7 +312,7 @@ def param_init_gru_cond(O, params, prefix='gru_cond', nin=None, dim=None, dimctx
     return params
 
 
-def gru_cond_layer(tparams, state_below, O, prefix='gru', mask=None, context=None, one_step=False, init_memory=None,
+def gru_cond_layer(P, state_below, O, prefix='gru', mask=None, context=None, one_step=False, init_memory=None,
                    init_state=None, context_mask=None, **kwargs):
     """Conditional GRU layer with Attention
     
@@ -342,7 +342,7 @@ def gru_cond_layer(tparams, state_below, O, prefix='gru', mask=None, context=Non
         n_samples = state_below.shape[1]
     else:
         n_samples = 1
-    dim = tparams[_p(prefix, 'Wcx', layer_id)].shape[1]
+    dim = P[_p(prefix, 'Wcx', layer_id)].shape[1]
     dropout_params = kwargs.pop('dropout_params', None)
 
     # Mask
@@ -353,11 +353,11 @@ def gru_cond_layer(tparams, state_below, O, prefix='gru', mask=None, context=Non
     if init_state is None:
         init_state = T.alloc(0., n_samples, dim)
 
-    projected_context = T.dot(context, tparams[_p(prefix, 'Wc_att', layer_id)]) + tparams[_p(prefix, 'b_att', layer_id)]
+    projected_context = T.dot(context, P[_p(prefix, 'Wc_att', layer_id)]) + P[_p(prefix, 'b_att', layer_id)]
 
     # projected x
-    state_belowx = T.dot(state_below, tparams[_p(prefix, 'Wx', layer_id)]) + tparams[_p(prefix, 'bx', layer_id)]
-    state_below_ = T.dot(state_below, tparams[_p(prefix, 'W', layer_id)]) + tparams[_p(prefix, 'b', layer_id)]
+    state_belowx = T.dot(state_below, P[_p(prefix, 'Wx', layer_id)]) + P[_p(prefix, 'bx', layer_id)]
+    state_below_ = T.dot(state_below, P[_p(prefix, 'W', layer_id)]) + P[_p(prefix, 'b', layer_id)]
 
     def _step_slice(m_, x_, xx_,
                     h_, ctx_, alpha_,
@@ -407,17 +407,17 @@ def gru_cond_layer(tparams, state_below, O, prefix='gru', mask=None, context=Non
     seqs = [mask, state_below_, state_belowx]
     _step = _step_slice
 
-    shared_vars = [tparams[_p(prefix, 'U', layer_id)],
-                   tparams[_p(prefix, 'Wc', layer_id)],
-                   tparams[_p(prefix, 'W_comb_att', layer_id)],
-                   tparams[_p(prefix, 'U_att', layer_id)],
-                   tparams[_p(prefix, 'c_tt', layer_id)],
-                   tparams[_p(prefix, 'Ux', layer_id)],
-                   tparams[_p(prefix, 'Wcx', layer_id)],
-                   tparams[_p(prefix, 'U_nl', layer_id)],
-                   tparams[_p(prefix, 'Ux_nl', layer_id)],
-                   tparams[_p(prefix, 'b_nl', layer_id)],
-                   tparams[_p(prefix, 'bx_nl', layer_id)]]
+    shared_vars = [P[_p(prefix, 'U', layer_id)],
+                   P[_p(prefix, 'Wc', layer_id)],
+                   P[_p(prefix, 'W_comb_att', layer_id)],
+                   P[_p(prefix, 'U_att', layer_id)],
+                   P[_p(prefix, 'c_tt', layer_id)],
+                   P[_p(prefix, 'Ux', layer_id)],
+                   P[_p(prefix, 'Wcx', layer_id)],
+                   P[_p(prefix, 'U_nl', layer_id)],
+                   P[_p(prefix, 'Ux_nl', layer_id)],
+                   P[_p(prefix, 'b_nl', layer_id)],
+                   P[_p(prefix, 'bx_nl', layer_id)]]
 
     if one_step:
         result = _step(*(seqs + [init_state, None, None, projected_context, context] + shared_vars))
@@ -520,7 +520,7 @@ def _lstm_step_slice_attention(
     return h, c
 
 
-def lstm_layer(tparams, state_below, O, prefix='lstm', mask=None, **kwargs):
+def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
     """LSTM layer
     
     inputs and outputs are same as GRU layer.
@@ -533,26 +533,24 @@ def lstm_layer(tparams, state_below, O, prefix='lstm', mask=None, **kwargs):
 
     n_steps = state_below.shape[0]
     n_samples = state_below.shape[1] if state_below.ndim == 3 else 1
-    dim = tparams[_p(prefix, 'U', layer_id)].shape[1] // 4
+    dim = P[_p(prefix, 'U', layer_id)].shape[1] // 4
 
     mask = T.alloc(1., n_steps, 1) if mask is None else mask
 
-    state_below = T.dot(state_below, tparams[_p(prefix, 'W', layer_id)]) + tparams[_p(prefix, 'b', layer_id)]
+    state_below = T.dot(state_below, P[_p(prefix, 'W', layer_id)]) + P[_p(prefix, 'b', layer_id)]
 
     # prepare scan arguments
     init_states = [kwargs.pop('init_states', T.alloc(0., n_samples, dim)),
                    T.alloc(0., n_samples, dim)]
 
-    # todo Add context
-
     if context is None:
         seqs = [mask, state_below]
-        shared_vars = [tparams[_p(prefix, 'U', layer_id)]]
+        shared_vars = [P[_p(prefix, 'U', layer_id)]]
         _step = _lstm_step_slice
     else:
         seqs = [mask, state_below, context]
-        shared_vars = [tparams[_p(prefix, 'U', layer_id)],
-                       tparams[_p(prefix, 'Wc', layer_id)]]
+        shared_vars = [P[_p(prefix, 'U', layer_id)],
+                       P[_p(prefix, 'Wc', layer_id)]]
         _step = _lstm_step_slice_attention
 
     if one_step:
@@ -578,9 +576,41 @@ def lstm_layer(tparams, state_below, O, prefix='lstm', mask=None, **kwargs):
     return outputs
 
 
-def lstm_cond_layer(tparams, state_below, O, prefix='lstm', mask=None, context=None, one_step=False, init_memory=None,
+def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, one_step=False, init_memory=None,
                     init_state=None, context_mask=None, **kwargs):
-    pass
+    """Conditional LSTM layer with attention
+    
+    inputs and outputs are same as GRU cond layer.
+    """
+
+    layer_id = kwargs.pop('layer_id', 0)
+
+    assert context, 'Context must be provided'
+    assert context.ndim == 3, 'Context must be 3-d: #annotation * #sample * dim'
+    if one_step:
+        assert init_state, 'previous state must be provided'
+
+    # Dimensions
+    n_steps = state_below.shape[0]
+    if state_below.ndim == 3:
+        n_samples = state_below.shape[1]
+    else:
+        n_samples = 1
+    dim = P[_p(prefix, 'Wcx', layer_id)].shape[1]
+    dropout_params = kwargs.pop('dropout_params', None)
+
+    # Mask
+    if mask is None:
+        mask = T.alloc(1., n_steps, 1)
+
+    # Initial/previous state
+    if init_state is None:
+        init_state = T.alloc(0., n_samples, dim)
+
+    projected_context = T.dot(context, P[_p(prefix, 'Wc_att', layer_id)]) + P[_p(prefix, 'b_att', layer_id)]
+
+    # Projected x
+    state_below = T.dot(state_below, P[_p(prefix, 'W', layer_id)]) + P[_p(prefix, 'b', layer_id)]
 
 
 # todo: implement residual connection

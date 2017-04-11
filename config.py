@@ -68,4 +68,11 @@ DefaultOptions = dict(
 
     # Unit type, LSTM or GRU (Attention unit type = unit type + '_cond')
     unit='gru',
+
+    # Residual connection type
+    # Candidates:
+    #   None:           not any residual connection
+    #   "layer_wise":   connect to next layer
+    #   "last":         all connect to the last layer (average)
+    residual=None,
 )
