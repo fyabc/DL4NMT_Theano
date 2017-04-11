@@ -554,6 +554,7 @@ class NMTModel(object):
             Shape: ([Ts], [BS], [Hc])
         """
 
+        n_layers = self.O['n_encoder_layers']
         residual = self.O['residual']
 
         input_ = src_embedding
@@ -575,19 +576,25 @@ class NMTModel(object):
             outputs.append((h_last, h_last_r))
 
             # Other layers
-            for layer_id in xrange(1, self.O['n_encoder_layers']):
-                if residual == 'layer_wise':
-                    if layer_id == 1:
-                        # [NOTE] Do not add residual on layer 1
-                        inputs.append(outputs[-1])
-                    else:
-                        # output of last layer + input of last layer
+            for layer_id in xrange(1, n_layers):
+                if layer_id == 1:
+                    inputs.append(outputs[-1])
+                else:
+                    if residual == 'layer_wise':
+                        # output of layer before + input of layer before
                         inputs.append((
                             outputs[-1][0] + inputs[-1][0],
                             outputs[-1][1] + inputs[-1][1],
                         ))
-                else:
-                    inputs.append(outputs[-1])
+                    elif residual == 'last' and layer_id == n_layers - 1:
+                        # only for last layer:
+                        # output of layer before + mean of inputs of all layers before (except layer 0)
+                        inputs.append((
+                            outputs[-1][0] + average([inputs[i][0] for i in xrange(1, len(inputs))]),
+                            outputs[-1][1] + average([inputs[i][1] for i in xrange(1, len(inputs))]),
+                        ))
+                    else:
+                        inputs.append(outputs[-1])
 
                 h_last = get_build(self.O['unit'])(self.P, inputs[-1][0], self.O, prefix='encoder', mask=x_mask,
                                                    layer_id=layer_id, dropout_params=dropout_params)[0]
@@ -611,16 +618,19 @@ class NMTModel(object):
             outputs.append(h_last)
 
             # Other layers
-            for layer_id in xrange(1, self.O['n_encoder_layers']):
-                if residual == 'layer_wise':
-                    if layer_id == 1:
-                        # [NOTE] Do not add residual on layer 1
-                        inputs.append(outputs[-1])
-                    else:
-                        # output of last layer + input of last layer
-                        inputs.append(outputs[-1] + inputs[-1])
-                else:
+            for layer_id in xrange(1, n_layers):
+                if layer_id == 1:
                     inputs.append(outputs[-1])
+                else:
+                    if residual == 'layer_wise':
+                        # output of layer before + input of layer before
+                        inputs.append(outputs[-1] + inputs[-1])
+                    elif residual == 'last' and layer_id == n_layers - 1:
+                        # only for last layer:
+                        # output of layer before + mean of inputs of all layers before (except layer 0)
+                        inputs.append(outputs[-1] + average(inputs[1:]))
+                    else:
+                        inputs.append(outputs[-1])
 
                 # FIXME: mask modified from None to x_mask
                 h_last = get_build(self.O['unit'])(self.P, inputs[-1], self.O, prefix='encoder', mask=x_mask,
@@ -638,6 +648,7 @@ class NMTModel(object):
         :return Decoder context vector and hidden states
         """
 
+        n_layers = self.O['n_decoder_layers']
         attention_layer_id = self.O['attention_layer_id']
         residual = self.O['residual']
 
@@ -654,8 +665,14 @@ class NMTModel(object):
                 inputs.append(outputs[-1])
             else:
                 if residual == 'layer_wise':
-                    # output of last layer + input of last layer
+                    # output of layer before + input of layer before
                     inputs.append(outputs[-1] + inputs[-1])
+                elif residual == 'last' and layer_id == n_layers - 1:
+                    # only for last layer:
+                    # output of layer before + mean of inputs of all layers before (except layer 0)
+                    inputs.append(outputs[-1] + average(inputs[1:]))
+                else:
+                    inputs.append(outputs[-1])
 
             hidden_decoder = get_build(self.O['unit'])(
                 # todo
@@ -666,13 +683,19 @@ class NMTModel(object):
             outputs.append(hidden_decoder)
 
         # Attention layer
-        if residual == 'layer_wise':
-            if attention_layer_id <= 1:
-                inputs.append(outputs[-1])
-            else:
-                inputs.append(outputs[-1] + inputs[-1])
-        else:
+        if attention_layer_id == 0:
+            inputs.append(tgt_embedding)
+        elif attention_layer_id == 1:
             inputs.append(outputs[-1])
+        else:
+            if residual == 'layer_wise':
+                inputs.append(outputs[-1] + inputs[-1])
+            elif residual == 'last' and attention_layer_id == n_layers - 1:
+                # only for last layer:
+                # output of layer before + mean of inputs of all layers before (except layer 0)
+                inputs.append(outputs[-1] + average(inputs[1:]))
+            else:
+                inputs.append(outputs[-1])
 
         hidden_decoder, context_decoder, alpha_decoder = get_build(self.O['unit'] + '_cond')(
             self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, context=context,
@@ -682,14 +705,18 @@ class NMTModel(object):
         outputs.append(hidden_decoder)
 
         # Layers after attention layer
-        for layer_id in xrange(attention_layer_id + 1, self.O['n_decoder_layers']):
-            if residual == 'layer_wise':
-                if layer_id <= 1:
-                    inputs.append(outputs[-1])
-                else:
-                    inputs.append(outputs[-1] + inputs[-1])
-            else:
+        for layer_id in xrange(attention_layer_id + 1, n_layers):
+            if layer_id <= 1:
                 inputs.append(outputs[-1])
+            else:
+                if residual == 'layer_wise':
+                    inputs.append(outputs[-1] + inputs[-1])
+                elif residual == 'last' and layer_id == n_layers - 1:
+                    # only for last layer:
+                    # output of layer before + mean of inputs of all layers before (except layer 0)
+                    inputs.append(outputs[-1] + average(inputs[1:]))
+                else:
+                    inputs.append(outputs[-1])
 
             hidden_decoder = get_build(self.O['unit'])(
                 self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,

@@ -144,6 +144,10 @@ def concatenate(tensor_list, axis=0):
     return out
 
 
+def average(l):
+    return sum(l) / len(l)
+
+
 def apply_gradient_clipping(clip_c, grads):
     if clip_c > 0.:
         g2 = 0.
@@ -325,6 +329,7 @@ __all__ = [
     'normal_weight',
     'uniform_weight',
     'concatenate',
+    'average',
     'apply_gradient_clipping',
     'l2_regularization',
     'regularize_alpha_weights',
