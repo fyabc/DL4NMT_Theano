@@ -426,10 +426,8 @@ def gru_cond_layer(P, state_below, O, prefix='gru', mask=None, context=None, one
             _step,
             sequences=seqs,
             outputs_info=[init_state,
-                          T.alloc(0., n_samples,
-                                  context.shape[2]),
-                          T.alloc(0., n_samples,
-                                  context.shape[0])],
+                          T.alloc(0., n_samples, context.shape[2]),
+                          T.alloc(0., n_samples, context.shape[0])],
             non_sequences=[projected_context, context] + shared_vars,
             name=_p(prefix, '_layers'),
             n_steps=n_steps,
@@ -470,8 +468,12 @@ def param_init_lstm(O, params, prefix='lstm', nin=None, dim=None, **kwargs):
     params[_p(prefix, 'b', layer_id)] = np.zeros((4 * dim,), dtype=fX)
 
     if context_dim is not None:
-        # todo Add context
-        pass
+        params[_p(prefix, 'Wc', layer_id)] = np.concatenate([
+            normal_weight(context_dim, dim),
+            normal_weight(context_dim, dim),
+            normal_weight(context_dim, dim),
+            normal_weight(context_dim, dim),
+        ], axis=1)
 
     return params
 
@@ -576,6 +578,11 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
     return outputs
 
 
+def param_init_lstm_cond(O, params, prefix='lstm_cond', nin=None, dim=None, dimctx=None, nin_nonlin=None,
+                         dim_nonlin=None, **kwargs):
+    pass
+
+
 def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, one_step=False, init_memory=None,
                     init_state=None, context_mask=None, **kwargs):
     """Conditional LSTM layer with attention
@@ -596,7 +603,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
         n_samples = state_below.shape[1]
     else:
         n_samples = 1
-    dim = P[_p(prefix, 'Wcx', layer_id)].shape[1]
+    dim = P[_p(prefix, 'Wc', layer_id)].shape[1] // 4
     dropout_params = kwargs.pop('dropout_params', None)
 
     # Mask
@@ -612,8 +619,68 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
     # Projected x
     state_below = T.dot(state_below, P[_p(prefix, 'W', layer_id)]) + P[_p(prefix, 'b', layer_id)]
 
+    def _step_slice(mask_, x_,
+                    h_, c_, ctx_, alpha_,
+                    projected_context_, context_,
+                    U, Wc, W_comb_att, U_att, c_tt, U_nl, b_nl):
+        # LSTM 1
+        preact1 = T.dot(h_, U) + x_
 
-# todo: implement residual connection
+        i = T.nnet.sigmoid(_slice(preact1, 0, dim))
+        f = T.nnet.sigmoid(_slice(preact1, 1, dim))
+        o = T.nnet.sigmoid(_slice(preact1, 2, dim))
+        c1 = T.tanh(_slice(preact1, 3, dim))
+
+        c1 = f * c_ + i * c1
+        c1 = mask_[:, None] * c1 + (1. - mask_)[:, None] * c_
+
+        h1 = o * T.tanh(c1)
+        h1 = mask_[:, None] * h1 + (1. - mask_)[:, None] * h_
+
+        # TODO
+        # Attention
+
+        # LSTM 2 (with attention)
+        pass
+
+    # Prepare scan arguments
+    seqs = [mask, state_below]
+    _step = _step_slice
+    init_states = [
+        init_state,
+        T.alloc(0., n_samples, dim),
+        T.alloc(0., n_samples, context.shape[2]),
+        T.alloc(0., n_samples, context.shape[0]),
+    ]
+    shared_vars = [
+        P[_p(prefix, 'U', layer_id)],
+        P[_p(prefix, 'Wc', layer_id)],
+        P[_p(prefix, 'W_comb_att', layer_id)],
+        P[_p(prefix, 'U_att', layer_id)],
+        P[_p(prefix, 'c_tt', layer_id)],
+        P[_p(prefix, 'U_nl', layer_id)],
+        P[_p(prefix, 'b_nl', layer_id)],
+    ]
+
+    if one_step:
+        result = _step(*(seqs + [init_state, None, None, projected_context, context] + shared_vars))
+    else:
+        result, _ = theano.scan(
+            _step,
+            sequences=seqs,
+            outputs_info=init_states,
+            non_sequences=[projected_context, context] + shared_vars,
+            name=_p(prefix, '_layers'),
+            n_steps=n_steps,
+            profile=profile,
+            strict=True,
+        )
+
+    if dropout_params:
+        result = list(result)
+        result[0] = dropout_layer(result[0], *dropout_params)
+
+    return result
 
 
 # layers: 'name': ('parameter initializer', 'builder')
@@ -622,6 +689,7 @@ layers = {
     'gru': (param_init_gru, gru_layer),
     'gru_cond': (param_init_gru_cond, gru_cond_layer),
     'lstm': (param_init_lstm, lstm_layer),
+    'lstm_cond': (param_init_lstm_cond, lstm_cond_layer),
 }
 
 
