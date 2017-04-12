@@ -596,7 +596,7 @@ def param_init_lstm_cond(O, params, prefix='lstm_cond', nin=None, dim=None, dimc
         normal_weight(nin, dim),
         normal_weight(nin, dim),
         normal_weight(nin, dim),
-        normal_weight(nin, dim),
+        normal_weight(nin_nonlin, dim),
     ], axis=1)
     params[_p(prefix, 'W', layer_id)] = W
     params[_p(prefix, 'b', layer_id)] = np.zeros((4 * dim,), dtype=fX)

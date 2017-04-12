@@ -556,6 +556,7 @@ class NMTModel(object):
 
         n_layers = self.O['n_encoder_layers']
         residual = self.O['residual']
+        use_zigzag = self.O['use_zigzag']
 
         input_ = src_embedding
         input_r = src_embedding_r
@@ -564,18 +565,19 @@ class NMTModel(object):
         inputs = []
         outputs = []
 
+        # First layer (bidirectional)
+        inputs.append((input_, input_r))
+
+        h_last = get_build(self.O['unit'])(self.P, inputs[-1][0], self.O, prefix='encoder', mask=x_mask, layer_id=0,
+                                           dropout_params=dropout_params)[0]
+        h_last_r = get_build(self.O['unit'])(self.P, inputs[-1][1], self.O, prefix='encoder_r', mask=xr_mask,
+                                             layer_id=0, dropout_params=dropout_params)[0]
+
         if self.O['encoder_many_bidirectional']:
-            # First layer
-            inputs.append((input_, input_r))
-
-            h_last = get_build(self.O['unit'])(self.P, inputs[-1][0], self.O, prefix='encoder', mask=x_mask, layer_id=0,
-                                               dropout_params=dropout_params)[0]
-            h_last_r = get_build(self.O['unit'])(self.P, inputs[-1][1], self.O, prefix='encoder_r', mask=xr_mask,
-                                                 layer_id=0, dropout_params=dropout_params)[0]
-
+            # First layer output
             outputs.append((h_last, h_last_r))
 
-            # Other layers
+            # Other layers (bidirectional)
             for layer_id in xrange(1, n_layers):
                 if layer_id == 1:
                     inputs.append(outputs[-1])
@@ -596,28 +598,32 @@ class NMTModel(object):
                     else:
                         inputs.append(outputs[-1])
 
-                h_last = get_build(self.O['unit'])(self.P, inputs[-1][0], self.O, prefix='encoder', mask=x_mask,
+                # Zig-zag
+                x_mask_, xr_mask_ = x_mask, xr_mask
+                if use_zigzag:
+                    inputs[-1] = (inputs[-1][0][::-1], inputs[-1][1][::-1])
+                    if layer_id % 2 == 1:
+                        x_mask_, xr_mask_ = xr_mask, x_mask
+
+                h_last = get_build(self.O['unit'])(self.P, inputs[-1][0], self.O, prefix='encoder', mask=x_mask_,
                                                    layer_id=layer_id, dropout_params=dropout_params)[0]
-                h_last_r = get_build(self.O['unit'])(self.P, inputs[-1][1], self.O, prefix='encoder_r', mask=xr_mask,
+                h_last_r = get_build(self.O['unit'])(self.P, inputs[-1][1], self.O, prefix='encoder_r', mask=xr_mask_,
                                                      layer_id=layer_id, dropout_params=dropout_params)[0]
 
                 outputs.append((h_last, h_last_r))
 
             # Context will be the concatenation of forward and backward RNNs
-            context = concatenate([outputs[-1][0], outputs[-1][1][::-1]], axis=h_last.ndim - 1)
+            if use_zigzag and n_layers % 2 == 0:
+                context = concatenate([outputs[-1][0][::-1], outputs[-1][1]], axis=h_last.ndim - 1)
+            else:
+                context = concatenate([outputs[-1][0], outputs[-1][1][::-1]], axis=h_last.ndim - 1)
         else:
-            # First layer
-            inputs.append((input_, input_r))
-
-            h_last = get_build(self.O['unit'])(self.P, inputs[-1][0], self.O, prefix='encoder', mask=x_mask, layer_id=0,
-                                               dropout_params=dropout_params)[0]
-            h_last_r = get_build(self.O['unit'])(self.P, inputs[-1][1], self.O, prefix='encoder_r', mask=xr_mask,
-                                                 layer_id=0, dropout_params=dropout_params)[0]
+            # First layer output
             h_last = concatenate([h_last, h_last_r[::-1]], axis=h_last.ndim - 1)
 
             outputs.append(h_last)
 
-            # Other layers
+            # Other layers (forward)
             for layer_id in xrange(1, n_layers):
                 if layer_id == 1:
                     inputs.append(outputs[-1])
@@ -632,13 +638,23 @@ class NMTModel(object):
                     else:
                         inputs.append(outputs[-1])
 
+                x_mask_ = x_mask
+                if use_zigzag:
+                    inputs[-1] = inputs[-1][::-1]
+                    if layer_id % 2 == 1:
+                        x_mask_ = xr_mask
+
                 # FIXME: mask modified from None to x_mask
-                h_last = get_build(self.O['unit'])(self.P, inputs[-1], self.O, prefix='encoder', mask=x_mask,
+                h_last = get_build(self.O['unit'])(self.P, inputs[-1], self.O, prefix='encoder', mask=x_mask_,
                                                    layer_id=layer_id, dropout_params=dropout_params)[0]
 
                 outputs.append(h_last)
 
-            context = outputs[-1]
+            # Zig-zag
+            if use_zigzag and n_layers % 2 == 0:
+                context = outputs[-1][::-1]
+            else:
+                context = outputs[-1]
 
         return context
 

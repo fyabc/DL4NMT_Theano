@@ -75,4 +75,6 @@ DefaultOptions = dict(
     #   "layer_wise":   connect to next layer
     #   "last":         all connect to the last layer (average)
     residual=None,
+
+    use_zigzag=False,
 )

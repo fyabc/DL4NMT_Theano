@@ -198,6 +198,7 @@ def train(dim_word=100,  # word vector dimensionality
           attention_layer_id=0,
           unit='gru',
           residual=None,
+          use_zigzag=False,
           ):
 
     # Model options: load and save
