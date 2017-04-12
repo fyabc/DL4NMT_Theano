@@ -35,6 +35,10 @@ def main():
                         help='The unit type, default is "gru", can be set to "lstm".')
     parser.add_argument('--attention', action='store', metavar='index', dest='attention_layer_id', type=int, default=0,
                         help='Attention layer index, default is 0')
+    parser.add_argument('--residual', action='store', metavar='type', dest='residual', type=str, default=None,
+                        help='Residual connection type, default is None, candidates are "layer_wise", "last"')
+    parser.add_argument('-z', '--zigzag', action='store_true', default=False, dest='use_zigzag',
+                        help='Use zigzag in encoder, default is False, set to True')
 
     args = parser.parse_args()
     print 'Command line arguments:'
@@ -75,6 +79,8 @@ def main():
 
         attention_layer_id=args.attention_layer_id,
         unit=args.unit,
+        residual=args.residual,
+        use_zigzag=args.use_zigzag,
     )
 
 

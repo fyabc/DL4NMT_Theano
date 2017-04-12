@@ -572,9 +572,6 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
     if dropout_params:
         outputs = dropout_layer(outputs, *dropout_params)
 
-    # [NOTE] Be compatible with GRU conditional layer
-    outputs = [outputs]
-
     return outputs
 
 
@@ -724,7 +721,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
         h2 = o2 * T.tanh(c2)
         h2 = mask_[:, None] * h2 + (1. - mask_)[:, None] * h1
 
-        return h2, ctx_, alpha.T
+        return h2, c2, ctx_, alpha.T
 
     # Prepare scan arguments
     seqs = [mask, state_below]
@@ -763,7 +760,8 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
         result = list(result)
         result[0] = dropout_layer(result[0], *dropout_params)
 
-    return result
+    # Do not return memory c
+    return result[0], result[2], result[3]
 
 
 # layers: 'name': ('parameter initializer', 'builder')

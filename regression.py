@@ -127,6 +127,10 @@ def build_regression(args, top_options):
     new_options['n_encoder_layers'] = args.n_encoder_layers
     new_options['n_decoder_layers'] = args.n_decoder_layers
     new_options['encoder_many_bidirectional'] = args.connection_type == 1
+    new_options['unit'] = args.unit
+    new_options['attention_layer_id'] = args.attention_layer_id
+    new_options['residual'] = args.residual
+    new_options['use_zigzag'] = args.use_zigzag
 
     only_encoder = new_options['n_decoder_layers'] == old_options['n_decoder_layers']
 
@@ -387,6 +391,10 @@ def main():
                         help='The unit type, default is "gru", can be set to "lstm".')
     parser.add_argument('--attention', action='store', metavar='index', dest='attention_layer_id', type=int, default=0,
                         help='Attention layer index, default is 0')
+    parser.add_argument('--residual', action='store', metavar='type', dest='residual', type=str, default=None,
+                        help='Residual connection type, default is None, candidates are "layer_wise", "last"')
+    parser.add_argument('-z', '--zigzag', action='store_true', default=False, dest='use_zigzag',
+                        help='Use zigzag in encoder, default is False, set to True')
 
     args = parser.parse_args()
 
@@ -425,8 +433,10 @@ def main():
         n_encoder_layers=1,
         n_decoder_layers=1,
 
-        attention_layer_id=args.attention_layer_id,
-        unit=args.unit,
+        attention_layer_id=0,
+        unit='gru',
+        residual=None,
+        use_zigzag=False,
     ))
 
 
