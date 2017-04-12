@@ -580,7 +580,66 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
 
 def param_init_lstm_cond(O, params, prefix='lstm_cond', nin=None, dim=None, dimctx=None, nin_nonlin=None,
                          dim_nonlin=None, **kwargs):
-    pass
+    if nin is None:
+        nin = O['dim']
+    if dim is None:
+        dim = O['dim']
+    if dimctx is None:
+        dimctx = O['dim']
+    if nin_nonlin is None:
+        nin_nonlin = nin
+    if dim_nonlin is None:
+        dim_nonlin = dim
+    layer_id = kwargs.pop('layer_id', 0)
+
+    W = np.concatenate([
+        normal_weight(nin, dim),
+        normal_weight(nin, dim),
+        normal_weight(nin, dim),
+        normal_weight(nin, dim),
+    ], axis=1)
+    params[_p(prefix, 'W', layer_id)] = W
+    params[_p(prefix, 'b', layer_id)] = np.zeros((4 * dim,), dtype=fX)
+    U = np.concatenate([
+        orthogonal_weight(dim_nonlin),
+        orthogonal_weight(dim_nonlin),
+        orthogonal_weight(dim_nonlin),
+        orthogonal_weight(dim_nonlin),
+    ], axis=1)
+    params[_p(prefix, 'U', layer_id)] = U
+
+    U_nl = np.concatenate([
+        orthogonal_weight(dim_nonlin),
+        orthogonal_weight(dim_nonlin),
+        orthogonal_weight(dim_nonlin),
+        orthogonal_weight(dim_nonlin),
+    ], axis=1)
+    params[_p(prefix, 'U_nl', layer_id)] = U_nl
+    params[_p(prefix, 'b_nl', layer_id)] = np.zeros((4 * dim_nonlin,), dtype=fX)
+
+    # context to LSTM
+    Wc = normal_weight(dimctx, dim * 4)
+    params[_p(prefix, 'Wc', layer_id)] = Wc
+
+    # attention: combined -> hidden
+    W_comb_att = normal_weight(dim, dimctx)
+    params[_p(prefix, 'W_comb_att', layer_id)] = W_comb_att
+
+    # attention: context -> hidden
+    Wc_att = normal_weight(dimctx)
+    params[_p(prefix, 'Wc_att', layer_id)] = Wc_att
+
+    # attention: hidden bias
+    b_att = np.zeros((dimctx,), dtype=fX)
+    params[_p(prefix, 'b_att', layer_id)] = b_att
+
+    # attention:
+    U_att = normal_weight(dimctx, 1)
+    params[_p(prefix, 'U_att', layer_id)] = U_att
+    c_att = np.zeros((1,), dtype=fX)
+    params[_p(prefix, 'c_tt', layer_id)] = c_att
+
+    return params
 
 
 def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, one_step=False, init_memory=None,
@@ -626,22 +685,46 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
         # LSTM 1
         preact1 = T.dot(h_, U) + x_
 
-        i = T.nnet.sigmoid(_slice(preact1, 0, dim))
-        f = T.nnet.sigmoid(_slice(preact1, 1, dim))
-        o = T.nnet.sigmoid(_slice(preact1, 2, dim))
+        i1 = T.nnet.sigmoid(_slice(preact1, 0, dim))
+        f1 = T.nnet.sigmoid(_slice(preact1, 1, dim))
+        o1 = T.nnet.sigmoid(_slice(preact1, 2, dim))
         c1 = T.tanh(_slice(preact1, 3, dim))
 
-        c1 = f * c_ + i * c1
+        c1 = f1 * c_ + i1 * c1
         c1 = mask_[:, None] * c1 + (1. - mask_)[:, None] * c_
 
-        h1 = o * T.tanh(c1)
+        h1 = o1 * T.tanh(c1)
         h1 = mask_[:, None] * h1 + (1. - mask_)[:, None] * h_
 
-        # TODO
         # Attention
+        pstate_ = T.dot(h1, W_comb_att)
+        pctx__ = projected_context_ + pstate_[None, :, :]
+        # pctx__ += xc_
+        pctx__ = T.tanh(pctx__)
+
+        alpha = T.dot(pctx__, U_att) + c_tt
+        alpha = alpha.reshape([alpha.shape[0], alpha.shape[1]])
+        alpha = T.exp(alpha)
+        if context_mask:
+            alpha = alpha * context_mask
+        alpha = alpha / alpha.sum(0, keepdims=True)
+        ctx_ = (context_ * alpha[:, :, None]).sum(0)  # current context
 
         # LSTM 2 (with attention)
-        pass
+        preact2 = T.dot(h1, U_nl) + b_nl + T.dot(ctx_, Wc)
+
+        i2 = T.nnet.sigmoid(_slice(preact2, 0, dim))
+        f2 = T.nnet.sigmoid(_slice(preact2, 1, dim))
+        o2 = T.nnet.sigmoid(_slice(preact2, 2, dim))
+        c2 = T.tanh(_slice(preact2, 3, dim))
+
+        c2 = f2 * c1 + i2 * c2
+        c2 = mask_[:, None] * c2 + (1. - mask_)[:, None] * c1
+
+        h2 = o2 * T.tanh(c2)
+        h2 = mask_[:, None] * h2 + (1. - mask_)[:, None] * h1
+
+        return h2, ctx_, alpha.T
 
     # Prepare scan arguments
     seqs = [mask, state_below]
