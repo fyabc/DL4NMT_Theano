@@ -25,6 +25,7 @@ DefaultOptions = dict(
     maxlen=100,  # maximum length of the description
     optimizer='rmsprop',
     batch_size=16,
+    valid_batch_size=80,
     saveto='model.npz',
     saveFreq=1000,  # save the parameters after every saveFreq updates
     validFreq=10000,
@@ -35,6 +36,10 @@ DefaultOptions = dict(
     small_train_datasets=('./data/train/small_en-fr.en',
                           './data/train/small_en-fr.fr'),
     picked_train_idxes_file=r'',
+
+    # The dropout rate
+    # If False, do not use dropout.
+    # If float value, this is the dropout rate.
     use_dropout=False,
     reload_=False,
     overwrite=False,
@@ -63,7 +68,6 @@ DefaultOptions = dict(
     encoder_many_bidirectional=True,
 
     # Attention at which decoder layer (default is 0)
-    # todo: implement attention at other layers
     attention_layer_id=0,
 
     # Unit type, LSTM or GRU (Attention unit type = unit type + '_cond')
@@ -74,7 +78,15 @@ DefaultOptions = dict(
     #   None:           not any residual connection
     #   "layer_wise":   connect to next layer
     #   "last":         all connect to the last layer (average)
-    residual=None,
+    residual_enc=None,
+    residual_dec=None,
 
     use_zigzag=False,
+
+    # todo: implement it
+    # Initializer type
+    # Candidates:
+    #   "orthogonal":   Current type
+    #   "baidu":        Baidu initializer
+    initializer='orthogonal',
 )

@@ -7,6 +7,9 @@ from utils import itemlist
 profile = False
 
 
+# todo: Add return grad norm value.
+
+
 # optimizers
 # name(hyperp, tparams, grads, inputs (list), cost) = f_grad_shared, f_update
 def adam(lr, tparams, grads, inp, cost, beta1=0.9, beta2=0.999, e=1e-8):

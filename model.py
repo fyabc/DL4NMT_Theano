@@ -293,7 +293,7 @@ class NMTModel(object):
         # Instance of ParameterInitializer, init the parameters.
         self.initializer = ParameterInitializer(options)
 
-    def input_to_context(self, given_input=None):
+    def input_to_context(self, given_input=None, **kwargs):
         """Build the part of the model that from input to context vector.
 
         Used for regression of deeper encoder.
@@ -315,7 +315,8 @@ class NMTModel(object):
         src_embedding_r = self.embedding(x_r, n_timestep, n_samples)
 
         # Encoder
-        context = self.encoder(src_embedding, src_embedding_r, x_mask, x_mask_r, dropout_params=None)
+        context = self.encoder(src_embedding, src_embedding_r, x_mask, x_mask_r,
+                               dropout_params=kwargs.pop('dropout_params', None))
 
         return [x, x_mask, y, y_mask], context
 
@@ -359,9 +360,17 @@ class NMTModel(object):
     def build_model(self):
         """Build a training model."""
 
+        dropout_rate = self.O['use_dropout']
+
         opt_ret = {}
 
-        (x, x_mask, y, y_mask), context = self.input_to_context()
+        trng = RandomStreams(1234)
+        use_noise = theano.shared(np.float32(0.))
+
+        if dropout_rate is not False:
+            dropout_params = [trng, use_noise, dropout_rate]
+
+        (x, x_mask, y, y_mask), context = self.input_to_context(dropout_params=dropout_params)
 
         n_timestep, n_timestep_tgt, n_samples = self.input_dimensions(x, y)
 
@@ -381,10 +390,11 @@ class NMTModel(object):
         # Decoder - pass through the decoder conditional gru with attention
         hidden_decoder, context_decoder, opt_ret['dec_alphas'] = self.decoder(
             tgt_embedding, y_mask, init_decoder_state, context, x_mask,
-            dropout_params=None,
+            dropout_params=dropout_params,
         )
 
-        trng, use_noise, probs = self.get_word_probability(hidden_decoder, context_decoder, tgt_embedding)
+        trng, use_noise, probs = self.get_word_probability(hidden_decoder, context_decoder, tgt_embedding,
+                                                           trng=trng, use_noise=use_noise)
 
         cost = self.build_cost(y, y_mask, probs)
 
@@ -555,7 +565,7 @@ class NMTModel(object):
         """
 
         n_layers = self.O['n_encoder_layers']
-        residual = self.O['residual']
+        residual = self.O['residual_enc']
         use_zigzag = self.O['use_zigzag']
 
         input_ = src_embedding
@@ -666,7 +676,7 @@ class NMTModel(object):
 
         n_layers = self.O['n_decoder_layers']
         attention_layer_id = self.O['attention_layer_id']
-        residual = self.O['residual']
+        residual = self.O['residual_dec']
 
         # List of inputs and outputs of each layer (for residual)
         inputs = []

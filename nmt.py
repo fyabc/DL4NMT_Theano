@@ -146,6 +146,21 @@ def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True, norma
     return np.array(probs)
 
 
+def validation(iterator, f_cost, maxlen=None):
+    valid_cost = 0.0
+    valid_count = 0
+    for x, y in iterator:
+        x, x_mask, y, y_mask = prepare_data(x, y, maxlen=maxlen)
+
+        if x is None:
+            continue
+
+        valid_cost += f_cost(x, x_mask, y, y_mask)
+        valid_count += 1
+
+    return valid_cost / valid_count
+
+
 def _just_ref():
     """Just reference something to prevent them from being optimized out by PyCharm."""
 
@@ -169,20 +184,22 @@ def train(dim_word=100,  # word vector dimensionality
           maxlen=100,  # maximum length of the description
           optimizer='rmsprop',
           batch_size=16,
+          valid_batch_size=80,
           saveto='model.npz',
           saveFreq=1000,  # save the parameters after every saveFreq updates
-          validFreq=10000,
+          validFreq=2500,
           datasets=('/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.en.tok',
                     '/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.fr.tok'),
-          picked_train_idxes_file=r'',
+          valid_datasets=('./data/dev/dev_en.tok',
+                          './data/dev/dev_fr.tok'),
+          small_train_datasets=('./data/train/small_en-fr.en',
+                                './data/train/small_en-fr.fr'),
           use_dropout=False,
           reload_=False,
           overwrite=False,
           preload='',
-          sort_by_len=False,
 
           # Options below are from v-yanfa
-          convert_embedding=True,
           dump_before_train=False,
           plot_graph=None,
           vocab_filenames=('./data/dic/filtered_dic_en-fr.en.pkl',
@@ -197,7 +214,8 @@ def train(dim_word=100,  # word vector dimensionality
 
           attention_layer_id=0,
           unit='gru',
-          residual=None,
+          residual_enc=None,
+          residual_dec=None,
           use_zigzag=False,
           ):
 
@@ -211,14 +229,21 @@ def train(dim_word=100,  # word vector dimensionality
 
     print 'Loading data'
     text_iterator = TextIterator(
-        datasets[0],
-        datasets[1],
-        vocab_filenames[0],
-        vocab_filenames[1],
-        batch_size,
-        maxlen,
-        n_words_src,
-        n_words,
+        datasets[0], datasets[1],
+        vocab_filenames[0], vocab_filenames[1],
+        batch_size, maxlen, n_words_src, n_words,
+    )
+
+    valid_iterator = TextIterator(
+        valid_datasets[0], valid_datasets[1],
+        vocab_filenames[0], vocab_filenames[1],
+        valid_batch_size, maxlen, n_words_src, n_words,
+    )
+
+    small_train_iterator = TextIterator(
+        small_train_datasets[0], small_train_datasets[1],
+        vocab_filenames[0], vocab_filenames[1],
+        batch_size, maxlen, n_words_src, n_words,
     )
 
     print 'Building model'
@@ -229,55 +254,6 @@ def train(dim_word=100,  # word vector dimensionality
     if reload_ and os.path.exists(preload):
         print 'Reloading model parameters'
         params = load_params(preload, params)
-
-        # Only convert parameters when reloading
-        if convert_embedding:
-            # =================
-            # Convert input and output embedding parameters with a exist word embedding
-            # =================
-            print 'Convert input and output embedding'
-
-            temp_Wemb = params['Wemb']
-            orig_emb_mean = np.mean(temp_Wemb, axis=0)
-
-            params['Wemb'] = np.tile(orig_emb_mean, [params['Wemb'].shape[0], 1])
-
-            # Load vocabulary map dicts and do mapping
-            with open(map_filename, 'rb') as map_file:
-                map_en = pkl.load(map_file)
-                map_fr = pkl.load(map_file)
-
-            for full, top in map_en.iteritems():
-                emb_size = temp_Wemb.shape[0]
-                if full < emb_size and top < emb_size:
-                    params['Wemb'][top] = temp_Wemb[full]
-
-            print 'Convert input embedding done'
-
-            temp_ff_logit_W = params['ff_logit_W']
-            temp_Wemb_dec = params['Wemb_dec']
-            temp_b = params['ff_logit_b']
-
-            orig_ff_logit_W_mean = np.mean(temp_ff_logit_W, axis=1)
-            orig_Wemb_dec_mean = np.mean(temp_Wemb_dec, axis=0)
-            orig_b_mean = np.mean(temp_b)
-
-            params['ff_logit_W'] = np.tile(orig_ff_logit_W_mean, [params['ff_logit_W'].shape[1], 1]).T
-            params['ff_logit_b'].fill(orig_b_mean)
-            params['Wemb_dec'] = np.tile(orig_Wemb_dec_mean, [params['Wemb_dec'].shape[0], 1])
-
-            for full, top in map_en.iteritems():
-                emb_size = temp_Wemb.shape[0]
-                if full < emb_size and top < emb_size:
-                    params['ff_logit_W'][:, top] = temp_ff_logit_W[:, full]
-                    params['ff_logit_b'][top] = temp_b[full]
-                    params['Wemb_dec'][top] = temp_Wemb[full]
-
-            print 'Convert output embedding done'
-
-            # ================
-            # End Convert
-            # ================
 
     if True:
         print_params(params)
@@ -337,8 +313,6 @@ def train(dim_word=100,  # word vector dimensionality
     best_p = None
     bad_counter = 0
     uidx = search_start_uidx(reload_, preload)
-    if reload_:
-        lrate *= 0.5
     print 'uidx', uidx, 'l_rate', lrate
 
     estop = False
@@ -393,7 +367,7 @@ def train(dim_word=100,  # word vector dimensionality
 
             # verbose
             if np.mod(uidx, dispFreq) == 0:
-                print 'Epoch {} Update {} Cost {:.6f} UD {:.6f} Time {:.6f}'.format(
+                print 'Epoch {} Update {} Cost {:.5f} UD {:.5f} Time {:.5f} s'.format(
                     eidx, uidx, float(cost), ud, time.time() - start_time,
                 )
                 sys.stdout.flush()
@@ -409,11 +383,12 @@ def train(dim_word=100,  # word vector dimensionality
                     save_options(model_options, uidx, saveto)
                     print 'Done'
                     sys.stdout.flush()
-            # generate some samples with the model and display them
 
             if np.mod(uidx, validFreq) == 0:
-                # todo: validation
-                pass
+                valid_cost = validation(valid_iterator, f_cost, maxlen=maxlen)
+                small_train_cost = validation(small_train_iterator, f_cost, maxlen=maxlen)
+                print 'Valid cost {:.5f} Small train cost {:.5f}'.format(valid_cost, small_train_cost)
+                sys.stdout.flush()
 
             # finish after this many updates
             if uidx >= finish_after:
