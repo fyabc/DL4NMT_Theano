@@ -692,9 +692,9 @@ class NMTModel(object):
 
             hidden_decoder = get_build(self.O['unit'])(
                 # todo
-                self.P, inputs[-1], self.O, prefix='encoder', mask=y_mask, layer_id=layer_id,
+                self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
                 dropout_params=dropout_params, one_step=one_step, init_state=init_state, context=None,
-            )
+            )[0]
 
             outputs.append(hidden_decoder)
 
@@ -716,6 +716,7 @@ class NMTModel(object):
         hidden_decoder, context_decoder, alpha_decoder = get_build(self.O['unit'] + '_cond')(
             self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, context=context,
             context_mask=x_mask, one_step=one_step, init_state=init_state, dropout_params=dropout_params,
+            layer_id=attention_layer_id,
         )
 
         outputs.append(hidden_decoder)
