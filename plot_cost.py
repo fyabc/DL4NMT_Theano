@@ -31,6 +31,7 @@ def plot(args):
 
         valid_iterations = []
         valid_costs = []
+        small_train_costs = []
 
         for line in f:
             if line.startswith('Epoch'):
@@ -40,12 +41,17 @@ def plot(args):
             elif line.startswith('Valid'):
                 words = line.split()
                 valid_iterations.append(iterations[-1] if iterations else 0)
-                valid_costs.append(words[5])
+                valid_costs.append(words[2])
+                small_train_costs.append(words[6])
 
         avg_costs = [average(costs[max(0, i - args.interval): i]) for i in xrange(len(costs))]
 
-        plt.plot(iterations, avg_costs)
-        plt.plot(valid_iterations, valid_costs)
+        plt.plot(iterations, avg_costs, label='train')
+        plt.plot(valid_iterations, valid_costs, label='valid')
+        plt.plot(valid_iterations, small_train_costs, label='small_train')
+
+        plt.title('Cost of {}'.format(args.filename))
+        plt.legend(loc='upper right')
 
         plt.show()
 
