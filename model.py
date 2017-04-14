@@ -368,7 +368,9 @@ class NMTModel(object):
         use_noise = theano.shared(np.float32(0.))
 
         if dropout_rate is not False:
-            dropout_params = [trng, use_noise, dropout_rate]
+            dropout_params = [use_noise, trng, dropout_rate]
+        else:
+            dropout_params = None
 
         (x, x_mask, y, y_mask), context = self.input_to_context(dropout_params=dropout_params)
 

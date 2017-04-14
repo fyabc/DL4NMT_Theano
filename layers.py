@@ -570,7 +570,8 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
         )
 
     if dropout_params:
-        outputs = dropout_layer(outputs, *dropout_params)
+        outputs = list(outputs)
+        outputs[0] = dropout_layer(outputs[0], *dropout_params)
 
     return outputs
 
@@ -743,7 +744,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
     ]
 
     if one_step:
-        result = _step(*(seqs + [init_state, None, None, projected_context, context] + shared_vars))
+        result = _step(*(seqs + init_states + [projected_context, context] + shared_vars))
     else:
         result, _ = theano.scan(
             _step,

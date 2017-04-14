@@ -36,12 +36,30 @@ def main():
                         help='Attention layer index, default is 0')
     parser.add_argument('--residual_enc', action='store', metavar='type', dest='residual_enc', type=str, default=None,
                         help='Residual connection of encoder, default is None, candidates are "layer_wise", "last"')
-    parser.add_argument('--residual_dec', action='store', metavar='type', dest='residual_dec', type=str, default=None,
-                        help='Residual connection of decoder, default is None, candidates are "layer_wise", "last"')
+    parser.add_argument('--residual_dec', action='store', metavar='type', dest='residual_dec', type=str,
+                        default='layer_wise',
+                        help='Residual connection of decoder, default is "layer_wise", candidates are None, "last"')
     parser.add_argument('-z', '--zigzag', action='store_false', default=True, dest='use_zigzag',
                         help='Use zigzag in encoder, default is True, set to False')
 
+    parser.add_argument('--dropout', action="store", metavar="dropout", dest="dropout", type=float, default=False,
+                        help='Dropout rate, default is False (not use dropout)')
+    parser.add_argument('--clip', action='store', metavar='clip', dest='clip', type=float, default=1.0,
+                        help='Gradient clip rate, default is 1.0.')
+    parser.add_argument('--manual', action='store_false', dest='auto', default=True,
+                        help='Set dropout rate and grad clip rate manually.')
+
     args = parser.parse_args()
+
+    # FIXME: Auto mode
+    if args.auto:
+        if args.n_encoder_layers <= 2:
+            args.dropout = 0.1
+            args.clip = 1.0
+        else:
+            args.dropout = False
+            args.clip = 5.0
+
     print 'Command line arguments:'
     print args
     sys.stdout.flush()
@@ -50,26 +68,26 @@ def main():
         saveto=args.model_file,
         preload=args.pre_load_file,
         reload_=args.reload,
-        dim_word=620,
-        dim=1000,
+        dim_word=512,
+        dim=512,
         decay_c=0.,
-        clip_c=1.,
+        clip_c=args.clip,
         lrate=args.learning_rate,
         optimizer=args.optimizer,
         patience=1000,
-        maxlen=1000,
-        batch_size=80,
-        valid_batch_size=80,
-        dispFreq=2500,
+        maxlen=64,
+        batch_size=128,
+        valid_batch_size=128,
+        dispFreq=1,
         saveFreq=10000,
         validFreq=2500,
-        datasets=(r'.\data\train\filtered_en-fr.en',
-                  r'.\data\train\filtered_en-fr.fr'),
+        datasets=('./data/train/filtered_en-fr.en',
+                  './data/train/filtered_en-fr.fr'),
         valid_datasets=('./data/dev/dev_en.tok',
                         './data/dev/dev_fr.tok'),
         small_train_datasets=('./data/train/small_en-fr.en',
                               './data/train/small_en-fr.fr'),
-        use_dropout=False,
+        use_dropout=args.dropout,
         overwrite=False,
         n_words=30000,
         n_words_src=30000,

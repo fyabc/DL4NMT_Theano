@@ -300,12 +300,12 @@ def train(dim_word=100,  # word vector dimensionality
     print 'Done'
     sys.stdout.flush()
 
-    grads, _ = apply_gradient_clipping(clip_c, grads)
+    grads, g2 = apply_gradient_clipping(clip_c, grads)
 
     # compile the optimizer, the actual computational graph is compiled here
     lr = tensor.scalar(name='lr')
     print 'Building optimizers...',
-    f_grad_shared, f_update = eval(optimizer)(lr, model.P, grads, inps, cost)
+    f_grad_shared, f_update = eval(optimizer)(lr, model.P, grads, inps, cost, g2=g2)
     print 'Done'
 
     print 'Optimization'
@@ -347,7 +347,7 @@ def train(dim_word=100,  # word vector dimensionality
             ud_start = time.time()
 
             # compute cost, grads and copy grads to shared variables
-            cost = f_grad_shared(x, x_mask, y, y_mask)
+            cost, g2_value = f_grad_shared(x, x_mask, y, y_mask)
 
             # do the update on parameters
             f_update(lrate)
@@ -367,8 +367,8 @@ def train(dim_word=100,  # word vector dimensionality
 
             # verbose
             if np.mod(uidx, dispFreq) == 0:
-                print 'Epoch {} Update {} Cost {:.5f} UD {:.5f} Time {:.5f} s'.format(
-                    eidx, uidx, float(cost), ud, time.time() - start_time,
+                print 'Epoch {} Update {} Cost {:.5f} G2 {:.5f} UD {:.5f} Time {:.5f} s'.format(
+                    eidx, uidx, float(cost), float(g2_value), ud, time.time() - start_time,
                 )
                 sys.stdout.flush()
 

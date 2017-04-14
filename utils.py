@@ -149,8 +149,8 @@ def average(l):
 
 
 def apply_gradient_clipping(clip_c, grads):
+    g2 = 0.
     if clip_c > 0.:
-        g2 = 0.
         for g in grads:
             g2 += (g ** 2).sum()
         new_grads = []
