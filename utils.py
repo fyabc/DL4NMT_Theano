@@ -145,6 +145,8 @@ def concatenate(tensor_list, axis=0):
 
 
 def average(l):
+    if not l:
+        return 0.0
     return sum(l) / len(l)
 
 

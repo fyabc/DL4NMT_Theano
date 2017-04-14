@@ -65,6 +65,12 @@ def main():
             args.dropout = False
             args.clip = 5.0
 
+        if args.n_encoder_layers <= 1:
+            args.residual_enc = None
+        if args.n_decoder_layers <= 1:
+            args.residual_dec = None
+            args.attention_layer_id = 0
+
     print 'Command line arguments:'
     print args
     sys.stdout.flush()
