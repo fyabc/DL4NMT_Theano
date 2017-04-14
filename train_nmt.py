@@ -51,6 +51,11 @@ def main():
 
     args = parser.parse_args()
 
+    if args.residual_enc == 'None':
+        args.residual_enc = None
+    if args.residual_dec == 'None':
+        args.residual_dec = None
+
     # FIXME: Auto mode
     if args.auto:
         if args.n_encoder_layers <= 2:
