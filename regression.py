@@ -129,7 +129,8 @@ def build_regression(args, top_options):
     new_options['encoder_many_bidirectional'] = args.connection_type == 1
     new_options['unit'] = args.unit
     new_options['attention_layer_id'] = args.attention_layer_id
-    new_options['residual'] = args.residual
+    new_options['residual_enc'] = args.residual_enc
+    new_options['residual_dec'] = args.residual_dec
     new_options['use_zigzag'] = args.use_zigzag
 
     only_encoder = new_options['n_decoder_layers'] == old_options['n_decoder_layers']
@@ -226,17 +227,15 @@ def build_regression(args, top_options):
 
     # Apply gradient clipping.
     _, g2 = apply_gradient_clipping(args.clip_c, grads)
-    f_g2 = theano.function([x, x_mask] if only_encoder else [x, x_mask, y, y_mask], g2, profile=False)
     print('Done')
 
     # Build optimizer.
     inputs = [x, x_mask] if only_encoder else [x, x_mask, y, y_mask]
 
-    # Build optimizer.
     print('Building optimizers...', end='')
     lr = T.scalar(name='lr')
     f_grad_shared, f_update = Optimizers[args.regression_optimizer](
-        lr, trainable_parameters, grads, inputs, loss)
+        lr, trainable_parameters, grads, inputs, loss, g2=g2)
     print('Done')
 
     print('Optimization')
@@ -275,7 +274,7 @@ def build_regression(args, top_options):
                 print('Cost before train: {}'.format(f_loss(*inputs)))
 
             # Train!
-            cost = f_grad_shared(*inputs)
+            cost, g2_value = f_grad_shared(*inputs)
             f_update(learning_rate)
 
             if args.debug:
@@ -300,7 +299,7 @@ def build_regression(args, top_options):
                     epoch, iteration, float(cost), (time.time() - start_time) / 60.0,
                 ))
                 if True:
-                    print('G2 value: {:.6f}'.format(float(f_g2(*inputs))))
+                    print('G2 value: {:.6f}'.format(float(g2_value)))
                 sys.stdout.flush()
 
             if args.save_freq > 0 and np.mod(iteration, args.save_freq) == 0:
@@ -350,7 +349,7 @@ def main():
                         help='Number of encoder layers of new model, default is 2')
     parser.add_argument('--dec', action='store', default=1, type=int, dest='n_decoder_layers',
                         help='Number of decoder layers of new model, default is 1')
-    parser.add_argument('--lr', action="store", metavar="learning_rate", dest="learning_rate", type=float, default=0.1)
+    parser.add_argument('--lr', action="store", metavar="learning_rate", dest="learning_rate", type=float, default=1.0)
     parser.add_argument('model_file', nargs='?', default='model/init/en2fr_init_encoder2.npz',
                         help='Generated model file, default is "model/init/en2fr_init_encoder2.npz"')
     parser.add_argument('pre_load_file', nargs='?', default='model/en2fr.iter160000.npz',
@@ -380,23 +379,54 @@ def main():
                         help='Open debug mode, default is False, set to True')
     parser.add_argument('--dump_hidden', action='store', default=None, dest='dump_hidden',
                         help='Dump hidden state output to file (only available in debug mode), default is None')
-    parser.add_argument('--conn', action='store', default=1, type=int, dest='connection_type',
-                        help='Connection type, default is 1 (divided bidirectional GRU);\n'
-                             '2 is bidirectional only in first layer, other layers are forward')
+    parser.add_argument('--conn', action='store', default=2, type=int, dest='connection_type',
+                        help='Connection type, default is 2 '
+                             '(bidirectional only in first layer, other layers are forward);\n'
+                             '1 is divided bidirectional GRU')
     parser.add_argument('--decay_c', action="store", metavar="decay_c", dest="decay_c", type=float, default=0.0,
                         help='The L2 regularization rate, default is 0.0.')
     parser.add_argument('--clip_c', action="store", metavar="clip_c", dest="clip_c", type=float, default=1.0,
                         help='The gradient clipping rate, default is 1.0.')
-    parser.add_argument('--unit', action='store', metavar='unit', dest='unit', type=str, default='gru',
-                        help='The unit type, default is "gru", can be set to "lstm".')
+    parser.add_argument('--unit', action='store', metavar='unit', dest='unit', type=str, default='lstm',
+                        help='The unit type, default is "lstm", can be set to "gru".')
     parser.add_argument('--attention', action='store', metavar='index', dest='attention_layer_id', type=int, default=0,
                         help='Attention layer index, default is 0')
-    parser.add_argument('--residual', action='store', metavar='type', dest='residual', type=str, default=None,
-                        help='Residual connection type, default is None, candidates are "layer_wise", "last"')
-    parser.add_argument('-z', '--zigzag', action='store_true', default=False, dest='use_zigzag',
-                        help='Use zigzag in encoder, default is False, set to True')
+    parser.add_argument('--residual_enc', action='store', metavar='type', dest='residual_enc', type=str, default=None,
+                        help='Residual connection of encoder, default is None, candidates are "layer_wise", "last"')
+    parser.add_argument('--residual_dec', action='store', metavar='type', dest='residual_dec', type=str,
+                        default='layer_wise',
+                        help='Residual connection of decoder, default is "layer_wise", candidates are None, "last"')
+    parser.add_argument('-z', '--zigzag', action='store_false', default=True, dest='use_zigzag',
+                        help='Use zigzag in encoder, default is True, set to False')
+
+    parser.add_argument('--dropout', action="store", metavar="dropout", dest="dropout", type=float, default=False,
+                        help='Dropout rate, default is False (not use dropout)')
+    parser.add_argument('--clip', action='store', metavar='clip', dest='clip', type=float, default=1.0,
+                        help='Gradient clip rate, default is 1.0.')
+    parser.add_argument('--manual', action='store_false', dest='auto', default=True,
+                        help='Set dropout rate and grad clip rate manually.')
 
     args = parser.parse_args()
+
+    if args.residual_enc == 'None':
+        args.residual_enc = None
+    if args.residual_dec == 'None':
+        args.residual_dec = None
+
+    # FIXME: Auto mode
+    if args.auto:
+        if args.n_encoder_layers <= 2:
+            args.dropout = 0.1
+            args.clip = 1.0
+        else:
+            args.dropout = False
+            args.clip = 5.0
+
+        if args.n_encoder_layers <= 1:
+            args.residual_enc = None
+        if args.n_decoder_layers <= 1:
+            args.residual_dec = None
+            args.attention_layer_id = 0
 
     print('Arguments:')
     print(args)
@@ -416,8 +446,8 @@ def main():
         batch_size=80,
         dispFreq=2500,
         saveFreq=10000,
-        datasets=['./data/train/filtered_en-fr.en',
-                  './data/train/filtered_en-fr.fr'],
+        datasets=('./data/train/filtered_en-fr.en',
+                  './data/train/filtered_en-fr.fr'),
         use_dropout=False,
         overwrite=False,
         n_words=30000,
@@ -432,10 +462,12 @@ def main():
         # [NOTE]: This is for old model, settings for new model are in args
         n_encoder_layers=1,
         n_decoder_layers=1,
+        encoder_many_bidirectional=False,
 
         attention_layer_id=0,
         unit='gru',
-        residual=None,
+        residual_enc=None,
+        residual_dec=None,
         use_zigzag=False,
     ))
 
