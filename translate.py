@@ -11,7 +11,7 @@ import numpy
 import theano
 
 from config import DefaultOptions
-from nmt import gen_sample, load_params
+from nmt import load_params
 from model import NMTModel
 
 
@@ -33,10 +33,12 @@ def translate_model(queue, rqueue, pid, model_name, options, k, normalize):
 
     def _translate(seq):
         # sample given an input sequence and obtain scores
-        sample, score = gen_sample(model.P, f_init, f_next,
-                                   numpy.array(seq).reshape([len(seq), 1]),
-                                   options, trng=trng, k=k, maxlen=200,
-                                   stochastic=False, argmax=False)
+        sample, score = model.gen_sample(
+            f_init, f_next,
+            numpy.array(seq).reshape([len(seq), 1]),
+            trng=trng, k=k, maxlen=200,
+            stochastic=False, argmax=False,
+        )
 
         # normalize scores according to sequence lengths
         if normalize:
