@@ -71,6 +71,15 @@ def load_params(path, params):
     return params
 
 
+def load_embedding(params, embedding_model_file, emb_keys=('Wemb', 'Wemb_dec')):
+    embedding_model = np.load(embedding_model_file)
+
+    for key in emb_keys:
+        params[key] = embedding_model[key]
+
+    return params
+
+
 # some utilities
 def orthogonal_weight(ndim):
     W = np.random.randn(ndim, ndim)
@@ -327,6 +336,7 @@ __all__ = [
     '_p',
     'init_tparams',
     'load_params',
+    'load_embedding',
     'orthogonal_weight',
     'normal_weight',
     'uniform_weight',

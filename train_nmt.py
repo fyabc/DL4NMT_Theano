@@ -48,6 +48,8 @@ def main():
                         help='Gradient clip rate, default is 1.0.')
     parser.add_argument('--manual', action='store_false', dest='auto', default=True,
                         help='Set dropout rate and grad clip rate manually.')
+    parser.add_argument('--emb', action='store', metavar='filename', dest='given_embedding', type=str, default=None,
+                        help='Given embedding model file, default is None')
 
     args = parser.parse_args()
 
@@ -116,6 +118,7 @@ def main():
         residual_enc=args.residual_enc,
         residual_dec=args.residual_dec,
         use_zigzag=args.use_zigzag,
+        given_embedding=args.given_embedding,
     )
 
 

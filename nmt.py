@@ -217,6 +217,9 @@ def train(dim_word=100,  # word vector dimensionality
           residual_enc=None,
           residual_dec=None,
           use_zigzag=False,
+
+          initializer='orthogonal',
+          given_embedding=None,
           ):
 
     # Model options: load and save
@@ -253,7 +256,13 @@ def train(dim_word=100,  # word vector dimensionality
     # Reload parameters
     if reload_ and os.path.exists(preload):
         print 'Reloading model parameters'
-        params = load_params(preload, params)
+        load_params(preload, params)
+
+    # Given embedding
+    if given_embedding is not None:
+        print 'Loading given embedding...',
+        load_embedding(params, given_embedding)
+        print 'Done'
 
     if True:
         print_params(params)

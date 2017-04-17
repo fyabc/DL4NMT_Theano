@@ -89,4 +89,7 @@ DefaultOptions = dict(
     #   "orthogonal":   Current type
     #   "baidu":        Baidu initializer
     initializer='orthogonal',
+
+    # Given embedding file
+    given_embedding=None,
 )
