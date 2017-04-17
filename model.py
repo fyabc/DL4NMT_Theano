@@ -391,7 +391,7 @@ class NMTModel(object):
         tgt_embedding = emb_shifted
 
         # Decoder - pass through the decoder conditional gru with attention
-        hidden_decoder, context_decoder, opt_ret['dec_alphas'], memory_out = self.decoder(
+        hidden_decoder, context_decoder, opt_ret['dec_alphas'], _ = self.decoder(
             tgt_embedding, y_mask=y_mask, init_state=init_decoder_state, context=context, x_mask=x_mask,
             dropout_params=dropout_params, one_step=False,
         )
@@ -453,25 +453,21 @@ class NMTModel(object):
                        self.P['Wemb_dec'][y])
 
         # Apply one step of conditional gru with attention
-        dec_out = self.decoder(
+        hidden_decoder, context_decoder, _, kw_ret = self.decoder(
             emb, y_mask=None, init_state=init_state, context=ctx, x_mask=None,
             dropout_params=None, one_step=True, init_memory=init_memory,
         )
 
-        # Get the list of next hidden state of all layers
-        next_states = dec_out[0]
-
-        # Get the weighted averages of context for this target word y
-        ctxs = dec_out[1]
-
-        # Get the memory out
+        # Get memory_out and hiddens_without_dropout
         memory_out = None
+        hiddens_without_dropout = kw_ret['hiddens_without_dropout']
         if unit == 'lstm':
-            memory_out = dec_out[3]
+            # FIXME: concatenate list into a single tensor
+            memory_out = concatenate(kw_ret['memory_outputs'])
 
-        logit_lstm = self.feed_forward(next_states[-1], prefix='ff_logit_lstm', activation=linear)
+        logit_lstm = self.feed_forward(hidden_decoder, prefix='ff_logit_lstm', activation=linear)
         logit_prev = self.feed_forward(emb, prefix='ff_logit_prev', activation=linear)
-        logit_ctx = self.feed_forward(ctxs, prefix='ff_logit_ctx', activation=linear)
+        logit_ctx = self.feed_forward(context_decoder, prefix='ff_logit_ctx', activation=linear)
         logit = T.tanh(logit_lstm + logit_prev + logit_ctx)
         if self.O['use_dropout']:
             logit = self.dropout(logit, use_noise, trng)
@@ -487,7 +483,7 @@ class NMTModel(object):
         # sampled word for the next target, next hidden state to be used
         print('Building f_next..', end='')
         inps = [y, ctx, init_state]
-        outs = [next_probs, next_sample, next_states]
+        outs = [next_probs, next_sample, hiddens_without_dropout]
         if unit == 'lstm':
             inps.append(init_memory)
             outs.append(memory_out)
@@ -810,7 +806,14 @@ class NMTModel(object):
         # List of inputs and outputs of each layer (for residual)
         inputs = []
         outputs = []
+        hiddens_without_dropout = []
         memory_outputs = []
+
+        # Return many things in a dict.
+        kw_ret = {
+            'hiddens_without_dropout': hiddens_without_dropout,
+            'memory_outputs': memory_outputs,
+        }
 
         # FIXME: init_state and init_memory
         # In training mode (one_step is False), init_state and init_memory are single state (and often None),
@@ -845,6 +848,7 @@ class NMTModel(object):
                 init_memory=init_memory[layer_id],
             )
 
+            hiddens_without_dropout.append(layer_out[-1]['hidden_without_dropout'])
             if unit == 'lstm':
                 memory_outputs.append(layer_out[1])
 
@@ -865,16 +869,15 @@ class NMTModel(object):
             else:
                 inputs.append(outputs[-1])
 
-        att_out = get_build(unit + '_cond')(
+        hidden_decoder, context_decoder, alpha_decoder, kw_ret_att = get_build(unit + '_cond')(
             self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, context=context,
             context_mask=x_mask, one_step=one_step, init_state=init_state[attention_layer_id],
             dropout_params=dropout_params, layer_id=attention_layer_id, init_memory=init_memory[attention_layer_id],
         )
 
-        hidden_decoder, context_decoder, alpha_decoder = att_out[0], att_out[1], att_out[2]
-
+        hiddens_without_dropout.append(kw_ret_att['hidden_without_dropout'])
         if unit == 'lstm':
-            memory_outputs.append(att_out[3])
+            memory_outputs.append(kw_ret_att['memory_output'])
 
         outputs.append(hidden_decoder)
 
@@ -898,15 +901,13 @@ class NMTModel(object):
                 one_step=one_step, init_memory=init_memory[layer_id],
             )
 
+            hiddens_without_dropout.append(layer_out[-1]['hidden_without_dropout'])
             if unit == 'lstm':
                 memory_outputs.append(layer_out[1])
 
             outputs.append(layer_out[0])
 
-        # FIXME: In sample mode (one_step is True), return outputs of all layers
-        if one_step:
-            return outputs, context_decoder, alpha_decoder, memory_outputs
-        return outputs[-1], context_decoder, alpha_decoder, memory_outputs
+        return outputs[-1], context_decoder, alpha_decoder, kw_ret
 
     def get_word_probability(self, hidden_decoder, context_decoder, tgt_embedding, **kwargs):
         """Compute word probabilities."""

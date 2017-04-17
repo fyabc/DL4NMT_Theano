@@ -192,6 +192,8 @@ def gru_layer(P, state_below, O, prefix='gru', mask=None, **kwargs):
     context = kwargs.pop('context', None)
     one_step = kwargs.pop('one_step', False)
 
+    kw_ret = {}
+
     n_steps = state_below.shape[0]
     n_samples = state_below.shape[1] if state_below.ndim == 3 else 1
     dim = P[_p(prefix, 'Ux', layer_id)].shape[1]
@@ -238,13 +240,12 @@ def gru_layer(P, state_below, O, prefix='gru', mask=None, **kwargs):
             strict=True,
         )
 
+    kw_ret['hidden_without_dropout'] = outputs
+
     if dropout_params:
         outputs = dropout_layer(outputs, *dropout_params)
 
-    # [NOTE] Be compatible with GRU conditional layer
-    outputs = [outputs]
-
-    return outputs
+    return outputs, kw_ret
 
 
 def param_init_gru_cond(O, params, prefix='gru_cond', nin=None, dim=None, dimctx=None, nin_nonlin=None,
@@ -330,6 +331,8 @@ def gru_cond_layer(P, state_below, O, prefix='gru', mask=None, context=None, one
     """
 
     layer_id = kwargs.pop('layer_id', 0)
+
+    kw_ret = {}
 
     assert context, 'Context must be provided'
     assert context.ndim == 3, 'Context must be 3-d: #annotation * #sample * dim'
@@ -435,11 +438,15 @@ def gru_cond_layer(P, state_below, O, prefix='gru', mask=None, context=None, one
             strict=True,
         )
 
+    kw_ret['hidden_without_dropout'] = result[0]
+
+    result = list(result)
+    result.append(kw_ret)
+
     if dropout_params:
-        result = list(result)
         result[0] = dropout_layer(result[0], *dropout_params)
 
-    return result
+    return result, kw_ret
 
 
 def param_init_lstm(O, params, prefix='lstm', nin=None, dim=None, **kwargs):
@@ -535,6 +542,8 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
     context = kwargs.pop('context', None)
     one_step = kwargs.pop('one_step', False)
 
+    kw_ret = {}
+
     n_steps = state_below.shape[0]
     n_samples = state_below.shape[1] if state_below.ndim == 3 else 1
     dim = P[_p(prefix, 'U', layer_id)].shape[1] // 4
@@ -571,8 +580,13 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
             strict=True,
         )
 
+    kw_ret['hidden_without_dropout'] = outputs[0]
+    kw_ret['memory_output'] = outputs[1]
+
+    outputs = list(outputs)
+    outputs.append(kw_ret)
+
     if dropout_params:
-        outputs = list(outputs)
         outputs[0] = dropout_layer(outputs[0], *dropout_params)
 
     return outputs
@@ -650,6 +664,8 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
     """
 
     layer_id = kwargs.pop('layer_id', 0)
+
+    kw_ret = {}
 
     assert context, 'Context must be provided'
     assert context.ndim == 3, 'Context must be 3-d: #annotation * #sample * dim'
@@ -759,12 +775,16 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
             strict=True,
         )
 
+    kw_ret['hidden_without_dropout'] = result[0]
+    kw_ret['memory_output'] = result[1]
+
+    result = list(result)
+
     if dropout_params:
-        result = list(result)
         result[0] = dropout_layer(result[0], *dropout_params)
 
-    # Return memory c at the last
-    return result[0], result[2], result[3], result[1]
+    # Return memory c at the last in kw_ret
+    return result[0], result[2], result[3], kw_ret
 
 
 # layers: 'name': ('parameter initializer', 'builder')
