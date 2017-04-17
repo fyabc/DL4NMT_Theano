@@ -459,11 +459,11 @@ class NMTModel(object):
         )
 
         # Get memory_out and hiddens_without_dropout
+        # FIXME: stack list into a single tensor
         memory_out = None
-        hiddens_without_dropout = kw_ret['hiddens_without_dropout']
+        hiddens_without_dropout = T.stack(kw_ret['hiddens_without_dropout'])
         if unit == 'lstm':
-            # FIXME: concatenate list into a single tensor
-            memory_out = concatenate(kw_ret['memory_outputs'])
+            memory_out = T.stack(kw_ret['memory_outputs'])
 
         logit_lstm = self.feed_forward(hidden_decoder, prefix='ff_logit_lstm', activation=linear)
         logit_prev = self.feed_forward(emb, prefix='ff_logit_prev', activation=linear)

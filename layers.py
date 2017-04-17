@@ -446,7 +446,7 @@ def gru_cond_layer(P, state_below, O, prefix='gru', mask=None, context=None, one
     if dropout_params:
         result[0] = dropout_layer(result[0], *dropout_params)
 
-    return result, kw_ret
+    return result
 
 
 def param_init_lstm(O, params, prefix='lstm', nin=None, dim=None, **kwargs):
