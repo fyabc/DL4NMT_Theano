@@ -205,7 +205,7 @@ def gru_layer(P, state_below, O, prefix='gru', mask=None, **kwargs):
     state_belowx = T.dot(state_below, P[_p(prefix, 'Wx', layer_id)]) + P[_p(prefix, 'bx', layer_id)]
 
     # prepare scan arguments
-    init_states = [kwargs.pop('init_states', T.alloc(0., n_samples, dim))]
+    init_states = [kwargs.pop('init_state', T.alloc(0., n_samples, dim))]
 
     if context is None:
         seqs = [mask, state_below_, state_belowx]
@@ -526,6 +526,8 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
     """LSTM layer
     
     inputs and outputs are same as GRU layer.
+    
+    outputs[1]: hidden memory
     """
 
     layer_id = kwargs.pop('layer_id', 0)
@@ -542,8 +544,8 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
     state_below = T.dot(state_below, P[_p(prefix, 'W', layer_id)]) + P[_p(prefix, 'b', layer_id)]
 
     # prepare scan arguments
-    init_states = [kwargs.pop('init_states', T.alloc(0., n_samples, dim)),
-                   T.alloc(0., n_samples, dim)]
+    init_states = [kwargs.pop('init_state', T.alloc(0., n_samples, dim)),
+                   kwargs.pop('init_memory', T.alloc(0., n_samples, dim)), ]
 
     if context is None:
         seqs = [mask, state_below]
@@ -729,7 +731,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
     _step = _step_slice
     init_states = [
         init_state,
-        T.alloc(0., n_samples, dim),
+        T.alloc(0., n_samples, dim) if init_memory is None else init_memory,
         T.alloc(0., n_samples, context.shape[2]),
         T.alloc(0., n_samples, context.shape[0]),
     ]
@@ -761,8 +763,8 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
         result = list(result)
         result[0] = dropout_layer(result[0], *dropout_params)
 
-    # Do not return memory c
-    return result[0], result[2], result[3]
+    # Return memory c at the last
+    return result[0], result[2], result[3], result[1]
 
 
 # layers: 'name': ('parameter initializer', 'builder')

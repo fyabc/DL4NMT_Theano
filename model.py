@@ -348,7 +348,7 @@ class NMTModel(object):
         tgt_embedding = emb_shifted
 
         # Decoder - pass through the decoder conditional gru with attention
-        hidden_decoder, context_decoder, _ = self.decoder(
+        hidden_decoder, context_decoder, _, _ = self.decoder(
             tgt_embedding, y_mask, init_decoder_state, context, x_mask,
             dropout_params=None,
         )
@@ -391,9 +391,9 @@ class NMTModel(object):
         tgt_embedding = emb_shifted
 
         # Decoder - pass through the decoder conditional gru with attention
-        hidden_decoder, context_decoder, opt_ret['dec_alphas'] = self.decoder(
-            tgt_embedding, y_mask, init_decoder_state, context, x_mask,
-            dropout_params=dropout_params,
+        hidden_decoder, context_decoder, opt_ret['dec_alphas'], memory_out = self.decoder(
+            tgt_embedding, y_mask=y_mask, init_state=init_decoder_state, context=context, x_mask=x_mask,
+            dropout_params=dropout_params, one_step=False,
         )
 
         trng, use_noise, probs = self.get_word_probability(hidden_decoder, context_decoder, tgt_embedding,
@@ -415,6 +415,8 @@ class NMTModel(object):
 
     def build_sampler(self, **kwargs):
         """Build a sampler."""
+
+        unit = self.O['unit']
 
         trng = kwargs.pop('trng', RandomStreams(1234))
         use_noise = kwargs.pop('use_noise', theano.shared(np.float32(0.)))
@@ -442,7 +444,8 @@ class NMTModel(object):
 
         # x: 1 x 1
         y = T.vector('y_sampler', dtype='int64')
-        init_state = T.matrix('init_state', dtype=fX)
+        init_state = T.tensor3('init_state', dtype=fX)
+        init_memory = T.tensor3('init_memory', dtype=fX)
 
         # If it's the first word, emb should be all zero and it is indicated by -1
         emb = T.switch(y[:, None] < 0,
@@ -450,18 +453,23 @@ class NMTModel(object):
                        self.P['Wemb_dec'][y])
 
         # Apply one step of conditional gru with attention
-        proj = self.decoder(
+        dec_out = self.decoder(
             emb, y_mask=None, init_state=init_state, context=ctx, x_mask=None,
-            dropout_params=None, one_step=True,
+            dropout_params=None, one_step=True, init_memory=init_memory,
         )
 
-        # Get the next hidden state
-        next_state = proj[0]
+        # Get the list of next hidden state of all layers
+        next_states = dec_out[0]
 
         # Get the weighted averages of context for this target word y
-        ctxs = proj[1]
+        ctxs = dec_out[1]
 
-        logit_lstm = self.feed_forward(next_state, prefix='ff_logit_lstm', activation=linear)
+        # Get the memory out
+        memory_out = None
+        if unit == 'lstm':
+            memory_out = dec_out[3]
+
+        logit_lstm = self.feed_forward(next_states[-1], prefix='ff_logit_lstm', activation=linear)
         logit_prev = self.feed_forward(emb, prefix='ff_logit_prev', activation=linear)
         logit_ctx = self.feed_forward(ctxs, prefix='ff_logit_ctx', activation=linear)
         logit = T.tanh(logit_lstm + logit_prev + logit_ctx)
@@ -479,18 +487,23 @@ class NMTModel(object):
         # sampled word for the next target, next hidden state to be used
         print('Building f_next..', end='')
         inps = [y, ctx, init_state]
-        outs = [next_probs, next_sample, next_state]
+        outs = [next_probs, next_sample, next_states]
+        if unit == 'lstm':
+            inps.append(init_memory)
+            outs.append(memory_out)
         f_next = theano.function(inps, outs, name='f_next', profile=profile)
         print('Done')
 
         return f_init, f_next
 
     def gen_sample(self, f_init, f_next, x, trng=None, k=1, maxlen=30,
-               stochastic=True, argmax=False):
+                   stochastic=True, argmax=False):
         """Generate sample, either with stochastic sampling or beam search. Note that,
 
         this function iteratively calls f_init and f_next functions.
         """
+
+        unit = self.O['unit']
 
         # k is the beam size we have
         if k > 1:
@@ -511,13 +524,20 @@ class NMTModel(object):
         # get initial state of decoder rnn and encoder context
         ret = f_init(x)
         next_state, ctx0 = ret[0], ret[1]
-        next_w = -1 * np.ones((1,)).astype('int64')  # bos indicator
+        next_w = -1 * np.ones((1,), dtype='int64')  # bos indicator
+        next_state = np.tile(next_state[None, :, :], (self.O['n_decoder_layers'], 1, 1))
+        next_memory = np.zeros((self.O['n_decoder_layers'], next_state.shape[1], next_state.shape[2]), dtype=fX)
 
         for ii in xrange(maxlen):
             ctx = np.tile(ctx0, [live_k, 1])
             inps = [next_w, ctx, next_state]
+            if unit == 'lstm':
+                inps.append(next_memory)
+
             ret = f_next(*inps)
             next_p, next_w, next_state = ret[0], ret[1], ret[2]
+            if unit == 'lstm':
+                next_memory = ret[3]
 
             if stochastic:
                 if argmax:
@@ -541,17 +561,20 @@ class NMTModel(object):
                 new_hyp_samples = []
                 new_hyp_scores = np.zeros(k - dead_k).astype(fX)
                 new_hyp_states = []
+                new_hyp_memories = []
 
                 for idx, [ti, wi] in enumerate(zip(trans_indices, word_indices)):
                     new_hyp_samples.append(hyp_samples[ti] + [wi])
                     new_hyp_scores[idx] = copy.copy(costs[idx])
-                    new_hyp_states.append(copy.copy(next_state[ti]))
+                    new_hyp_states.append(copy.copy(next_state[:, ti, :]))
+                    new_hyp_memories.append(copy.copy(next_memory[:, ti, :]))
 
                 # check the finished samples
                 new_live_k = 0
                 hyp_samples = []
                 hyp_scores = []
                 hyp_states = []
+                hyp_memories = []
 
                 for idx in xrange(len(new_hyp_samples)):
                     if new_hyp_samples[idx][-1] == 0:
@@ -563,6 +586,7 @@ class NMTModel(object):
                         hyp_samples.append(new_hyp_samples[idx])
                         hyp_scores.append(new_hyp_scores[idx])
                         hyp_states.append(new_hyp_states[idx])
+                        hyp_memories.append(new_hyp_memories[idx])
                 hyp_scores = np.array(hyp_scores)
                 live_k = new_live_k
 
@@ -572,7 +596,8 @@ class NMTModel(object):
                     break
 
                 next_w = np.array([w[-1] for w in hyp_samples])
-                next_state = np.array(hyp_states)
+                next_state = np.concatenate([xx[:, None, :] for xx in hyp_states], axis=1)
+                next_memory = np.concatenate([xx[:, None, :] for xx in hyp_memories], axis=1)
 
         if not stochastic:
             # dump every remaining one
@@ -665,6 +690,7 @@ class NMTModel(object):
             Shape: ([Ts], [BS], [Hc])
         """
 
+        unit = self.O['unit']
         n_layers = self.O['n_encoder_layers']
         residual = self.O['residual_enc']
         use_zigzag = self.O['use_zigzag']
@@ -679,10 +705,10 @@ class NMTModel(object):
         # First layer (bidirectional)
         inputs.append((input_, input_r))
 
-        h_last = get_build(self.O['unit'])(self.P, inputs[-1][0], self.O, prefix='encoder', mask=x_mask, layer_id=0,
-                                           dropout_params=dropout_params)[0]
-        h_last_r = get_build(self.O['unit'])(self.P, inputs[-1][1], self.O, prefix='encoder_r', mask=xr_mask,
-                                             layer_id=0, dropout_params=dropout_params)[0]
+        h_last = get_build(unit)(self.P, inputs[-1][0], self.O, prefix='encoder', mask=x_mask, layer_id=0,
+                                 dropout_params=dropout_params)[0]
+        h_last_r = get_build(unit)(self.P, inputs[-1][1], self.O, prefix='encoder_r', mask=xr_mask,
+                                   layer_id=0, dropout_params=dropout_params)[0]
 
         if self.O['encoder_many_bidirectional']:
             # First layer output
@@ -716,10 +742,10 @@ class NMTModel(object):
                     if layer_id % 2 == 1:
                         x_mask_, xr_mask_ = xr_mask, x_mask
 
-                h_last = get_build(self.O['unit'])(self.P, inputs[-1][0], self.O, prefix='encoder', mask=x_mask_,
-                                                   layer_id=layer_id, dropout_params=dropout_params)[0]
-                h_last_r = get_build(self.O['unit'])(self.P, inputs[-1][1], self.O, prefix='encoder_r', mask=xr_mask_,
-                                                     layer_id=layer_id, dropout_params=dropout_params)[0]
+                h_last = get_build(unit)(self.P, inputs[-1][0], self.O, prefix='encoder', mask=x_mask_,
+                                         layer_id=layer_id, dropout_params=dropout_params)[0]
+                h_last_r = get_build(unit)(self.P, inputs[-1][1], self.O, prefix='encoder_r', mask=xr_mask_,
+                                           layer_id=layer_id, dropout_params=dropout_params)[0]
 
                 outputs.append((h_last, h_last_r))
 
@@ -769,19 +795,31 @@ class NMTModel(object):
 
         return context
 
-    def decoder(self, tgt_embedding, y_mask, init_state, context, x_mask, dropout_params=None, one_step=False):
+    def decoder(self, tgt_embedding, y_mask, init_state, context, x_mask,
+                dropout_params=None, one_step=False, init_memory=None):
         """Multi-layer GRU decoder.
 
         :return Decoder context vector and hidden states
         """
 
         n_layers = self.O['n_decoder_layers']
+        unit = self.O['unit']
         attention_layer_id = self.O['attention_layer_id']
         residual = self.O['residual_dec']
 
         # List of inputs and outputs of each layer (for residual)
         inputs = []
         outputs = []
+        memory_outputs = []
+
+        # FIXME: init_state and init_memory
+        # In training mode (one_step is False), init_state and init_memory are single state (and often None),
+        #   each layer just use a copy of them.
+        # In sample mode (one_step is True), init_state and init_memory are list of states,
+        #   each layer use the state of its index.
+        if not one_step:
+            init_state = [init_state for _ in xrange(len(n_layers))]
+            init_memory = [init_memory for _ in xrange(len(n_layers))]
 
         # Layers before attention layer
         for layer_id in xrange(0, attention_layer_id):
@@ -801,13 +839,16 @@ class NMTModel(object):
                 else:
                     inputs.append(outputs[-1])
 
-            hidden_decoder = get_build(self.O['unit'])(
-                # todo
+            layer_out = get_build(unit)(
                 self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
-                dropout_params=dropout_params, one_step=one_step, init_state=init_state, context=None,
-            )[0]
+                dropout_params=dropout_params, one_step=one_step, init_state=init_state[layer_id], context=None,
+                init_memory=init_memory[layer_id],
+            )
 
-            outputs.append(hidden_decoder)
+            if unit == 'lstm':
+                memory_outputs.append(layer_out[1])
+
+            outputs.append(layer_out[0])
 
         # Attention layer
         if attention_layer_id == 0:
@@ -824,11 +865,16 @@ class NMTModel(object):
             else:
                 inputs.append(outputs[-1])
 
-        hidden_decoder, context_decoder, alpha_decoder = get_build(self.O['unit'] + '_cond')(
+        att_out = get_build(unit + '_cond')(
             self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, context=context,
-            context_mask=x_mask, one_step=one_step, init_state=init_state, dropout_params=dropout_params,
-            layer_id=attention_layer_id,
+            context_mask=x_mask, one_step=one_step, init_state=init_state[attention_layer_id],
+            dropout_params=dropout_params, layer_id=attention_layer_id, init_memory=init_memory[attention_layer_id],
         )
+
+        hidden_decoder, context_decoder, alpha_decoder = att_out[0], att_out[1], att_out[2]
+
+        if unit == 'lstm':
+            memory_outputs.append(att_out[3])
 
         outputs.append(hidden_decoder)
 
@@ -846,14 +892,21 @@ class NMTModel(object):
                 else:
                     inputs.append(outputs[-1])
 
-            hidden_decoder = get_build(self.O['unit'])(
+            layer_out = get_build(unit)(
                 self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
-                dropout_params=dropout_params, context=context_decoder, init_states=init_state,
-                one_step=one_step)[0]
+                dropout_params=dropout_params, context=context_decoder, init_state=init_state[layer_id],
+                one_step=one_step, init_memory=init_memory[layer_id],
+            )
 
-            outputs.append(hidden_decoder)
+            if unit == 'lstm':
+                memory_outputs.append(layer_out[1])
 
-        return outputs[-1], context_decoder, alpha_decoder
+            outputs.append(layer_out[0])
+
+        # FIXME: In sample mode (one_step is True), return outputs of all layers
+        if one_step:
+            return outputs, context_decoder, alpha_decoder, memory_outputs
+        return outputs[-1], context_decoder, alpha_decoder, memory_outputs
 
     def get_word_probability(self, hidden_decoder, context_decoder, tgt_embedding, **kwargs):
         """Compute word probabilities."""
