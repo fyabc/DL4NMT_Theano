@@ -1,10 +1,8 @@
-"""
-Translates a source file using a translation model.
-"""
+#! /usr/bin/python
+# -*- encoding: utf-8 -*-
 
 import argparse
 import cPickle as pkl
-from multiprocessing import Process, Queue
 from pprint import pprint
 
 import numpy as np
@@ -15,7 +13,10 @@ from utils import load_params
 from model import NMTModel
 
 
-def translate_model(queue, rqueue, pid, model_name, options, k, normalize):
+__author__ = 'fyabc'
+
+
+def translate_model_single(input_, model_name, options, k, normalize):
     from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
     trng = RandomStreams(1234)
     use_noise = theano.shared(np.float32(0.))
@@ -47,22 +48,18 @@ def translate_model(queue, rqueue, pid, model_name, options, k, normalize):
         sidx = np.argmin(score)
         return sample[sidx]
 
-    while True:
-        req = queue.get()
-        if req is None:
-            break
+    output = []
 
-        idx, x = req[0], req[1]
-        print pid, '-', idx
-        seq = _translate(x)
+    for idx, x in enumerate(input_):
+        print idx
 
-        rqueue.put((idx, seq))
+        output.append(_translate(x))
 
-    return
+    return output
 
 
 def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
-         normalize=False, n_process=5, chr_level=False):
+         normalize=False, chr_level=False):
     # load model model_options
     with open('%s.pkl' % model, 'rb') as f:
         options = DefaultOptions.copy()
@@ -72,6 +69,7 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
         pprint(options)
 
     # load source dictionary and invert
+    print 'Load and invert source dictionary...',
     with open(dictionary, 'rb') as f:
         word_dict = pkl.load(f)
     word_idict = dict()
@@ -79,8 +77,10 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
         word_idict[vv] = kk
     word_idict[0] = '<eos>'
     word_idict[1] = 'UNK'
+    print 'Done'
 
     # load target dictionary and invert
+    print 'Load and invert target dictionary...',
     with open(dictionary_target, 'rb') as f:
         word_dict_trg = pkl.load(f)
     word_idict_trg = dict()
@@ -88,16 +88,24 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
         word_idict_trg[vv] = kk
     word_idict_trg[0] = '<eos>'
     word_idict_trg[1] = 'UNK'
+    print 'Done'
 
-    # create input and output queues for processes
-    queue = Queue()
-    rqueue = Queue()
-    processes = [None] * n_process
-    for midx in xrange(n_process):
-        processes[midx] = Process(
-            target=translate_model,
-            args=(queue, rqueue, midx, model, options, k, normalize))
-        processes[midx].start()
+    input_ = []
+
+    print 'Loading input...',
+    with open(source_file, 'r') as f:
+        for idx, line in enumerate(f):
+            if chr_level:
+                words = list(line.decode('utf-8').strip())
+            else:
+                words = line.strip().split()
+
+            x = [word_dict[w] if w in word_dict else 1 for w in words]
+            x = [ii if ii < options['n_words_src'] else 1 for ii in x]
+            x.append(0)
+
+            input_.append(x)
+    print 'Done'
 
     # utility function
     def _seqs2words(caps):
@@ -111,36 +119,8 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
             capsw.append(' '.join(ww))
         return capsw
 
-    def _send_jobs(fname):
-        with open(fname, 'r') as f:
-            for idx, line in enumerate(f):
-                if chr_level:
-                    words = list(line.decode('utf-8').strip())
-                else:
-                    words = line.strip().split()
-                x = map(lambda w: word_dict[w] if w in word_dict else 1, words)
-                x = map(lambda ii: ii if ii < options['n_words_src'] else 1, x)
-                x += [0]
-                queue.put((idx, x))
-        return idx + 1
-
-    def _finish_processes():
-        for midx in xrange(n_process):
-            queue.put(None)
-
-    def _retrieve_jobs(n_samples):
-        trans = [None] * n_samples
-        for idx in xrange(n_samples):
-            resp = rqueue.get()
-            trans[resp[0]] = resp[1]
-            if np.mod(idx, 10) == 0:
-                print 'Sample ', (idx + 1), '/', n_samples, ' Done'
-        return trans
-
     print 'Translating ', source_file, '...'
-    n_samples = _send_jobs(source_file)
-    trans = _seqs2words(_retrieve_jobs(n_samples))
-    _finish_processes()
+    trans = _seqs2words(translate_model_single(input_, model, options, k, normalize))
     with open(saveto, 'w') as f:
         print >> f, '\n'.join(trans)
     print 'Done'
@@ -148,7 +128,7 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description='Translate the source language test file to target language with given model')
+        description='Translate the source language test file to target language with given model (single thread)')
     parser.add_argument('-k', type=int, default=4,
                         help='Beam size (?), default to 4, can also use 12')
     parser.add_argument('-p', type=int, default=5,
@@ -166,5 +146,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     main(args.model, args.dictionary_source, args.dictionary_target, args.source,
-         args.saveto, k=args.k, normalize=args.n, n_process=args.p,
+         args.saveto, k=args.k, normalize=args.n,
          chr_level=args.c)
