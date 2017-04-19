@@ -821,8 +821,8 @@ class NMTModel(object):
         # In sample mode (one_step is True), init_state and init_memory are list of states,
         #   each layer use the state of its index.
         if not one_step:
-            init_state = [init_state for _ in xrange(len(n_layers))]
-            init_memory = [init_memory for _ in xrange(len(n_layers))]
+            init_state = [init_state for _ in xrange(n_layers)]
+            init_memory = [init_memory for _ in xrange(n_layers)]
 
         # Layers before attention layer
         for layer_id in xrange(0, attention_layer_id):
