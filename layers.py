@@ -191,6 +191,7 @@ def gru_layer(P, state_below, O, prefix='gru', mask=None, **kwargs):
     dropout_params = kwargs.pop('dropout_params', None)
     context = kwargs.pop('context', None)
     one_step = kwargs.pop('one_step', False)
+    init_state = kwargs.pop('init_state', None)
 
     kw_ret = {}
 
@@ -207,7 +208,7 @@ def gru_layer(P, state_below, O, prefix='gru', mask=None, **kwargs):
     state_belowx = T.dot(state_below, P[_p(prefix, 'Wx', layer_id)]) + P[_p(prefix, 'bx', layer_id)]
 
     # prepare scan arguments
-    init_states = [kwargs.pop('init_state', T.alloc(0., n_samples, dim))]
+    init_states = [T.alloc(0., n_samples, dim) if init_state is None else init_state]
 
     if context is None:
         seqs = [mask, state_below_, state_belowx]
@@ -541,6 +542,8 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
     dropout_params = kwargs.pop('dropout_params', None)
     context = kwargs.pop('context', None)
     one_step = kwargs.pop('one_step', False)
+    init_state = kwargs.pop('init_state', None)
+    init_memory = kwargs.pop('init_memory', None)
 
     kw_ret = {}
 
@@ -553,8 +556,8 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
     state_below = T.dot(state_below, P[_p(prefix, 'W', layer_id)]) + P[_p(prefix, 'b', layer_id)]
 
     # prepare scan arguments
-    init_states = [kwargs.pop('init_state', T.alloc(0., n_samples, dim)),
-                   kwargs.pop('init_memory', T.alloc(0., n_samples, dim)), ]
+    init_states = [T.alloc(0., n_samples, dim) if init_state is None else init_state,
+                   T.alloc(0., n_samples, dim) if init_memory is None else init_memory, ]
 
     if context is None:
         seqs = [mask, state_below]
