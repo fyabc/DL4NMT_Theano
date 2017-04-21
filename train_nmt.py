@@ -50,6 +50,8 @@ def main():
                         help='Set dropout rate and grad clip rate manually.')
     parser.add_argument('--emb', action='store', metavar='filename', dest='given_embedding', type=str, default=None,
                         help='Given embedding model file, default is None')
+    parser.add_argument('--lr_discount', action='store', metavar='freq', dest='lr_discount_freq', type=int,
+                        default=80000, help='The learning rate discount frequency, default is 80000')
 
     args = parser.parse_args()
 
@@ -108,6 +110,7 @@ def main():
         # Options from v-yanfa
         dump_before_train=args.dump_before_train,
         plot_graph=args.plot,
+        lr_discount_freq=args.lr_discount_freq,
 
         n_encoder_layers=args.n_encoder_layers,
         n_decoder_layers=args.n_decoder_layers,
