@@ -92,4 +92,8 @@ DefaultOptions = dict(
 
     # Given embedding file
     given_embedding=None,
+
+    # Multiverso sync batch
+    # If is 0, do not use multiverso
+    syncbatch=0,
 )

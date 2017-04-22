@@ -13,11 +13,13 @@ import numpy as np
 import theano
 import theano.tensor as tensor
 
-from constants import profile, fX
+from constants import profile
 from data_iterator import TextIterator
 from optimizers import *
 from utils import *
 from model import NMTModel
+import multiverso as mv
+from multiverso.theano_ext import sharedvar
 
 
 def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True, normalize=False):
@@ -121,19 +123,49 @@ def train(dim_word=100,  # word vector dimensionality
 
           initializer='orthogonal',
           given_embedding=None,
+
+          syncbatch=0,
           ):
+
+    # Set multiverso
+    sync = syncbatch > 0
+    if sync:
+        worker_id = mv.worker_id()
+    else:
+        worker_id = 0
+    print 'Use multiverso: {}, worker id: {}'.format(sync, worker_id)
+
+    # Set logging file
+    set_logging_file('log/complete/e{}d{}_res{}_att{}_worker{}_{}.txt'.format(
+        n_encoder_layers, n_decoder_layers, residual_enc, attention_layer_id,
+        worker_id, time.strftime('%m-%d-%H-%M-%S'),
+    ))
+
+    log('''\
+Start Time = {}
+'''.format(
+        time.strftime('%c'),
+    ))
 
     # Model options: load and save
     model_options = locals().copy()
-    print 'Top options: '
+    message('Top options:')
     pprint(model_options)
-    print 'Done'
+    pprint(model_options, stream=get_logging_file())
+    message('Done')
 
     load_options(model_options, reload_, preload)
 
     print 'Loading data'
+    log('\n\n\nStart to prepare data\n@Current Time = {}'.format(time.time()))
+    if sync:
+        dataset_src = '{}_{}'.format(datasets[0], worker_id)
+        dataset_tgt = '{}_{}'.format(datasets[1], worker_id)
+    else:
+        dataset_src, dataset_tgt = datasets[0], datasets[1]
+
     text_iterator = TextIterator(
-        datasets[0], datasets[1],
+        dataset_src, dataset_tgt,
         vocab_filenames[0], vocab_filenames[1],
         batch_size, maxlen, n_words_src, n_words,
     )
@@ -219,6 +251,10 @@ def train(dim_word=100,  # word vector dimensionality
     print 'Done'
 
     print 'Optimization'
+    log('Preparation Done\n@Current Time = {}'.format(time.time()))
+
+    if sync:
+        mv.barrier()
 
     best_p = None
     bad_counter = 0
@@ -267,22 +303,28 @@ def train(dim_word=100,  # word vector dimensionality
             # check for bad numbers, usually we remove non-finite elements
             # and continue training - but not done here
             if np.isnan(cost) or np.isinf(cost):
-                print 'NaN detected'
+                message('NaN detected')
                 return 1., 1., 1.
 
             # discount reward
             if lr_discount_freq > 0 and np.mod(uidx, lr_discount_freq) == 0:
                 lrate *= 0.5
-                print 'Discount learning rate to {} at iteration {}'.format(lrate, uidx)
+                message('Discount learning rate to {} at iteration {}'.format(lrate, uidx))
+
+            # sync batch
+            if sync and np.mod(uidx, syncbatch) == 0:
+                comm_start = time.time()
+                model.sync_tparams()
+                message('@Comm time = {:.5f}'.format(time.time() - comm_start))
 
             # verbose
             if np.mod(uidx, dispFreq) == 0:
-                print 'Epoch {} Update {} Cost {:.5f} G2 {:.5f} UD {:.5f} Time {:.5f} s'.format(
+                message('Epoch {} Update {} Cost {:.5f} G2 {:.5f} UD {:.5f} Time {:.5f} s'.format(
                     eidx, uidx, float(cost), float(g2_value), ud, time.time() - start_time,
-                )
+                ))
                 sys.stdout.flush()
 
-            if np.mod(uidx, saveFreq) == 0:
+            if np.mod(uidx, saveFreq) == 0 and worker_id == 0:
                 # save with uidx
                 if not overwrite:
                     print 'Saving the model at iteration {}...'.format(uidx),
@@ -297,7 +339,7 @@ def train(dim_word=100,  # word vector dimensionality
             if np.mod(uidx, validFreq) == 0:
                 valid_cost = validation(valid_iterator, f_cost, maxlen=maxlen)
                 small_train_cost = validation(small_train_iterator, f_cost, maxlen=maxlen)
-                print 'Valid cost {:.5f} Small train cost {:.5f}'.format(valid_cost, small_train_cost)
+                message('Valid cost {:.5f} Small train cost {:.5f}'.format(valid_cost, small_train_cost))
                 sys.stdout.flush()
 
             # finish after this many updates

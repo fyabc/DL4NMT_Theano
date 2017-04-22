@@ -1,7 +1,8 @@
 import argparse
 import sys
+import os
 
-from nmt import train
+import multiverso as mv
 
 
 def main():
@@ -52,6 +53,8 @@ def main():
                         help='Given embedding model file, default is None')
     parser.add_argument('--lr_discount', action='store', metavar='freq', dest='lr_discount_freq', type=int,
                         default=80000, help='The learning rate discount frequency, default is 80000')
+    parser.add_argument('--sync', action='store', metavar='batch', dest='syncbatch', type=int, default=0,
+                        help='Sync batch frequency, default is 0 (means do not use multiverso)')
 
     args = parser.parse_args()
 
@@ -78,6 +81,16 @@ def main():
     print 'Command line arguments:'
     print args
     sys.stdout.flush()
+
+    # Init multiverso and set theano flags.
+    sync = args.syncbatch > 0
+    if sync:
+        # FIXME: This must before the import of theano!
+        mv.init(sync=True)
+        worker_id = mv.worker_id()
+        os.environ['THEANO_FLAGS'] = 'device=gpu{},floatX=float32'.format(worker_id)
+
+    from nmt import train
 
     train(
         saveto=args.model_file,
@@ -122,6 +135,8 @@ def main():
         residual_dec=args.residual_dec,
         use_zigzag=args.use_zigzag,
         given_embedding=args.given_embedding,
+
+        syncbatch=args.syncbatch,
     )
 
 

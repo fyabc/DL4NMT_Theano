@@ -291,6 +291,9 @@ class NMTModel(object):
         # Dict of parameters (Theano shared variables)
         self.P = OrderedDict() if given_params is None else given_params
 
+        # Dict of duplicated parameters (for multiverso)
+        self.dupP = OrderedDict()
+
         # Instance of ParameterInitializer, init the parameters.
         self.initializer = ParameterInitializer(options)
 
@@ -356,7 +359,10 @@ class NMTModel(object):
         return [x, x_mask, y, y_mask], hidden_decoder, context_decoder
 
     def init_tparams(self, np_parameters):
-        self.P = init_tparams(np_parameters)
+        self.P, self.dupP = init_tparams(np_parameters, sync=self.O['syncbatch'] > 0)
+
+    def sync_tparams(self):
+        sync_tparams(self.P, self.dupP)
 
     def build_model(self):
         """Build a training model."""

@@ -1,18 +1,61 @@
 #! /usr/bin/python
 # -*- coding: utf-8 -*-
 
+from __future__ import print_function
+
 from collections import OrderedDict
 import warnings
 import os
 import cPickle as pkl
 from pprint import pprint
 import re
+import errno
 
 import theano
 import theano.tensor as tensor
 import numpy as np
 
 from constants import fX
+from multiverso.theano_ext import sharedvar
+
+
+_fp_log = None
+
+
+def set_logging_file(logging_filename):
+    path, filename = os.path.split(logging_filename)
+
+    try:
+        os.makedirs(path)
+    except OSError as e:
+        if e.errno != errno.EEXIST:
+            print('ERROR when creating the logging file: {}'.format(e.message))
+
+    global _fp_log
+    _fp_log = open(logging_filename, 'w')
+
+
+def get_logging_file():
+    return _fp_log
+
+
+def message(*args, **kwargs):
+    """Print message both to logging file and stdout."""
+    print(*args, **kwargs)
+
+    if _fp_log is not None:
+        print(*args, **kwargs, file=_fp_log)
+
+
+def log(*args, **kwargs):
+    """Print message to logging file."""
+    if _fp_log is not None:
+        print(*args, **kwargs, file=_fp_log)
+
+
+def close_logging_file():
+    if _fp_log is not None:
+        _fp_log.close()
 
 
 def zipp(params, tparams):
@@ -45,13 +88,36 @@ def _p(*args, **kwargs):
     return '_'.join(str(arg) for arg in args)
 
 
-def init_tparams(params, given_tparams=None):
+# These parameters should be duplicated for multiverso.
+dup_shared_var_list = ['decoder_c_tt']
+dup_size = 100
+
+
+def init_tparams(params, given_tparams=None, given_dup_tparams=None, sync=False):
     """Initialize Theano shared variables according to the initial parameters"""
 
     tparams = OrderedDict() if given_tparams is None else given_tparams
-    for kk, pp in params.iteritems():
-        tparams[kk] = theano.shared(params[kk], name=kk)
-    return tparams
+    dup_tparams = OrderedDict() if given_dup_tparams is None else given_dup_tparams
+
+    if not sync:
+        for kk, pp in params.iteritems():
+            tparams[kk] = theano.shared(params[kk], name=kk)
+    else:
+        for kk, pp in params.iteritems():
+            if any(kk.startswith(var) for var in dup_shared_var_list):
+                tparams[kk] = theano.shared(params[kk], name=kk)
+                dup_tparams[kk] = sharedvar.mv_shared(value=np.ones(dup_size) * params[kk][0], name=kk, borrow=False)
+            else:
+                tparams[kk] = sharedvar.mv_shared(value=params[kk], name=kk, borrow=False)
+    return tparams, dup_tparams
+
+
+def sync_tparams(tparams, dup_tparams):
+    for kk, vv in dup_tparams.iteritems():
+        vv.set_value(np.ones(dup_size) * tparams[kk].get_value()[0])
+    sharedvar.sync_all_mv_shared_vars()
+    for kk, vv in dup_tparams.iteritems():
+        tparams[kk].set_value(np.array([vv.get_value()[0]], dtype=fX).reshape((1,)))
 
 
 def load_params(path, params):
@@ -265,12 +331,12 @@ def get_minibatches_idx(n, minibatch_size, shuffle=False):
 def print_params(params, exit_=False):
     total_parameters = 0
 
-    print 'Model Parameters:'
+    print('Model Parameters:')
     for k, v in params.iteritems():
-        print '  >', k, v.shape, v.dtype
+        print('  >', k, v.shape, v.dtype)
         total_parameters += v.size
-    print 'Total parameters of the network: {}'.format(total_parameters)
-    print 'Model Parameters Done'
+    print('Total parameters of the network: {}'.format(total_parameters))
+    print('Model Parameters Done')
 
     if exit_:
         exit(0)
@@ -283,7 +349,7 @@ def load_options(options, reload_=None, preload=None, print_options=True):
     preload = options['preload'] if preload is None else preload
 
     if reload_ and os.path.exists(preload):
-        print 'Reloading model options'
+        print('Reloading model options')
         with open('{}.pkl'.format(preload), 'rb') as f:
             # model_options = pkl.load(f)
             # FIXME: Update the option instead of replace it
@@ -294,9 +360,10 @@ def load_options(options, reload_=None, preload=None, print_options=True):
         options['preload'] = preload
 
     if print_options:
-        print 'Model options:'
+        message('Model options:')
         pprint(options)
-        print
+        pprint(options, stream=get_logging_file())
+        message()
 
 
 def save_options(options, iteration, saveto=None):
@@ -330,11 +397,17 @@ def make_f_train(f_grad_shared, f_update):
 
 
 __all__ = [
+    'set_logging_file',
+    'get_logging_file',
+    'message',
+    'log',
+    'close_logging_file',
     'zipp',
     'unzip',
     'itemlist',
     '_p',
     'init_tparams',
+    'sync_tparams',
     'load_params',
     'load_embedding',
     'orthogonal_weight',
