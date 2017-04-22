@@ -2,7 +2,10 @@ import argparse
 import sys
 import os
 
-import multiverso as mv
+try:
+    import multiverso as mv
+except ImportError:
+    import multiverso_ as mv
 
 
 def main():

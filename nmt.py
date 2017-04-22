@@ -18,8 +18,11 @@ from data_iterator import TextIterator
 from optimizers import *
 from utils import *
 from model import NMTModel
-import multiverso as mv
-from multiverso.theano_ext import sharedvar
+
+try:
+    import multiverso as mv
+except ImportError:
+    import multiverso_ as mv
 
 
 def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True, normalize=False):

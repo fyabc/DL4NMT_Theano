@@ -1,7 +1,7 @@
 #! /usr/bin/python
 # -*- coding: utf-8 -*-
 
-from __future__ import print_function, absolute_import
+from __future__ import print_function
 
 from collections import OrderedDict
 import warnings
@@ -16,7 +16,10 @@ import theano.tensor as tensor
 import numpy as np
 
 from constants import fX
-from multiverso.theano_ext import sharedvar
+try:
+    from multiverso.theano_ext import sharedvar
+except ImportError:
+    from multiverso_.theano_ext import sharedvar
 
 
 _fp_log = None

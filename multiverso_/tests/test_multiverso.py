@@ -11,11 +11,11 @@ Unused now.
 from __future__ import print_function
 
 
-import multiverso as mv
+import multiverso_ as mv
 import unittest
 import numpy as np
 import theano
-from multiverso.theano_ext import sharedvar
+from multiverso_.theano_ext import sharedvar
 
 __author__ = 'fyabc'
 
