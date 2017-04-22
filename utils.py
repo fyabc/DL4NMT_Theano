@@ -44,13 +44,15 @@ def message(*args, **kwargs):
     print(*args, **kwargs)
 
     if _fp_log is not None:
-        print(*args, **kwargs, file=_fp_log)
+        kwargs['file'] = _fp_log
+        print(*args, **kwargs)
 
 
 def log(*args, **kwargs):
     """Print message to logging file."""
     if _fp_log is not None:
-        print(*args, **kwargs, file=_fp_log)
+        kwargs['file'] = _fp_log
+        print(*args, **kwargs)
 
 
 def close_logging_file():
