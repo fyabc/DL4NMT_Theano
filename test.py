@@ -5,4 +5,4 @@
 
 __author__ = 'fyabc'
 
-from multiverso.theano_ext import sharedvar
+import utils
