@@ -20,6 +20,8 @@ def main():
     parser.add_argument('--optimizer', action='store', default='adadelta')
     parser.add_argument('--plot', action='store', default=None,
                         help='Plot filename, default is None (not plot) (deprecated).')
+    parser.add_argument('--save_freq', action='store', default=10000, type=int, dest='save_freq',
+                        help='Model save frequency, default is 10000')
 
     parser.add_argument('model_file', nargs='?', default='model/baseline/baseline.npz',
                         help='Generated model file, default is "model/baseline/baseline.npz"')
@@ -110,7 +112,7 @@ def main():
         batch_size=128,
         valid_batch_size=128,
         dispFreq=1,
-        saveFreq=10000,
+        saveFreq=args.save_freq,
         validFreq=2500,
         datasets=('./data/train/filtered_en-fr.en',
                   './data/train/filtered_en-fr.fr'),
