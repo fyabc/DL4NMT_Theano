@@ -16,10 +16,6 @@ import theano.tensor as tensor
 import numpy as np
 
 from constants import fX
-try:
-    from multiverso.theano_ext import sharedvar
-except ImportError:
-    from multiverso_.theano_ext import sharedvar
 
 
 _fp_log = None
@@ -108,6 +104,11 @@ def init_tparams(params, given_tparams=None, given_dup_tparams=None, sync=False)
         for kk, pp in params.iteritems():
             tparams[kk] = theano.shared(params[kk], name=kk)
     else:
+        try:
+            from multiverso.theano_ext import sharedvar
+        except ImportError:
+            from multiverso_.theano_ext import sharedvar
+
         for kk, pp in params.iteritems():
             if any(kk.startswith(var) for var in dup_shared_var_list):
                 tparams[kk] = theano.shared(params[kk], name=kk)
@@ -118,6 +119,11 @@ def init_tparams(params, given_tparams=None, given_dup_tparams=None, sync=False)
 
 
 def sync_tparams(tparams, dup_tparams):
+    try:
+        from multiverso.theano_ext import sharedvar
+    except ImportError:
+        from multiverso_.theano_ext import sharedvar
+
     for kk, vv in dup_tparams.iteritems():
         vv.set_value(np.ones(dup_size) * tparams[kk].get_value()[0])
     sharedvar.sync_all_mv_shared_vars()
