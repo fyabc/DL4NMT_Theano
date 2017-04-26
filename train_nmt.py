@@ -2,11 +2,6 @@ import argparse
 import sys
 import os
 
-try:
-    import multiverso as mv
-except ImportError:
-    import multiverso_ as mv
-
 
 def main():
     parser = argparse.ArgumentParser()
@@ -118,6 +113,11 @@ def main():
     # Init multiverso and set theano flags.
     sync = args.syncbatch > 0
     if sync:
+        try:
+            import multiverso as mv
+        except ImportError:
+            import multiverso_ as mv
+
         # FIXME: This must before the import of theano!
         mv.init(sync=True)
         worker_id = mv.worker_id()
