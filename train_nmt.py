@@ -16,17 +16,45 @@ def main():
     parser.add_argument('-d', action='store_true', default=False, dest='dump_before_train',
                         help='Dump before train default to False, set to True')
     parser.add_argument('--lr', action="store", metavar="learning_rate", dest="learning_rate", type=float, default=1.0,
-                        help='Start learning rate, default is 1.0')
+                        help='Start learning rate, default is %(default)s')
     parser.add_argument('--optimizer', action='store', default='adadelta')
     parser.add_argument('--plot', action='store', default=None,
                         help='Plot filename, default is None (not plot) (deprecated).')
     parser.add_argument('--save_freq', action='store', default=10000, type=int, dest='save_freq',
-                        help='Model save frequency, default is 10000')
+                        help='Model save frequency, default is %(default)s')
+    parser.add_argument('--dim', action='store', default=512, type=int, dest='dim',
+                        help='Dim of hidden units, default is %(default)s')
+    parser.add_argument('--dim_word', action='store', default=512, type=int, dest='dim_word',
+                        help='Dim of word embedding, default is %(default)s')
+    parser.add_argument('--train1', action='store', metavar='filename', dest='train1', type=str,
+                        default='filtered_en-fr.en',
+                        help='Source train file, default is %(default)s')
+    parser.add_argument('--train2', action='store', metavar='filename', dest='train2', type=str,
+                        default='filtered_en-fr.fr',
+                        help='Target train file, default is %(default)s')
+    parser.add_argument('--small1', action='store', metavar='filename', dest='small1', type=str,
+                        default='small_en-fr.en',
+                        help='Source small train file, default is %(default)s')
+    parser.add_argument('--small2', action='store', metavar='filename', dest='small2', type=str,
+                        default='small_en-fr.fr',
+                        help='Target small train file, default is %(default)s')
+    parser.add_argument('--valid1', action='store', metavar='filename', dest='valid1', type=str,
+                        default='dev_en.tok',
+                        help='Source valid file, default is %(default)s')
+    parser.add_argument('--valid2', action='store', metavar='filename', dest='valid2', type=str,
+                        default='dev_fr.tok',
+                        help='Target valid file, default is %(default)s')
+    parser.add_argument('--dic1', action='store', metavar='filename', dest='dic1', type=str,
+                        default='filtered_dic_en-fr.en.pkl',
+                        help='Source dict file, default is %(default)s')
+    parser.add_argument('--dic2', action='store', metavar='filename', dest='dic2', type=str,
+                        default='filtered_dic_en-fr.fr.pkl',
+                        help='Target dict file, default is %(default)s')
 
     parser.add_argument('model_file', nargs='?', default='model/baseline/baseline.npz',
-                        help='Generated model file, default is "model/baseline/baseline.npz"')
+                        help='Generated model file, default is "%(default)s"')
     parser.add_argument('pre_load_file', nargs='?', default='model/en2fr.iter160000.npz',
-                        help='Pre-load model file, default is "model/en2fr.iter160000.npz"')
+                        help='Pre-load model file, default is "%(default)s"')
 
     parser.add_argument('--enc', action='store', default=1, type=int, dest='n_encoder_layers',
                         help='Number of encoder layers, default is 1')
@@ -101,8 +129,8 @@ def main():
         saveto=args.model_file,
         preload=args.pre_load_file,
         reload_=args.reload,
-        dim_word=512,
-        dim=512,
+        dim_word=args.dim,
+        dim=args.dim_word,
         decay_c=0.,
         clip_c=args.clip,
         lrate=args.learning_rate,
@@ -114,12 +142,14 @@ def main():
         dispFreq=1,
         saveFreq=args.save_freq,
         validFreq=2500,
-        datasets=('./data/train/filtered_en-fr.en',
-                  './data/train/filtered_en-fr.fr'),
-        valid_datasets=('./data/dev/dev_en.tok',
-                        './data/dev/dev_fr.tok'),
-        small_train_datasets=('./data/train/small_en-fr.en',
-                              './data/train/small_en-fr.fr'),
+        datasets=('./data/train/{}'.format(args.train1),
+                  './data/train/{}'.format(args.train2)),
+        valid_datasets=('./data/dev/{}'.format(args.valid1),
+                        './data/dev/{}'.format(args.valid2)),
+        small_train_datasets=('./data/train/{}'.format(args.small1),
+                              './data/train/{}'.format(args.small2)),
+        vocab_filenames=('./data/dic/{}'.format(args.dic1),
+                         './data/dic/{}'.format(args.dic2)),
         use_dropout=args.dropout,
         overwrite=False,
         n_words=30000,
