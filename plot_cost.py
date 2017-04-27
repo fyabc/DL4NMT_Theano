@@ -23,7 +23,7 @@ def plot(args):
     Epoch 0 Update 52 Cost 219.29276 G2 1483.47644 UD 2.78200 Time 127.66500 s
     """
 
-    colors = ['c', 'm', 'y', 'g', 'k', 'b']
+    colors = ['c', 'r', 'y', 'k', 'b', 'g']
 
     for f_idx, filename in enumerate(args.filenames):
         with open(filename, 'r') as f:
@@ -45,14 +45,21 @@ def plot(args):
                     valid_costs.append(words[2])
                     small_train_costs.append(words[6])
 
-            avg_costs = [average(costs[max(0, i - args.interval): i]) for i in xrange(len(costs))]
+            avg_costs = [average(costs[max(0, i - args.average): i]) for i in xrange(len(costs))]
+
+            # Get intervals
+            iterations = [iterations[i] for i in xrange(0, len(iterations), args.interval)]
+            avg_costs = [avg_costs[i] for i in xrange(0, len(avg_costs), args.interval)]
 
             if args.train:
-                plt.plot(iterations, avg_costs, '-', label='{}_train'.format(filename))
+                plt.plot(iterations, avg_costs,
+                         '{}-'.format(colors[f_idx]), label='{}_train'.format(filename))
             if args.valid:
-                plt.plot(valid_iterations, valid_costs, '--', label='{}_valid'.format(filename))
+                plt.plot(valid_iterations, valid_costs,
+                         '{}--'.format(colors[f_idx]), label='{}_valid'.format(filename))
             if args.small_train:
-                plt.plot(valid_iterations, small_train_costs, '-.', label='{}_small_train'.format(filename))
+                plt.plot(valid_iterations, small_train_costs,
+                         '{}-.'.format(colors[f_idx]), label='{}_small_train'.format(filename))
 
     plt.xlim(xmin=args.xmin, xmax=args.xmax)
     plt.ylim(ymin=args.ymin, ymax=args.ymax)
@@ -68,8 +75,10 @@ def plot(args):
 def main(args=None):
     parser = argparse.ArgumentParser(description='Plot cost curve.')
     parser.add_argument('filenames', nargs='+', help='The logging filenames')
-    parser.add_argument('-a', '--average', action='store', metavar='interval', dest='interval', type=int, default=40,
-                        help='The moving average interval, default is 40')
+    parser.add_argument('-a', '--average', action='store', metavar='average', dest='average', type=int, default=40,
+                        help='The moving average interval, default is %(default)s')
+    parser.add_argument('-i', '--interval', action='store', metavar='interval', dest='interval', type=int, default=100,
+                        help='The display interval of train curve, default is %(default)s')
     parser.add_argument('-y', '--ymin', action='store', dest='ymin', type=float, default=None,
                         help='The y min value (default is %(default)s)')
     parser.add_argument('-Y', '--ymax', action='store', dest='ymax', type=float, default=None,
