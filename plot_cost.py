@@ -23,44 +23,58 @@ def plot(args):
     Epoch 0 Update 52 Cost 219.29276 G2 1483.47644 UD 2.78200 Time 127.66500 s
     """
 
-    logging_file = sys.argv[1]
+    colors = ['c', 'm', 'y', 'g', 'k', 'b']
 
-    with open(logging_file, 'r') as f:
-        iterations = []
-        costs = []
+    for f_idx, filename in enumerate(args.filenames):
+        with open(filename, 'r') as f:
+            iterations = []
+            costs = []
 
-        valid_iterations = []
-        valid_costs = []
-        small_train_costs = []
+            valid_iterations = []
+            valid_costs = []
+            small_train_costs = []
 
-        for line in f:
-            if line.startswith('Epoch'):
-                words = line.split()
-                iterations.append(int(words[3]))
-                costs.append(float(words[5]))
-            elif line.startswith('Valid'):
-                words = line.split()
-                valid_iterations.append(iterations[-1] if iterations else 0)
-                valid_costs.append(words[2])
-                small_train_costs.append(words[6])
+            for line in f:
+                if line.startswith('Epoch'):
+                    words = line.split()
+                    iterations.append(int(words[3]))
+                    costs.append(float(words[5]))
+                elif line.startswith('Valid'):
+                    words = line.split()
+                    valid_iterations.append(iterations[-1] if iterations else 0)
+                    valid_costs.append(words[2])
+                    small_train_costs.append(words[6])
 
-        avg_costs = [average(costs[max(0, i - args.interval): i]) for i in xrange(len(costs))]
+            avg_costs = [average(costs[max(0, i - args.interval): i]) for i in xrange(len(costs))]
 
-        plt.plot(iterations, avg_costs, label='train')
-        plt.plot(valid_iterations, valid_costs, label='valid')
-        plt.plot(valid_iterations, small_train_costs, label='small_train')
+            plt.plot(iterations, avg_costs, label='{}_train'.format(filename))
+            plt.plot(valid_iterations, valid_costs, label='{}_valid'.format(filename))
+            plt.plot(valid_iterations, small_train_costs, label='{}_small_train'.format(filename))
 
-        plt.title('Cost of {}'.format(args.filename))
-        plt.legend(loc='upper right')
+    plt.xlim(xmin=args.xmin, xmax=args.xmax)
+    plt.ylim(ymin=args.ymin, ymax=args.ymax)
 
-        plt.show()
+    plt.title('Costs')
+    plt.legend(loc='upper right')
+
+    plt.grid()
+
+    plt.show()
 
 
 def main(args=None):
     parser = argparse.ArgumentParser(description='Plot cost curve.')
-    parser.add_argument('filename', help='The logging filename')
+    parser.add_argument('filenames', nargs='+', help='The logging filenames')
     parser.add_argument('-a', '--average', action='store', metavar='interval', dest='interval', type=int, default=40,
                         help='The moving average interval, default is 40')
+    parser.add_argument('-y', '--ymin', action='store', dest='ymin', type=float, default=None,
+                        help='The y min value (default is %(default)s)')
+    parser.add_argument('-Y', '--ymax', action='store', dest='ymax', type=float, default=None,
+                        help='The y max value (default is %(default)s)')
+    parser.add_argument('-x', '--xmin', action='store', dest='xmin', type=int, default=None,
+                        help='The x min value (default is %(default)s)')
+    parser.add_argument('-X', '--xmax', action='store', dest='xmax', type=int, default=None,
+                        help='The x max value (default is %(default)s)')
 
     args = parser.parse_args(args)
 
