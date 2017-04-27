@@ -19,11 +19,6 @@ from optimizers import *
 from utils import *
 from model import NMTModel
 
-try:
-    import multiverso as mv
-except ImportError:
-    import multiverso_ as mv
-
 
 def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True, normalize=False):
     """Calculate the log probablities on a given corpus using translation model"""
@@ -133,6 +128,11 @@ def train(dim_word=100,  # word vector dimensionality
     # Set multiverso
     sync = syncbatch > 0
     if sync:
+        try:
+            import multiverso as mv
+        except ImportError:
+            import multiverso_ as mv
+
         worker_id = mv.worker_id()
     else:
         worker_id = 0
