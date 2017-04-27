@@ -64,10 +64,12 @@ def plot(args):
     plt.xlim(xmin=args.xmin, xmax=args.xmax)
     plt.ylim(ymin=args.ymin, ymax=args.ymax)
 
+    plt.minorticks_on()
+
     plt.title('Costs')
     plt.legend(loc='upper right')
 
-    plt.grid()
+    plt.grid(which='both')
 
     plt.show()
 
