@@ -48,11 +48,11 @@ def plot(args):
             avg_costs = [average(costs[max(0, i - args.interval): i]) for i in xrange(len(costs))]
 
             if args.train:
-                plt.plot(iterations, avg_costs, label='{}_train'.format(filename))
+                plt.plot(iterations, avg_costs, '-', label='{}_train'.format(filename))
             if args.valid:
-                plt.plot(valid_iterations, valid_costs, label='{}_valid'.format(filename))
+                plt.plot(valid_iterations, valid_costs, '--', label='{}_valid'.format(filename))
             if args.small_train:
-                plt.plot(valid_iterations, small_train_costs, label='{}_small_train'.format(filename))
+                plt.plot(valid_iterations, small_train_costs, '-.', label='{}_small_train'.format(filename))
 
     plt.xlim(xmin=args.xmin, xmax=args.xmax)
     plt.ylim(ymin=args.ymin, ymax=args.ymax)
