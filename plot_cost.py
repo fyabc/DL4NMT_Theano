@@ -47,9 +47,12 @@ def plot(args):
 
             avg_costs = [average(costs[max(0, i - args.interval): i]) for i in xrange(len(costs))]
 
-            plt.plot(iterations, avg_costs, label='{}_train'.format(filename))
-            plt.plot(valid_iterations, valid_costs, label='{}_valid'.format(filename))
-            plt.plot(valid_iterations, small_train_costs, label='{}_small_train'.format(filename))
+            if args.train:
+                plt.plot(iterations, avg_costs, label='{}_train'.format(filename))
+            if args.valid:
+                plt.plot(valid_iterations, valid_costs, label='{}_valid'.format(filename))
+            if args.small_train:
+                plt.plot(valid_iterations, small_train_costs, label='{}_small_train'.format(filename))
 
     plt.xlim(xmin=args.xmin, xmax=args.xmax)
     plt.ylim(ymin=args.ymin, ymax=args.ymax)
@@ -75,6 +78,12 @@ def main(args=None):
                         help='The x min value (default is %(default)s)')
     parser.add_argument('-X', '--xmax', action='store', dest='xmax', type=int, default=None,
                         help='The x max value (default is %(default)s)')
+    parser.add_argument('-T', action='store_false', default=True, dest='train',
+                        help='Plot train curve, default is True, set to False')
+    parser.add_argument('-V', action='store_false', default=True, dest='valid',
+                        help='Plot valid curve, default is True, set to False')
+    parser.add_argument('-S', action='store_false', default=True, dest='small_train',
+                        help='Plot small train curve, default is True, set to False')
 
     args = parser.parse_args(args)
 
