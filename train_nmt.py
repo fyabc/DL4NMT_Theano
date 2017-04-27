@@ -19,6 +19,8 @@ def main():
                         help='Model save frequency, default is %(default)s')
     parser.add_argument('--dim', action='store', default=512, type=int, dest='dim',
                         help='Dim of hidden units, default is %(default)s')
+    parser.add_argument('--bs', action='store', default=128, type=int, dest='batch_size',
+                        help='Train batch size, default is %(default)s')
     parser.add_argument('--dim_word', action='store', default=512, type=int, dest='dim_word',
                         help='Dim of word embedding, default is %(default)s')
     parser.add_argument('--train1', action='store', metavar='filename', dest='train1', type=str,
@@ -137,7 +139,7 @@ def main():
         optimizer=args.optimizer,
         patience=1000,
         maxlen=64,
-        batch_size=128,
+        batch_size=args.batch_size,
         valid_batch_size=128,
         dispFreq=1,
         saveFreq=args.save_freq,
