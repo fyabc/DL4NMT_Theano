@@ -249,6 +249,17 @@ def gru_layer(P, state_below, O, prefix='gru', mask=None, **kwargs):
     return outputs, kw_ret
 
 
+def multi_gru_layer(P, state_below, O, prefix='multi_gru', mask=None, **kwargs):
+    """Multi-GRU layer, deep in time.
+    
+    x, h_t -> h'
+    x, h' -> h_{t+1}
+    """
+
+    # todo
+    pass
+
+
 def param_init_gru_cond(O, params, prefix='gru_cond', nin=None, dim=None, dimctx=None, nin_nonlin=None,
                         dim_nonlin=None, **kwargs):
     if nin is None:

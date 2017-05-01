@@ -124,6 +124,7 @@ def train(dim_word=100,  # word vector dimensionality
 
           syncbatch=0,
           ):
+    model_options = locals().copy()
 
     # Set multiverso
     sync = syncbatch > 0
@@ -151,7 +152,6 @@ Start Time = {}
     ))
 
     # Model options: load and save
-    model_options = locals().copy()
     message('Top options:')
     pprint(model_options)
     pprint(model_options, stream=get_logging_file())
