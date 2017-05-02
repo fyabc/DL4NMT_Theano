@@ -71,6 +71,7 @@ DefaultOptions = dict(
     attention_layer_id=0,
 
     # Unit type, LSTM or GRU (Attention unit type = unit type + '_cond')
+    # Add new unit types: multi_gru, multi_lstm
     unit='gru',
 
     # Residual connection type
@@ -96,4 +97,13 @@ DefaultOptions = dict(
     # Multiverso sync batch
     # If is 0, do not use multiverso
     syncbatch=0,
+
+    # Options for multi-gru/lstm
+    # Used only when unit is "multi_gru" or "multi_lstm"
+
+    # Depth of common unit
+    unit_size=2,
+
+    # Depth of cond unit
+    cond_unit_size=2,
 )

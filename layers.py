@@ -118,7 +118,7 @@ def param_init_gru(O, params, prefix='gru', nin=None, dim=None, **kwargs):
 
 
 def _gru_step_slice(
-        src_mask, x_, xx_,
+        mask, x_, xx_,
         ht_1,
         U, Ux):
     """GRU step function to be used by scan
@@ -142,7 +142,7 @@ def _gru_step_slice(
 
     # leaky integrate and obtain next hidden state
     ht = u * ht_1 + (1. - u) * ht_tilde
-    ht = src_mask[:, None] * ht + (1. - src_mask)[:, None] * ht_1
+    ht = mask[:, None] * ht + (1. - mask)[:, None] * ht_1
 
     return ht
 
@@ -249,6 +249,63 @@ def gru_layer(P, state_below, O, prefix='gru', mask=None, **kwargs):
     return outputs, kw_ret
 
 
+def param_init_multi_gru(O, params, prefix='gru', nin=None, dim=None, **kwargs):
+    # todo
+    pass
+
+
+def _multi_gru_step_slice(
+        mask, x_list, xx_list,
+        ht_1,
+        U_list, Ux_list,
+):
+    _dim = Ux_list[0].shape[1]
+
+    h = ht_1
+
+    for x_, xx_, U, Ux in zip(x_list, xx_list, U_list, Ux_list):
+        preact = T.dot(h, U) + x_
+
+        # reset and update gates
+        r = T.nnet.sigmoid(_slice(preact, 0, _dim))
+        u = T.nnet.sigmoid(_slice(preact, 1, _dim))
+
+        # hidden state proposal
+        ht_tilde = T.tanh(T.dot(h, Ux) * r + xx_)
+
+        # leaky integrate and obtain next hidden state
+        ht = u * h + (1. - u) * ht_tilde
+        h = mask[:, None] * ht + (1. - mask)[:, None] * h
+
+    return h
+
+
+def _multi_gru_step_slice_attention(
+        mask, x_list, xx_list, context,
+        ht_1,
+        U_list, Ux_list, Wc_list, Wcx_list,
+):
+    _dim = Ux_list[0].shape[1]
+
+    h = ht_1
+
+    for x_, xx_, U, Ux, Wc, Wcx in zip(x_list, xx_list, U_list, Ux_list, Wc_list, Wcx_list):
+        preact = T.nnet.sigmoid(T.dot(h, U) + x_ + T.dot(context, Wc))
+
+        # reset and update gates
+        r = _slice(preact, 0, _dim)
+        u = _slice(preact, 1, _dim)
+
+        # hidden state proposal
+        ht_tilde = T.tanh(T.dot(h, Ux) * r + xx_ + T.dot(context, Wcx))
+
+        # leaky integrate and obtain next hidden state
+        ht = u * h + (1. - u) * ht_tilde
+        h = mask[:, None] * ht + (1. - mask)[:, None] * h
+
+    return h
+
+
 def multi_gru_layer(P, state_below, O, prefix='multi_gru', mask=None, **kwargs):
     """Multi-GRU layer, deep in time.
     
@@ -256,8 +313,74 @@ def multi_gru_layer(P, state_below, O, prefix='multi_gru', mask=None, **kwargs):
     x, h' -> h_{t+1}
     """
 
+    layer_id = kwargs.pop('layer_id', 0)
+    dropout_params = kwargs.pop('dropout_params', None)
+    context = kwargs.pop('context', None)
+    one_step = kwargs.pop('one_step', False)
+    init_state = kwargs.pop('init_state', None)
+    unit_size = kwargs.pop('unit_size', 2)
+
+    kw_ret = {}
+
+    n_steps = state_below.shape[0]
+    n_samples = state_below.shape[1] if state_below.ndim == 3 else 1
+    dim = P[_p(prefix, 'Ux', layer_id)].shape[1]
+
+    mask = T.alloc(1., n_steps, 1) if mask is None else mask
+
+    # state_below is the input word embeddings
+    # List of inputs and hidden state proposals
+    # FIXME: index of unit start at 1, NOT 0!
+    state_belows = [
+        T.dot(state_below, P[_p(prefix, 'W', layer_id, i)]) + P[_p(prefix, 'b', layer_id, i)]
+        for i in xrange(1, unit_size)
+    ]
+    state_belowxs = [
+        T.dot(state_below, P[_p(prefix, 'Wx', layer_id, i)]) + P[_p(prefix, 'bx', layer_id, i)]
+        for i in xrange(1, unit_size)
+    ]
+
+    # prepare scan arguments
+    init_states = [T.alloc(0., n_samples, dim) if init_state is None else init_state]
+
     # todo
-    pass
+    if context is None:
+        seqs = [mask, state_belows, state_belowxs]
+        shared_vars = [
+            [P[_p(prefix, 'U', layer_id, i)] for i in xrange(1, unit_size)],
+            [P[_p(prefix, 'Ux', layer_id, i)] for i in xrange(1, unit_size)],
+        ]
+        _step = _multi_gru_step_slice
+    else:
+        seqs = [mask, state_belows, state_belowxs, context]
+        shared_vars = [
+            [P[_p(prefix, 'U', layer_id, i)] for i in xrange(1, unit_size)],
+            [P[_p(prefix, 'Ux', layer_id, i)] for i in xrange(1, unit_size)],
+            [P[_p(prefix, 'Wc', layer_id, i)] for i in xrange(1, unit_size)],
+            [P[_p(prefix, 'Wcx', layer_id, i)] for i in xrange(1, unit_size)],
+        ]
+        _step = _multi_gru_step_slice_attention
+
+    if one_step:
+        outputs = _step(*(seqs + init_states + shared_vars))
+    else:
+        outputs, _ = theano.scan(
+            _step,
+            sequences=seqs,
+            outputs_info=init_states,
+            non_sequences=shared_vars,
+            name=_p(prefix, '_layers', layer_id),
+            n_steps=n_steps,
+            profile=profile,
+            strict=True,
+        )
+
+    kw_ret['hidden_without_dropout'] = outputs
+
+    if dropout_params:
+        outputs = dropout_layer(outputs, *dropout_params)
+
+    return outputs, kw_ret
 
 
 def param_init_gru_cond(O, params, prefix='gru_cond', nin=None, dim=None, dimctx=None, nin_nonlin=None,

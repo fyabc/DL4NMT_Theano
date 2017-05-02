@@ -123,6 +123,9 @@ def train(dim_word=100,  # word vector dimensionality
           given_embedding=None,
 
           syncbatch=0,
+
+          unit_size=2,
+          cond_unit_size=2,
           ):
     model_options = locals().copy()
 
