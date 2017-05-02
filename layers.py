@@ -250,8 +250,37 @@ def gru_layer(P, state_below, O, prefix='gru', mask=None, **kwargs):
 
 
 def param_init_multi_gru(O, params, prefix='gru', nin=None, dim=None, **kwargs):
-    # todo
-    pass
+    if nin is None:
+        nin = O['dim_proj']
+    if dim is None:
+        dim = O['dim_proj']
+
+    layer_id = kwargs.pop('layer_id', 0)
+    context_dim = kwargs.pop('context_dim', None)
+    unit_size = kwargs.pop('unit_size', 2)
+
+    for i in xrange(1, unit_size + 1):
+        # embedding to gates transformation weights, biases
+        params[_p(prefix, 'W', layer_id, i)] = np.concatenate([normal_weight(nin, dim), normal_weight(nin, dim)], axis=1)
+        params[_p(prefix, 'b', layer_id, i)] = np.zeros((2 * dim,), dtype=fX)
+
+        # recurrent transformation weights for gates
+        params[_p(prefix, 'U', layer_id, i)] = np.concatenate([orthogonal_weight(dim),
+                                                            orthogonal_weight(dim)], axis=1)
+
+        # embedding to hidden state proposal weights, biases
+        params[_p(prefix, 'Wx', layer_id, i)] = normal_weight(nin, dim)
+        params[_p(prefix, 'bx', layer_id, i)] = np.zeros((dim,), dtype=fX)
+
+        # recurrent transformation weights for hidden state proposal
+        params[_p(prefix, 'Ux', layer_id, i)] = orthogonal_weight(dim)
+
+        if context_dim is not None:
+            params[_p(prefix, 'Wc', layer_id, i)] = np.concatenate([normal_weight(context_dim, dim),
+                                                                 normal_weight(context_dim, dim)], axis=1)
+            params[_p(prefix, 'Wcx', layer_id, i)] = normal_weight(context_dim, dim)
+
+    return params
 
 
 def _multi_gru_step_slice(
@@ -333,31 +362,30 @@ def multi_gru_layer(P, state_below, O, prefix='multi_gru', mask=None, **kwargs):
     # FIXME: index of unit start at 1, NOT 0!
     state_belows = [
         T.dot(state_below, P[_p(prefix, 'W', layer_id, i)]) + P[_p(prefix, 'b', layer_id, i)]
-        for i in xrange(1, unit_size)
+        for i in xrange(1, unit_size + 1)
     ]
     state_belowxs = [
         T.dot(state_below, P[_p(prefix, 'Wx', layer_id, i)]) + P[_p(prefix, 'bx', layer_id, i)]
-        for i in xrange(1, unit_size)
+        for i in xrange(1, unit_size + 1)
     ]
 
     # prepare scan arguments
     init_states = [T.alloc(0., n_samples, dim) if init_state is None else init_state]
 
-    # todo
     if context is None:
         seqs = [mask, state_belows, state_belowxs]
         shared_vars = [
-            [P[_p(prefix, 'U', layer_id, i)] for i in xrange(1, unit_size)],
-            [P[_p(prefix, 'Ux', layer_id, i)] for i in xrange(1, unit_size)],
+            [P[_p(prefix, 'U', layer_id, i)] for i in xrange(1, unit_size + 1)],
+            [P[_p(prefix, 'Ux', layer_id, i)] for i in xrange(1, unit_size + 1)],
         ]
         _step = _multi_gru_step_slice
     else:
         seqs = [mask, state_belows, state_belowxs, context]
         shared_vars = [
-            [P[_p(prefix, 'U', layer_id, i)] for i in xrange(1, unit_size)],
-            [P[_p(prefix, 'Ux', layer_id, i)] for i in xrange(1, unit_size)],
-            [P[_p(prefix, 'Wc', layer_id, i)] for i in xrange(1, unit_size)],
-            [P[_p(prefix, 'Wcx', layer_id, i)] for i in xrange(1, unit_size)],
+            [P[_p(prefix, 'U', layer_id, i)] for i in xrange(1, unit_size + 1)],
+            [P[_p(prefix, 'Ux', layer_id, i)] for i in xrange(1, unit_size + 1)],
+            [P[_p(prefix, 'Wc', layer_id, i)] for i in xrange(1, unit_size + 1)],
+            [P[_p(prefix, 'Wcx', layer_id, i)] for i in xrange(1, unit_size + 1)],
         ]
         _step = _multi_gru_step_slice_attention
 
@@ -929,6 +957,7 @@ layers = {
     'ff': (param_init_feed_forward, feed_forward),
     'gru': (param_init_gru, gru_layer),
     'gru_cond': (param_init_gru_cond, gru_cond_layer),
+    'multi_gru': (param_init_multi_gru, multi_gru_layer),
     'lstm': (param_init_lstm, lstm_layer),
     'lstm_cond': (param_init_lstm_cond, lstm_cond_layer),
 }
