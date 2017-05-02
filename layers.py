@@ -261,12 +261,13 @@ def param_init_multi_gru(O, params, prefix='gru', nin=None, dim=None, **kwargs):
 
     for i in xrange(1, unit_size + 1):
         # embedding to gates transformation weights, biases
-        params[_p(prefix, 'W', layer_id, i)] = np.concatenate([normal_weight(nin, dim), normal_weight(nin, dim)], axis=1)
+        params[_p(prefix, 'W', layer_id, i)] = np.concatenate([normal_weight(nin, dim), normal_weight(nin, dim)],
+                                                              axis=1)
         params[_p(prefix, 'b', layer_id, i)] = np.zeros((2 * dim,), dtype=fX)
 
         # recurrent transformation weights for gates
         params[_p(prefix, 'U', layer_id, i)] = np.concatenate([orthogonal_weight(dim),
-                                                            orthogonal_weight(dim)], axis=1)
+                                                               orthogonal_weight(dim)], axis=1)
 
         # embedding to hidden state proposal weights, biases
         params[_p(prefix, 'Wx', layer_id, i)] = normal_weight(nin, dim)
@@ -277,7 +278,7 @@ def param_init_multi_gru(O, params, prefix='gru', nin=None, dim=None, **kwargs):
 
         if context_dim is not None:
             params[_p(prefix, 'Wc', layer_id, i)] = np.concatenate([normal_weight(context_dim, dim),
-                                                                 normal_weight(context_dim, dim)], axis=1)
+                                                                    normal_weight(context_dim, dim)], axis=1)
             params[_p(prefix, 'Wcx', layer_id, i)] = normal_weight(context_dim, dim)
 
     return params
@@ -425,53 +426,40 @@ def param_init_gru_cond(O, params, prefix='gru_cond', nin=None, dim=None, dimctx
         dim_nonlin = dim
     layer_id = kwargs.pop('layer_id', 0)
 
-    W = np.concatenate([normal_weight(nin, dim),
-                        normal_weight(nin, dim)], axis=1)
-    params[_p(prefix, 'W', layer_id)] = W
+    params[_p(prefix, 'W', layer_id)] = np.concatenate([normal_weight(nin, dim),
+                                                        normal_weight(nin, dim)], axis=1)
     params[_p(prefix, 'b', layer_id)] = np.zeros((2 * dim,), dtype=fX)
-    U = np.concatenate([orthogonal_weight(dim_nonlin),
-                        orthogonal_weight(dim_nonlin)], axis=1)
-    params[_p(prefix, 'U', layer_id)] = U
+    params[_p(prefix, 'U', layer_id)] = np.concatenate([orthogonal_weight(dim_nonlin),
+                                                        orthogonal_weight(dim_nonlin)], axis=1)
 
-    Wx = normal_weight(nin_nonlin, dim_nonlin)
-    params[_p(prefix, 'Wx', layer_id)] = Wx
-    Ux = orthogonal_weight(dim_nonlin)
-    params[_p(prefix, 'Ux', layer_id)] = Ux
+    params[_p(prefix, 'Wx', layer_id)] = normal_weight(nin_nonlin, dim_nonlin)
+    params[_p(prefix, 'Ux', layer_id)] = orthogonal_weight(dim_nonlin)
     params[_p(prefix, 'bx', layer_id)] = np.zeros((dim_nonlin,), dtype=fX)
 
-    U_nl = np.concatenate([orthogonal_weight(dim_nonlin),
-                           orthogonal_weight(dim_nonlin)], axis=1)
-    params[_p(prefix, 'U_nl', layer_id)] = U_nl
+    params[_p(prefix, 'U_nl', layer_id)] = np.concatenate([orthogonal_weight(dim_nonlin),
+                                                           orthogonal_weight(dim_nonlin)], axis=1)
     params[_p(prefix, 'b_nl', layer_id)] = np.zeros((2 * dim_nonlin,), dtype=fX)
 
-    Ux_nl = orthogonal_weight(dim_nonlin)
-    params[_p(prefix, 'Ux_nl', layer_id)] = Ux_nl
+    params[_p(prefix, 'Ux_nl', layer_id)] = orthogonal_weight(dim_nonlin)
     params[_p(prefix, 'bx_nl', layer_id)] = np.zeros((dim_nonlin,), dtype=fX)
 
     # context to LSTM
-    Wc = normal_weight(dimctx, dim * 2)
-    params[_p(prefix, 'Wc', layer_id)] = Wc
+    params[_p(prefix, 'Wc', layer_id)] = normal_weight(dimctx, dim * 2)
 
-    Wcx = normal_weight(dimctx, dim)
-    params[_p(prefix, 'Wcx', layer_id)] = Wcx
+    params[_p(prefix, 'Wcx', layer_id)] = normal_weight(dimctx, dim)
 
     # attention: combined -> hidden
-    W_comb_att = normal_weight(dim, dimctx)
-    params[_p(prefix, 'W_comb_att', layer_id)] = W_comb_att
+    params[_p(prefix, 'W_comb_att', layer_id)] = normal_weight(dim, dimctx)
 
     # attention: context -> hidden
-    Wc_att = normal_weight(dimctx)
-    params[_p(prefix, 'Wc_att', layer_id)] = Wc_att
+    params[_p(prefix, 'Wc_att', layer_id)] = normal_weight(dimctx)
 
     # attention: hidden bias
-    b_att = np.zeros((dimctx,), dtype=fX)
-    params[_p(prefix, 'b_att', layer_id)] = b_att
+    params[_p(prefix, 'b_att', layer_id)] = np.zeros((dimctx,), dtype=fX)
 
     # attention:
-    U_att = normal_weight(dimctx, 1)
-    params[_p(prefix, 'U_att', layer_id)] = U_att
-    c_att = np.zeros((1,), dtype=fX)
-    params[_p(prefix, 'c_tt', layer_id)] = c_att
+    params[_p(prefix, 'U_att', layer_id)] = normal_weight(dimctx, 1)
+    params[_p(prefix, 'c_tt', layer_id)] = np.zeros((1,), dtype=fX)
 
     return params
 
@@ -529,17 +517,7 @@ def gru_cond_layer(P, state_below, O, prefix='gru', mask=None, context=None, one
                     h_, ctx_, alpha_,
                     projected_context_, context_,
                     U, Wc, W_comb_att, U_att, c_tt, Ux, Wcx, U_nl, Ux_nl, b_nl, bx_nl):
-        preact1 = T.nnet.sigmoid(T.dot(h_, U) + x_)
-
-        r1 = _slice(preact1, 0, dim)
-        u1 = _slice(preact1, 1, dim)
-
-        preactx1 = T.dot(h_, Ux) * r1 + xx_
-
-        h1 = T.tanh(preactx1)
-
-        h1 = u1 * h_ + (1. - u1) * h1
-        h1 = m_[:, None] * h1 + (1. - m_)[:, None] * h_
+        h1 = _gru_step_slice(m_, x_, xx_, h_, U, Ux)
 
         # attention
         pstate_ = T.dot(h1, W_comb_att)
@@ -584,6 +562,183 @@ def gru_cond_layer(P, state_below, O, prefix='gru', mask=None, context=None, one
                    P[_p(prefix, 'Ux_nl', layer_id)],
                    P[_p(prefix, 'b_nl', layer_id)],
                    P[_p(prefix, 'bx_nl', layer_id)]]
+
+    if one_step:
+        result = _step(*(seqs + [init_state, None, None, projected_context, context] + shared_vars))
+    else:
+        result, _ = theano.scan(
+            _step,
+            sequences=seqs,
+            outputs_info=[init_state,
+                          T.alloc(0., n_samples, context.shape[2]),
+                          T.alloc(0., n_samples, context.shape[0])],
+            non_sequences=[projected_context, context] + shared_vars,
+            name=_p(prefix, '_layers'),
+            n_steps=n_steps,
+            profile=profile,
+            strict=True,
+        )
+
+    kw_ret['hidden_without_dropout'] = result[0]
+
+    result = list(result)
+    result.append(kw_ret)
+
+    if dropout_params:
+        result[0] = dropout_layer(result[0], *dropout_params)
+
+    return result
+
+
+def param_init_multi_gru_cond(O, params, prefix='gru_cond', nin=None, dim=None, dimctx=None, nin_nonlin=None,
+                              dim_nonlin=None, **kwargs):
+    if nin is None:
+        nin = O['dim']
+    if dim is None:
+        dim = O['dim']
+    if dimctx is None:
+        dimctx = O['dim']
+    if nin_nonlin is None:
+        nin_nonlin = nin
+    if dim_nonlin is None:
+        dim_nonlin = dim
+    layer_id = kwargs.pop('layer_id', 0)
+    cond_unit_size = kwargs.pop('cond_unit_size', 2)
+
+    for i in xrange(1, cond_unit_size + 1):
+        params[_p(prefix, 'W', layer_id, i)] = np.concatenate([normal_weight(nin, dim),
+                                                               normal_weight(nin, dim)], axis=1)
+        params[_p(prefix, 'b', layer_id, i)] = np.zeros((2 * dim,), dtype=fX)
+        params[_p(prefix, 'U', layer_id, i)] = np.concatenate([orthogonal_weight(dim_nonlin),
+                                                               orthogonal_weight(dim_nonlin)], axis=1)
+
+        params[_p(prefix, 'Wx', layer_id, i)] = normal_weight(nin_nonlin, dim_nonlin)
+        params[_p(prefix, 'Ux', layer_id, i)] = orthogonal_weight(dim_nonlin)
+        params[_p(prefix, 'bx', layer_id, i)] = np.zeros((dim_nonlin,), dtype=fX)
+
+        params[_p(prefix, 'U_nl', layer_id, i)] = np.concatenate([orthogonal_weight(dim_nonlin),
+                                                                  orthogonal_weight(dim_nonlin)], axis=1)
+        params[_p(prefix, 'b_nl', layer_id, i)] = np.zeros((2 * dim_nonlin,), dtype=fX)
+
+        params[_p(prefix, 'Ux_nl', layer_id, i)] = orthogonal_weight(dim_nonlin)
+        params[_p(prefix, 'bx_nl', layer_id, i)] = np.zeros((dim_nonlin,), dtype=fX)
+
+        # context to LSTM
+        params[_p(prefix, 'Wc', layer_id, i)] = normal_weight(dimctx, dim * 2)
+
+        params[_p(prefix, 'Wcx', layer_id, i)] = normal_weight(dimctx, dim)
+
+    # attention: combined -> hidden
+    params[_p(prefix, 'W_comb_att', layer_id)] = normal_weight(dim, dimctx)
+
+    # attention: context -> hidden
+    params[_p(prefix, 'Wc_att', layer_id)] = normal_weight(dimctx)
+
+    # attention: hidden bias
+    params[_p(prefix, 'b_att', layer_id)] = np.zeros((dimctx,), dtype=fX)
+
+    # attention:
+    params[_p(prefix, 'U_att', layer_id)] = normal_weight(dimctx, 1)
+    params[_p(prefix, 'c_tt', layer_id)] = np.zeros((1,), dtype=fX)
+
+    return params
+
+
+def multi_gru_cond_layer(P, state_below, O, prefix='gru', mask=None, context=None, one_step=False, init_memory=None,
+                         init_state=None, context_mask=None, **kwargs):
+    layer_id = kwargs.pop('layer_id', 0)
+    cond_unit_size = kwargs.pop('cond_unit_size', 2)
+
+    kw_ret = {}
+
+    assert context, 'Context must be provided'
+    assert context.ndim == 3, 'Context must be 3-d: #annotation * #sample * dim'
+    if one_step:
+        assert init_state, 'previous state must be provided'
+
+    # Dimensions
+    n_steps = state_below.shape[0]
+    if state_below.ndim == 3:
+        n_samples = state_below.shape[1]
+    else:
+        n_samples = 1
+    dim = P[_p(prefix, 'Wcx', layer_id)].shape[1]
+    dropout_params = kwargs.pop('dropout_params', None)
+
+    # Mask
+    if mask is None:
+        mask = T.alloc(1., n_steps, 1)
+
+    # Initial/previous state
+    if init_state is None:
+        init_state = T.alloc(0., n_samples, dim)
+
+    projected_context = T.dot(context, P[_p(prefix, 'Wc_att', layer_id)]) + P[_p(prefix, 'b_att', layer_id)]
+
+    # projected x
+    state_belows = [
+        T.dot(state_below, P[_p(prefix, 'W', layer_id, i)]) + P[_p(prefix, 'b', layer_id, i)]
+        for i in xrange(1, cond_unit_size + 1)
+    ]
+    state_belowxs = [
+        T.dot(state_below, P[_p(prefix, 'Wx', layer_id, i)]) + P[_p(prefix, 'bx', layer_id, i)]
+        for i in xrange(1, cond_unit_size + 1)
+    ]
+
+    def _step_slice(m_, x_list, xx_list,
+                    h_, ctx_, alpha_,
+                    projected_context_, context_,
+                    U_list, Wc_list, W_comb_att, U_att, c_tt, Ux_list, Wcx_list,
+                    U_nl_list, Ux_nl_list, b_nl_list, bx_nl_list):
+        h1 = _multi_gru_step_slice(m_, x_list, xx_list, h_, U_list, Ux_list)
+
+        # attention
+        pstate_ = T.dot(h1, W_comb_att)
+        pctx__ = projected_context_ + pstate_[None, :, :]
+        # pctx__ += xc_
+        pctx__ = T.tanh(pctx__)
+
+        alpha = T.dot(pctx__, U_att) + c_tt
+        alpha = alpha.reshape([alpha.shape[0], alpha.shape[1]])
+        alpha = T.exp(alpha)
+        if context_mask:
+            alpha = alpha * context_mask
+        alpha = alpha / alpha.sum(0, keepdims=True)
+        ctx_ = (context_ * alpha[:, :, None]).sum(0)  # current context
+
+        # GRU 2 (with attention)
+        h = h1
+        for U_nl, b_nl, Wc, Ux_nl, bx_nl, Wcx in zip(U_nl_list, b_nl_list, Wc_list, Ux_nl_list, bx_nl_list, Wcx_list):
+            preact2 = T.nnet.sigmoid(T.dot(h, U_nl) + b_nl + T.dot(ctx_, Wc))
+
+            r2 = _slice(preact2, 0, dim)
+            u2 = _slice(preact2, 1, dim)
+
+            preactx2 = (T.dot(h1, Ux_nl) + bx_nl) * r2 + T.dot(ctx_, Wcx)
+
+            h2 = T.tanh(preactx2)
+
+            h2 = u2 * h + (1. - u2) * h2
+            h = m_[:, None] * h2 + (1. - m_)[:, None] * h
+
+        return h, ctx_, alpha.T
+
+    seqs = [mask, state_belows, state_belowxs]
+    _step = _step_slice
+
+    shared_vars = [
+        [P[_p(prefix, 'U', layer_id, i)] for i in xrange(1, cond_unit_size + 1)],
+        P[_p(prefix, 'Wc', layer_id)],
+        P[_p(prefix, 'W_comb_att', layer_id)],
+        P[_p(prefix, 'U_att', layer_id)],
+        P[_p(prefix, 'c_tt', layer_id)],
+        [P[_p(prefix, 'Ux', layer_id, i)] for i in xrange(1, cond_unit_size + 1)],
+        [P[_p(prefix, 'Wcx', layer_id, i)] for i in xrange(1, cond_unit_size + 1)],
+        [P[_p(prefix, 'U_nl', layer_id, i)] for i in xrange(1, cond_unit_size + 1)],
+        [P[_p(prefix, 'Ux_nl', layer_id, i)] for i in xrange(1, cond_unit_size + 1)],
+        [P[_p(prefix, 'b_nl', layer_id, i)] for i in xrange(1, cond_unit_size + 1)],
+        [P[_p(prefix, 'bx_nl', layer_id, i)] for i in xrange(1, cond_unit_size + 1)],
+    ]
 
     if one_step:
         result = _step(*(seqs + [init_state, None, None, projected_context, context] + shared_vars))
@@ -958,6 +1113,7 @@ layers = {
     'gru': (param_init_gru, gru_layer),
     'gru_cond': (param_init_gru_cond, gru_cond_layer),
     'multi_gru': (param_init_multi_gru, multi_gru_layer),
+    'multi_gru_cond': (param_init_multi_gru_cond, multi_gru_cond_layer),
     'lstm': (param_init_lstm, lstm_layer),
     'lstm_cond': (param_init_lstm_cond, lstm_cond_layer),
 }
