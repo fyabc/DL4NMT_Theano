@@ -284,16 +284,23 @@ def param_init_multi_gru(O, params, prefix='gru', nin=None, dim=None, **kwargs):
     return params
 
 
-def _multi_gru_step_slice(
-        mask, x_list, xx_list,
+def _multi_gru_step_slice_2(
+        mask, x_0, x_1, xx_0, xx_1,
         ht_1,
-        U_list, Ux_list,
+        U_0, U_1, Ux_0, Ux_1,
 ):
-    _dim = Ux_list[0].shape[1]
+    _dim = Ux_0.shape[1]
 
     h = ht_1
 
-    for x_, xx_, U, Ux in zip(x_list, xx_list, U_list, Ux_list):
+    x_list = x_0, x_1
+    xx_list = xx_0, xx_1
+    U_list = U_0, U_1
+    Ux_list = Ux_0, Ux_1
+
+    for i in range(2):
+        x_, xx_, U, Ux = x_list[i], xx_list[i], U_list[i], Ux_list[i]
+
         preact = T.dot(h, U) + x_
 
         # reset and update gates
@@ -310,16 +317,25 @@ def _multi_gru_step_slice(
     return h
 
 
-def _multi_gru_step_slice_attention(
-        mask, x_list, xx_list, context,
+def _multi_gru_step_slice_attention_2(
+        mask, x_0, x_1, xx_0, xx_1, context,
         ht_1,
-        U_list, Ux_list, Wc_list, Wcx_list,
+        U_0, U_1, Ux_0, Ux_1, Wc_0, Wc_1, Wcx_0, Wcx_1,
 ):
-    _dim = Ux_list[0].shape[1]
+    _dim = Ux_0.shape[1]
 
     h = ht_1
 
-    for x_, xx_, U, Ux, Wc, Wcx in zip(x_list, xx_list, U_list, Ux_list, Wc_list, Wcx_list):
+    x_list = x_0, x_1
+    xx_list = xx_0, xx_1
+    U_list = U_0, U_1
+    Ux_list = Ux_0, Ux_1
+    Wc_list = Wc_0, Wc_1
+    Wcx_list = Wcx_0, Wcx_1
+
+    for i in range(2):
+        x_, xx_, U, Ux, Wc, Wcx = x_list[i], xx_list[i], U_list[i], Ux_list[i], Wc_list[i], Wcx_list[i]
+
         preact = T.nnet.sigmoid(T.dot(h, U) + x_ + T.dot(context, Wc))
 
         # reset and update gates
@@ -354,7 +370,7 @@ def multi_gru_layer(P, state_below, O, prefix='multi_gru', mask=None, **kwargs):
 
     n_steps = state_below.shape[0]
     n_samples = state_below.shape[1] if state_below.ndim == 3 else 1
-    dim = P[_p(prefix, 'Ux', layer_id)].shape[1]
+    dim = P[_p(prefix, 'Ux', layer_id, 1)].shape[1]
 
     mask = T.alloc(1., n_steps, 1) if mask is None else mask
 
@@ -364,31 +380,27 @@ def multi_gru_layer(P, state_below, O, prefix='multi_gru', mask=None, **kwargs):
     state_belows = [
         T.dot(state_below, P[_p(prefix, 'W', layer_id, i)]) + P[_p(prefix, 'b', layer_id, i)]
         for i in xrange(1, unit_size + 1)
-    ]
+        ]
     state_belowxs = [
         T.dot(state_below, P[_p(prefix, 'Wx', layer_id, i)]) + P[_p(prefix, 'bx', layer_id, i)]
         for i in xrange(1, unit_size + 1)
-    ]
+        ]
 
     # prepare scan arguments
     init_states = [T.alloc(0., n_samples, dim) if init_state is None else init_state]
 
     if context is None:
-        seqs = [mask, state_belows, state_belowxs]
-        shared_vars = [
-            [P[_p(prefix, 'U', layer_id, i)] for i in xrange(1, unit_size + 1)],
-            [P[_p(prefix, 'Ux', layer_id, i)] for i in xrange(1, unit_size + 1)],
-        ]
-        _step = _multi_gru_step_slice
+        seqs = [mask] + state_belows + state_belowxs
+        shared_vars = [P[_p(prefix, 'U', layer_id, i)] for i in xrange(1, unit_size + 1)] + \
+                      [P[_p(prefix, 'Ux', layer_id, i)] for i in xrange(1, unit_size + 1)]
+        _step = _multi_gru_step_slice_2
     else:
-        seqs = [mask, state_belows, state_belowxs, context]
-        shared_vars = [
-            [P[_p(prefix, 'U', layer_id, i)] for i in xrange(1, unit_size + 1)],
-            [P[_p(prefix, 'Ux', layer_id, i)] for i in xrange(1, unit_size + 1)],
-            [P[_p(prefix, 'Wc', layer_id, i)] for i in xrange(1, unit_size + 1)],
-            [P[_p(prefix, 'Wcx', layer_id, i)] for i in xrange(1, unit_size + 1)],
-        ]
-        _step = _multi_gru_step_slice_attention
+        seqs = [mask] + state_belows + state_belowxs + [context]
+        shared_vars = [P[_p(prefix, 'U', layer_id, i)] for i in xrange(1, unit_size + 1)] + \
+                      [P[_p(prefix, 'Ux', layer_id, i)] for i in xrange(1, unit_size + 1)] + \
+                      [P[_p(prefix, 'Wc', layer_id, i)] for i in xrange(1, unit_size + 1)] + \
+                      [P[_p(prefix, 'Wcx', layer_id, i)] for i in xrange(1, unit_size + 1)]
+        _step = _multi_gru_step_slice_attention_2
 
     if one_step:
         outputs = _step(*(seqs + init_states + shared_vars))
@@ -649,6 +661,8 @@ def multi_gru_cond_layer(P, state_below, O, prefix='gru', mask=None, context=Non
     layer_id = kwargs.pop('layer_id', 0)
     cond_unit_size = kwargs.pop('cond_unit_size', 2)
 
+    theano.config.exception_verbosity = 'high'
+
     kw_ret = {}
 
     assert context, 'Context must be provided'
@@ -662,7 +676,7 @@ def multi_gru_cond_layer(P, state_below, O, prefix='gru', mask=None, context=Non
         n_samples = state_below.shape[1]
     else:
         n_samples = 1
-    dim = P[_p(prefix, 'Wcx', layer_id)].shape[1]
+    dim = P[_p(prefix, 'Wcx', layer_id, 1)].shape[1]
     dropout_params = kwargs.pop('dropout_params', None)
 
     # Mask
@@ -679,18 +693,18 @@ def multi_gru_cond_layer(P, state_below, O, prefix='gru', mask=None, context=Non
     state_belows = [
         T.dot(state_below, P[_p(prefix, 'W', layer_id, i)]) + P[_p(prefix, 'b', layer_id, i)]
         for i in xrange(1, cond_unit_size + 1)
-    ]
+        ]
     state_belowxs = [
         T.dot(state_below, P[_p(prefix, 'Wx', layer_id, i)]) + P[_p(prefix, 'bx', layer_id, i)]
         for i in xrange(1, cond_unit_size + 1)
-    ]
+        ]
 
-    def _step_slice(m_, x_list, xx_list,
+    def _step_slice(m_, x_0, x_1, xx_0, xx_1,
                     h_, ctx_, alpha_,
                     projected_context_, context_,
-                    U_list, Wc_list, W_comb_att, U_att, c_tt, Ux_list, Wcx_list,
-                    U_nl_list, Ux_nl_list, b_nl_list, bx_nl_list):
-        h1 = _multi_gru_step_slice(m_, x_list, xx_list, h_, U_list, Ux_list)
+                    U_0, U_1, Wc_0, Wc_1, W_comb_att, U_att, c_tt, Ux_0, Ux_1, Wcx_0, Wcx_1,
+                    U_nl_0, U_nl_1, Ux_nl_0, Ux_nl_1, b_nl_0, b_nl_1, bx_nl_0, bx_nl_1):
+        h1 = _multi_gru_step_slice_2(m_, x_0, x_1, xx_0, xx_1, h_, U_0, U_1, Ux_0, Ux_1)
 
         # attention
         pstate_ = T.dot(h1, W_comb_att)
@@ -707,8 +721,18 @@ def multi_gru_cond_layer(P, state_below, O, prefix='gru', mask=None, context=Non
         ctx_ = (context_ * alpha[:, :, None]).sum(0)  # current context
 
         # GRU 2 (with attention)
+        U_nl_list = U_nl_0, U_nl_1
+        b_nl_list = b_nl_0, b_nl_1
+        Wc_list = Wc_0, Wc_1
+        Ux_nl_list = Ux_nl_0, Ux_nl_1
+        bx_nl_list = bx_nl_0, bx_nl_1
+        Wcx_list = Wcx_0, Wcx_1
+
         h = h1
-        for U_nl, b_nl, Wc, Ux_nl, bx_nl, Wcx in zip(U_nl_list, b_nl_list, Wc_list, Ux_nl_list, bx_nl_list, Wcx_list):
+        for i in range(2):
+            U_nl, b_nl, Wc, Ux_nl, bx_nl, Wcx = \
+                U_nl_list[i], b_nl_list[i], Wc_list[i], Ux_nl_list[i], bx_nl_list[i], Wcx_list[i]
+
             preact2 = T.nnet.sigmoid(T.dot(h, U_nl) + b_nl + T.dot(ctx_, Wc))
 
             r2 = _slice(preact2, 0, dim)
@@ -723,22 +747,20 @@ def multi_gru_cond_layer(P, state_below, O, prefix='gru', mask=None, context=Non
 
         return h, ctx_, alpha.T
 
-    seqs = [mask, state_belows, state_belowxs]
+    seqs = [mask] + state_belows + state_belowxs
     _step = _step_slice
 
-    shared_vars = [
-        [P[_p(prefix, 'U', layer_id, i)] for i in xrange(1, cond_unit_size + 1)],
-        P[_p(prefix, 'Wc', layer_id)],
-        P[_p(prefix, 'W_comb_att', layer_id)],
-        P[_p(prefix, 'U_att', layer_id)],
-        P[_p(prefix, 'c_tt', layer_id)],
-        [P[_p(prefix, 'Ux', layer_id, i)] for i in xrange(1, cond_unit_size + 1)],
-        [P[_p(prefix, 'Wcx', layer_id, i)] for i in xrange(1, cond_unit_size + 1)],
-        [P[_p(prefix, 'U_nl', layer_id, i)] for i in xrange(1, cond_unit_size + 1)],
-        [P[_p(prefix, 'Ux_nl', layer_id, i)] for i in xrange(1, cond_unit_size + 1)],
-        [P[_p(prefix, 'b_nl', layer_id, i)] for i in xrange(1, cond_unit_size + 1)],
-        [P[_p(prefix, 'bx_nl', layer_id, i)] for i in xrange(1, cond_unit_size + 1)],
-    ]
+    shared_vars = [P[_p(prefix, 'U', layer_id, i)] for i in xrange(1, cond_unit_size + 1)] + \
+                  [P[_p(prefix, 'Wc', layer_id, i)] for i in xrange(1, cond_unit_size + 1)] + \
+                  [P[_p(prefix, 'W_comb_att', layer_id)]] + \
+                  [P[_p(prefix, 'U_att', layer_id)]] + \
+                  [P[_p(prefix, 'c_tt', layer_id)]] + \
+                  [P[_p(prefix, 'Ux', layer_id, i)] for i in xrange(1, cond_unit_size + 1)] + \
+                  [P[_p(prefix, 'Wcx', layer_id, i)] for i in xrange(1, cond_unit_size + 1)] + \
+                  [P[_p(prefix, 'U_nl', layer_id, i)] for i in xrange(1, cond_unit_size + 1)] + \
+                  [P[_p(prefix, 'Ux_nl', layer_id, i)] for i in xrange(1, cond_unit_size + 1)] + \
+                  [P[_p(prefix, 'b_nl', layer_id, i)] for i in xrange(1, cond_unit_size + 1)] + \
+                  [P[_p(prefix, 'bx_nl', layer_id, i)] for i in xrange(1, cond_unit_size + 1)]
 
     if one_step:
         result = _step(*(seqs + [init_state, None, None, projected_context, context] + shared_vars))
