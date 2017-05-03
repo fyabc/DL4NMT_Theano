@@ -41,7 +41,7 @@ def main():
             for index in selected_indices:
                 print(lines[index], end='', file=f_out)
 
-        print('Extract {} -> {}'.format(input_filename1, output_filename2))
+        print('Extract {} -> {}'.format(input_filename2, output_filename2))
 
 if __name__ == '__main__':
     main()
