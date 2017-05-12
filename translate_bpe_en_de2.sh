@@ -12,4 +12,4 @@ python translate.py //gcr/Scratch/RR1/v-yanfa/SelectiveTrain/model/complete/${mo
 
 cat ${output_file} | sed -r 's/(@@ )|(@@ ?$)//g' > ${output_file}.bpe
 
-perl multi-bleu.perl data/test/vocab.bpe.32000.pkl < ${output_file}.bpe
+perl multi-bleu.perl data/test/newstest2014.tok.bpe.32000.de < ${output_file}.bpe
