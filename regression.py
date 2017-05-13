@@ -234,7 +234,7 @@ def build_regression(args, top_options):
 
     print('Building optimizers...', end='')
     lr = T.scalar(name='lr')
-    f_grad_shared, f_update = Optimizers[args.regression_optimizer](
+    f_grad_shared, f_update, _ = Optimizers[args.regression_optimizer](
         lr, trainable_parameters, grads, inputs, loss, g2=g2)
     print('Done')
 

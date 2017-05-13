@@ -106,4 +106,10 @@ DefaultOptions = dict(
 
     # Depth of cond unit
     cond_unit_size=2,
+
+    # Given immediate file of adadelta? Only effective in adadelta
+    given_imm=False,
+    # Dump immediate file of adadelta? Only effective in adadelta
+    # (Dump when save model)
+    dump_imm=False,
 )

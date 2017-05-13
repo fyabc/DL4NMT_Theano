@@ -174,6 +174,8 @@ def main():
         given_embedding=args.given_embedding,
 
         syncbatch=args.syncbatch,
+        given_imm=True,
+        dump_imm=True,
     )
 
 

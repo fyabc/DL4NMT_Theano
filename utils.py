@@ -407,6 +407,28 @@ def make_f_train(f_grad_shared, f_update):
     return f_train
 
 
+def get_adadelta_imm_data(optimizer, given_imm, saveto):
+    if optimizer == 'adadelta' and given_imm:
+        given_imm_filename = '{}_imm.pkl'.format(os.path.splitext(saveto)[0])
+        if os.path.exists(given_imm_filename):
+            message('Loading adadelta immediate data')
+            return pkl.load(open(given_imm_filename, 'rb'))
+    return None
+
+
+def dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto):
+    if optimizer != 'adadelta' or imm_shared is None or dump_imm is None:
+        return
+
+    with open('{}_imm.pkl'.format(os.path.splitext(saveto)[0]), 'wb') as f:
+        message('Dumping adadelta immediate data...', end='')
+        pkl.dump([
+            [g.get_value() for g in imm_shared[0]],
+            [g.get_value() for g in imm_shared[1]],
+        ], f)
+        message('Done')
+
+
 __all__ = [
     'set_logging_file',
     'get_logging_file',
@@ -436,4 +458,6 @@ __all__ = [
     'save_options',
     'search_start_uidx',
     'make_f_train',
+    'get_adadelta_imm_data',
+    'dump_adadelta_imm_data',
 ]

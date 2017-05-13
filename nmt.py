@@ -15,7 +15,7 @@ import theano.tensor as tensor
 
 from constants import profile
 from data_iterator import TextIterator
-from optimizers import *
+from optimizers import Optimizers
 from utils import *
 from model import NMTModel
 
@@ -60,12 +60,6 @@ def validation(iterator, f_cost, maxlen=None):
         valid_count += 1
 
     return valid_cost / valid_count
-
-
-def _just_ref():
-    """Just reference something to prevent them from being optimized out by PyCharm."""
-
-    _ = sgd, adadelta, rmsprop, adam
 
 
 def train(dim_word=100,  # word vector dimensionality
@@ -126,6 +120,9 @@ def train(dim_word=100,  # word vector dimensionality
 
           unit_size=2,
           cond_unit_size=2,
+
+          given_imm=False,
+          dump_imm=False,
           ):
     model_options = locals().copy()
 
@@ -210,9 +207,9 @@ Start Time = {}
 
     # Build model
     trng, use_noise, \
-        x, x_mask, y, y_mask, \
-        opt_ret, \
-        cost, x_emb = model.build_model()
+    x, x_mask, y, y_mask, \
+    opt_ret, \
+    cost, x_emb = model.build_model()
     inps = [x, x_mask, y, y_mask]
 
     print 'Building sampler'
@@ -253,7 +250,10 @@ Start Time = {}
     # compile the optimizer, the actual computational graph is compiled here
     lr = tensor.scalar(name='lr')
     print 'Building optimizers...',
-    f_grad_shared, f_update = eval(optimizer)(lr, model.P, grads, inps, cost, g2=g2)
+    given_imm_data = get_adadelta_imm_data(optimizer, given_imm, saveto)
+
+    f_grad_shared, f_update, imm_shared = Optimizers[optimizer](
+        lr, model.P, grads, inps, cost, g2=g2, given_imm_data=given_imm_data, dump_imm=dump_imm)
     print 'Done'
 
     print 'Optimization'
@@ -341,6 +341,9 @@ Start Time = {}
                     save_options(model_options, uidx, saveto)
                     print 'Done'
                     sys.stdout.flush()
+
+                # save immediate data in adadelta
+                dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto)
 
             if np.mod(uidx, validFreq) == 0:
                 valid_cost = validation(valid_iterator, f_cost, maxlen=maxlen)
