@@ -11,6 +11,7 @@ from pprint import pprint
 import re
 import errno
 import random
+import gzip
 
 import theano
 import theano.tensor as tensor
@@ -59,6 +60,12 @@ def log(*args, **kwargs):
 def close_logging_file():
     if _fp_log is not None:
         _fp_log.close()
+
+
+def fopen(filename, mode='r'):
+    if filename.endswith('.gz'):
+        return gzip.open(filename, mode)
+    return open(filename, mode)
 
 
 def zipp(params, tparams):
@@ -414,7 +421,7 @@ def get_adadelta_imm_data(optimizer, given_imm, saveto):
         given_imm_filename = '{}_imm.pkl'.format(os.path.splitext(saveto)[0])
         if os.path.exists(given_imm_filename):
             message('Loading adadelta immediate data')
-            return pkl.load(open(given_imm_filename, 'rb'))
+            return pkl.load(fopen(given_imm_filename, 'rb'))
     return None
 
 
@@ -422,7 +429,7 @@ def dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto):
     if optimizer != 'adadelta' or imm_shared is None or dump_imm is None:
         return
 
-    with open('{}_imm.pkl'.format(os.path.splitext(saveto)[0]), 'wb') as f:
+    with gzip.open('{}_imm.pkl'.format(os.path.splitext(saveto)[0]), 'wb') as f:
         message('Dumping adadelta immediate data...', end='')
         pkl.dump([
             [g.get_value() for g in imm_shared[0]],
