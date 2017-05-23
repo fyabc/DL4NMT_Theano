@@ -23,6 +23,10 @@ def main():
                         help='Train batch size, default is %(default)s')
     parser.add_argument('--dim_word', action='store', default=512, type=int, dest='dim_word',
                         help='Dim of word embedding, default is %(default)s')
+    parser.add_argument('--maxlen', action='store', default=64, type=int, dest='maxlen',
+                        help='Max sentence length, default is %(default)s')
+    parser.add_argument('-S', action='store_false', default=True, dest='shuffle',
+                        help='Shuffle data per epoch, default is True, set to False')
     parser.add_argument('--train1', action='store', metavar='filename', dest='train1', type=str,
                         default='filtered_en-fr.en',
                         help='Source train file, default is %(default)s')
@@ -138,7 +142,7 @@ def main():
         lrate=args.learning_rate,
         optimizer=args.optimizer,
         patience=1000,
-        maxlen=64,
+        maxlen=args.maxlen,
         batch_size=args.batch_size,
         valid_batch_size=128,
         dispFreq=1,
@@ -176,6 +180,7 @@ def main():
         syncbatch=args.syncbatch,
         given_imm=True,
         dump_imm=True,
+        shuffle_data=args.shuffle,
     )
 
 

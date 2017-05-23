@@ -112,4 +112,7 @@ DefaultOptions = dict(
     # Dump immediate file of adadelta? Only effective in adadelta
     # (Dump when save model)
     dump_imm=False,
+
+    # Shuffle data per epoch?
+    shuffle_data=False,
 )

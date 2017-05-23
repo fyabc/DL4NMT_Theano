@@ -10,12 +10,14 @@ import cPickle as pkl
 from pprint import pprint
 import re
 import errno
+import random
 
 import theano
 import theano.tensor as tensor
 import numpy as np
 
-from constants import fX
+from constants import fX, ShuffleCycle
+from data_iterator import TextIterator
 
 
 _fp_log = None
@@ -429,6 +431,54 @@ def dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto):
         message('Done')
 
 
+def create_shuffle_data(datasets_orig, dataset_src, dataset_tgt):
+    orig_src, orig_tgt = datasets_orig[0], datasets_orig[1]
+
+    with open(orig_src) as orig_f_src:
+        l_src = list(orig_f_src)
+    with open(orig_tgt) as orig_f_tgt:
+        l_tgt = list(orig_f_tgt)
+
+    new_idx = range(len(l_src))
+    random.shuffle(new_idx)
+
+    with open(dataset_src, 'w') as new_f_src:
+        new_f_src.writelines((l_src[i] for i in new_idx))
+    with open(dataset_tgt, 'w') as new_f_tgt:
+        new_f_tgt.writelines((l_tgt[i] for i in new_idx))
+
+
+def load_shuffle_text_iterator(
+        epoch, text_iterator_list,
+        datasets, vocab_filenames, batch_size, maxlen, n_words_src, n_words,
+):
+    e = epoch % ShuffleCycle
+
+    if text_iterator_list[e] is None:
+        # Create new text iterator
+        message('Creating text iterator {}...'.format(e), end='')
+        dataset_src = '{}_{}'.format(datasets[0], e)
+        dataset_tgt = '{}_{}'.format(datasets[1], e)
+
+        if not os.path.exists(dataset_src):
+            message('file "{}" and "{}" not exist, creating...'.format(dataset_src, dataset_tgt), end='')
+            create_shuffle_data(datasets, dataset_src, dataset_tgt)
+            message('Done')
+
+        text_iterator_list[e] = TextIterator(
+            dataset_src, dataset_tgt,
+            vocab_filenames[0], vocab_filenames[1],
+            batch_size, maxlen, n_words_src, n_words,
+        )
+        message('Done')
+        return text_iterator_list[e]
+    else:
+        # Reset current text iterator
+        message('Reset text iterator {}'.format(e))
+        text_iterator_list[e].reset()
+        return text_iterator_list[e]
+
+
 __all__ = [
     'set_logging_file',
     'get_logging_file',
@@ -460,4 +510,5 @@ __all__ = [
     'make_f_train',
     'get_adadelta_imm_data',
     'dump_adadelta_imm_data',
+    'load_shuffle_text_iterator',
 ]

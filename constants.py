@@ -7,3 +7,6 @@ __author__ = 'fyabc'
 
 profile = False
 fX = 'float32'
+
+# Cycle of shuffle data.
+ShuffleCycle = 8

@@ -123,6 +123,7 @@ def train(dim_word=100,  # word vector dimensionality
 
           given_imm=False,
           dump_imm=False,
+          shuffle_data=False,
           ):
     model_options = locals().copy()
 
@@ -167,11 +168,16 @@ Start Time = {}
     else:
         dataset_src, dataset_tgt = datasets[0], datasets[1]
 
-    text_iterator = TextIterator(
-        dataset_src, dataset_tgt,
-        vocab_filenames[0], vocab_filenames[1],
-        batch_size, maxlen, n_words_src, n_words,
-    )
+    if shuffle_data:
+        text_iterator_list = [None for _ in range(10)]
+        text_iterator = None
+    else:
+        text_iterator_list = None
+        text_iterator = TextIterator(
+            dataset_src, dataset_tgt,
+            vocab_filenames[0], vocab_filenames[1],
+            batch_size, maxlen, n_words_src, n_words,
+        )
 
     valid_iterator = TextIterator(
         valid_datasets[0], valid_datasets[1],
@@ -207,9 +213,9 @@ Start Time = {}
 
     # Build model
     trng, use_noise, \
-    x, x_mask, y, y_mask, \
-    opt_ret, \
-    cost, x_emb = model.build_model()
+        x, x_mask, y, y_mask, \
+        opt_ret, \
+        cost, x_emb = model.build_model()
     inps = [x, x_mask, y, y_mask]
 
     print 'Building sampler'
@@ -282,6 +288,12 @@ Start Time = {}
     start_time = time.time()
 
     for eidx in xrange(max_epochs):
+        if shuffle_data:
+            text_iterator = load_shuffle_text_iterator(
+                eidx, text_iterator_list,
+                datasets, vocab_filenames, batch_size, maxlen, n_words_src, n_words,
+            )
+
         n_samples = 0
 
         for i, (x, y) in enumerate(text_iterator):
