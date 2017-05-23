@@ -418,10 +418,16 @@ def make_f_train(f_grad_shared, f_update):
 
 def get_adadelta_imm_data(optimizer, given_imm, saveto):
     if optimizer == 'adadelta' and given_imm:
-        given_imm_filename = '{}_imm.pkl'.format(os.path.splitext(saveto)[0])
+        given_imm_filename = '{}_imm.pkl.gz'.format(os.path.splitext(saveto)[0])
+
+        # For back compatibility
+        given_imm_filename_backup = '{}_imm.pkl'.format(os.path.splitext(saveto)[0])
         if os.path.exists(given_imm_filename):
             message('Loading adadelta immediate data')
             return pkl.load(fopen(given_imm_filename, 'rb'))
+        elif os.path.exists(given_imm_filename_backup):
+            message('Loading adadelta immediate data')
+            return pkl.load(fopen(given_imm_filename_backup, 'rb'))
     return None
 
 
@@ -429,7 +435,7 @@ def dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto):
     if optimizer != 'adadelta' or imm_shared is None or dump_imm is None:
         return
 
-    with gzip.open('{}_imm.pkl'.format(os.path.splitext(saveto)[0]), 'wb') as f:
+    with gzip.open('{}_imm.pkl.gz'.format(os.path.splitext(saveto)[0]), 'wb') as f:
         message('Dumping adadelta immediate data...', end='')
         pkl.dump([
             [g.get_value() for g in imm_shared[0]],
