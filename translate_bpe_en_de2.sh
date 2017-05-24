@@ -1,6 +1,6 @@
 #! /bin/bash
 
-# Usage: translate_bpe.sh gpu_id n_enc n_dec residual_enc attention iteration thread_num [other]
+# Usage: translate_bpe_en_de2.sh gpu_id n_enc n_dec residual_enc attention iteration thread_num [other]
 
 export THEANO_FLAGS=device=gpu$1,floatX=float32
 mkdir -p translated/complete
@@ -12,4 +12,5 @@ python translate.py //gcr/Scratch/RR1/v-yanfa/SelectiveTrain/model/complete/${mo
 
 cat ${output_file} | sed -r 's/(@@ )|(@@ ?$)//g' > ${output_file}.bpe
 
-perl multi-bleu.perl data/test/newstest2014.tok.bpe.32000.de < ${output_file}.bpe
+perl multi-bleu.perl data/test/test_en-de.de.tok < ${output_file}.bpe
+
