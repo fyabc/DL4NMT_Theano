@@ -12,4 +12,5 @@ python translate.py //gcr/Scratch/RR1/v-yanfa/SelectiveTrain/model/complete/${mo
 
 cat ${output_file} | sed -r 's/(@@ )|(@@ ?$)//g' > ${output_file}.bpe
 
-perl multi-bleu.perl data/test/test_en-de.de.tok.bpe.32000 < ${output_file}.bpe
+# perl multi-bleu.perl data/test/test_en-de.de.tok.bpe.32000 < ${output_file}.bpe
+perl multi-bleu.perl data/test/test_en-de.de.tok < ${output_file}.bpe
