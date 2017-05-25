@@ -89,6 +89,10 @@ def main():
                         default=80000, help='The learning rate discount frequency, default is 80000')
     parser.add_argument('--sync', action='store', metavar='batch', dest='syncbatch', type=int, default=0,
                         help='Sync batch frequency, default is 0 (means do not use multiverso)')
+    parser.add_argument('--all_att', action='store_true', dest='all_att', default=False,
+                        help='Generate attention from all decoder layers, default is False, set to True')
+    parser.add_argument('--avg_ctx', action='store_true', dest='avg_ctx', default=False,
+                        help='Average all context vectors to get softmax, default is False, set to True')
 
     args = parser.parse_args()
 
@@ -181,6 +185,9 @@ def main():
         given_imm=True,
         dump_imm=True,
         shuffle_data=args.shuffle,
+
+        decoder_all_attention=args.all_att,
+        average_context=args.avg_ctx,
     )
 
 

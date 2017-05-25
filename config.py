@@ -115,4 +115,11 @@ DefaultOptions = dict(
 
     # Shuffle data per epoch?
     shuffle_data=False,
+
+    # Attention at each layer of decoder?
+    decoder_all_attention=False,
+
+    # Average context vector? default is False (use last context vector)
+    # Used only when decoder_all_attention is True.
+    average_context=False,
 )

@@ -124,6 +124,9 @@ def train(dim_word=100,  # word vector dimensionality
           given_imm=False,
           dump_imm=False,
           shuffle_data=False,
+
+          decoder_all_attention=False,
+          average_context=False,
           ):
     model_options = locals().copy()
 

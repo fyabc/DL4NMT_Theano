@@ -801,13 +801,15 @@ class NMTModel(object):
                 dropout_params=None, one_step=False, init_memory=None):
         """Multi-layer GRU decoder.
 
-        :return Decoder context vector and hidden states
+        :return Decoder context vector and hidden states and others (kw_ret)
         """
 
         n_layers = self.O['n_decoder_layers']
         unit = self.O['unit']
         attention_layer_id = self.O['attention_layer_id']
         residual = self.O['residual_dec']
+        all_att = self.O['decoder_all_attention']
+        avg_ctx = self.O['average_context']
 
         # List of inputs and outputs of each layer (for residual)
         inputs = []
@@ -830,90 +832,95 @@ class NMTModel(object):
             init_state = [init_state for _ in xrange(n_layers)]
             init_memory = [init_memory for _ in xrange(n_layers)]
 
-        # Layers before attention layer
-        for layer_id in xrange(0, attention_layer_id):
-            # [NOTE] Do not add residual on layer 0 and 1
-            if layer_id == 0:
-                inputs.append(tgt_embedding)
-            elif layer_id == 1:
-                inputs.append(outputs[-1])
-            else:
-                if residual == 'layer_wise':
-                    # output of layer before + input of layer before
-                    inputs.append(outputs[-1] + inputs[-1])
-                elif residual == 'last' and layer_id == n_layers - 1:
-                    # only for last layer:
-                    # output of layer before + mean of inputs of all layers before (except layer 0)
-                    inputs.append(outputs[-1] + average(inputs[1:]))
-                else:
-                    inputs.append(outputs[-1])
-
-            layer_out = get_build(unit)(
-                self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
-                dropout_params=dropout_params, one_step=one_step, init_state=init_state[layer_id], context=None,
-                init_memory=init_memory[layer_id],
-            )
-
-            hiddens_without_dropout.append(layer_out[-1]['hidden_without_dropout'])
-            if unit == 'lstm':
-                memory_outputs.append(layer_out[1])
-
-            outputs.append(layer_out[0])
-
-        # Attention layer
-        if attention_layer_id == 0:
-            inputs.append(tgt_embedding)
-        elif attention_layer_id == 1:
-            inputs.append(outputs[-1])
+        if all_att:
+            # todo: add decoder_all_attention
+            # return outputs[-1], context_decoder, alpha_decoder, kw_ret
+            return outputs[-1], None, None, kw_ret
         else:
-            if residual == 'layer_wise':
-                inputs.append(outputs[-1] + inputs[-1])
-            elif residual == 'last' and attention_layer_id == n_layers - 1:
-                # only for last layer:
-                # output of layer before + mean of inputs of all layers before (except layer 0)
-                inputs.append(outputs[-1] + average(inputs[1:]))
-            else:
-                inputs.append(outputs[-1])
+            # Layers before attention layer
+            for layer_id in xrange(0, attention_layer_id):
+                # [NOTE] Do not add residual on layer 0 and 1
+                if layer_id == 0:
+                    inputs.append(tgt_embedding)
+                elif layer_id == 1:
+                    inputs.append(outputs[-1])
+                else:
+                    if residual == 'layer_wise':
+                        # output of layer before + input of layer before
+                        inputs.append(outputs[-1] + inputs[-1])
+                    elif residual == 'last' and layer_id == n_layers - 1:
+                        # only for last layer:
+                        # output of layer before + mean of inputs of all layers before (except layer 0)
+                        inputs.append(outputs[-1] + average(inputs[1:]))
+                    else:
+                        inputs.append(outputs[-1])
 
-        hidden_decoder, context_decoder, alpha_decoder, kw_ret_att = get_build(unit + '_cond')(
-            self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, context=context,
-            context_mask=x_mask, one_step=one_step, init_state=init_state[attention_layer_id],
-            dropout_params=dropout_params, layer_id=attention_layer_id, init_memory=init_memory[attention_layer_id],
-        )
+                layer_out = get_build(unit)(
+                    self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
+                    dropout_params=dropout_params, one_step=one_step, init_state=init_state[layer_id], context=None,
+                    init_memory=init_memory[layer_id],
+                )
 
-        hiddens_without_dropout.append(kw_ret_att['hidden_without_dropout'])
-        if unit == 'lstm':
-            memory_outputs.append(kw_ret_att['memory_output'])
+                hiddens_without_dropout.append(layer_out[-1]['hidden_without_dropout'])
+                if unit == 'lstm':
+                    memory_outputs.append(layer_out[1])
 
-        outputs.append(hidden_decoder)
+                outputs.append(layer_out[0])
 
-        # Layers after attention layer
-        for layer_id in xrange(attention_layer_id + 1, n_layers):
-            if layer_id <= 1:
+            # Attention layer
+            if attention_layer_id == 0:
+                inputs.append(tgt_embedding)
+            elif attention_layer_id == 1:
                 inputs.append(outputs[-1])
             else:
                 if residual == 'layer_wise':
                     inputs.append(outputs[-1] + inputs[-1])
-                elif residual == 'last' and layer_id == n_layers - 1:
+                elif residual == 'last' and attention_layer_id == n_layers - 1:
                     # only for last layer:
                     # output of layer before + mean of inputs of all layers before (except layer 0)
                     inputs.append(outputs[-1] + average(inputs[1:]))
                 else:
                     inputs.append(outputs[-1])
 
-            layer_out = get_build(unit)(
-                self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
-                dropout_params=dropout_params, context=context_decoder, init_state=init_state[layer_id],
-                one_step=one_step, init_memory=init_memory[layer_id],
+            hidden_decoder, context_decoder, alpha_decoder, kw_ret_att = get_build(unit + '_cond')(
+                self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, context=context,
+                context_mask=x_mask, one_step=one_step, init_state=init_state[attention_layer_id],
+                dropout_params=dropout_params, layer_id=attention_layer_id, init_memory=init_memory[attention_layer_id],
             )
 
-            hiddens_without_dropout.append(layer_out[-1]['hidden_without_dropout'])
+            hiddens_without_dropout.append(kw_ret_att['hidden_without_dropout'])
             if unit == 'lstm':
-                memory_outputs.append(layer_out[1])
+                memory_outputs.append(kw_ret_att['memory_output'])
 
-            outputs.append(layer_out[0])
+            outputs.append(hidden_decoder)
 
-        return outputs[-1], context_decoder, alpha_decoder, kw_ret
+            # Layers after attention layer
+            for layer_id in xrange(attention_layer_id + 1, n_layers):
+                if layer_id <= 1:
+                    inputs.append(outputs[-1])
+                else:
+                    if residual == 'layer_wise':
+                        inputs.append(outputs[-1] + inputs[-1])
+                    elif residual == 'last' and layer_id == n_layers - 1:
+                        # only for last layer:
+                        # output of layer before + mean of inputs of all layers before (except layer 0)
+                        inputs.append(outputs[-1] + average(inputs[1:]))
+                    else:
+                        inputs.append(outputs[-1])
+
+                layer_out = get_build(unit)(
+                    self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
+                    dropout_params=dropout_params, context=context_decoder, init_state=init_state[layer_id],
+                    one_step=one_step, init_memory=init_memory[layer_id],
+                )
+
+                hiddens_without_dropout.append(layer_out[-1]['hidden_without_dropout'])
+                if unit == 'lstm':
+                    memory_outputs.append(layer_out[1])
+
+                outputs.append(layer_out[0])
+
+            return outputs[-1], context_decoder, alpha_decoder, kw_ret
 
     def get_word_probability(self, hidden_decoder, context_decoder, tgt_embedding, **kwargs):
         """Compute word probabilities."""
