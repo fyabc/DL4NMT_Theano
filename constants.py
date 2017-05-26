@@ -58,10 +58,10 @@ Datasets = {
     ],
 
     'en-de_bpe': [
-        '', '',
-        '', '',
-        '', '',
-        '', '',
+        'en-de_en.tok.bpe.32000', 'en-de_de.tok.bpe.32000',
+        'small_en-de_en.tok.bpe.32000', 'small_en-de_de.tok.bpe.32000',
+        'dev_en-de_en.tok.bpe.32000', 'dev_en-de_de.tok.bpe.32000',
+        'en-de_vocab.bpe.32000.pkl', 'en-de_vocab.bpe.32000.pkl',
     ],
     'en-de_bpe_tc': [
         '', '',
