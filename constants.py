@@ -34,13 +34,13 @@ Datasets = {
     'en-fr_bpe': [
         'en-fr_en.tok.bpe.32000', 'en-fr_fr.tok.bpe.32000',
         'small_en-fr_en.tok.bpe.32000', 'small_en-fr_fr.tok.bpe.32000',
-        'dev_en-fr_en.tok.bpe.32000', 'dev_en-fr_fr.tok.bpe.32000 ',
+        'dev_en-fr_en.tok.bpe.32000', 'dev_en-fr_fr.tok.bpe.32000',
         'en-fr_vocab.bpe.32000.pkl', 'en-fr_vocab.bpe.32000.pkl',
     ],
     'en-fr_bpe_tc': [
         'tc_en-fr_en.tok.bpe.32000', 'tc_en-fr_fr.tok.bpe.32000',
         'tc_small_en-fr_en.tok.bpe.32000', 'tc_small_en-fr_fr.tok.bpe.32000',
-        'tc_dev_en-fr_en.tok.bpe.32000', 'tc_dev_en-fr_fr.tok.bpe.32000 ',
+        'tc_dev_en-fr_en.tok.bpe.32000', 'tc_dev_en-fr_fr.tok.bpe.32000',
         'tc_en-fr_vocab.bpe.32000.pkl', 'tc_en-fr_vocab.bpe.32000.pkl',
     ],
 
