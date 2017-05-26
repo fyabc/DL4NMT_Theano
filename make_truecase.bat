@@ -12,8 +12,8 @@ set model1=data/train/%1.model
 set model2=data/train/%2.model
 
 @rem Build truecase model.
-perl train_truecaser.perl --model %model1% --corpus data/train/%train1%
-perl train_truecaser.perl --model %model2% --corpus data/train/%train2%
+perl train-truecaser.perl --model %model1% --corpus data/train/%train1%
+perl train-truecaser.perl --model %model2% --corpus data/train/%train2%
 
 @rem Truecase training data.
 perl truecase.perl --model %model1% < data/train/%train1% > data/train/tc_%train1%
