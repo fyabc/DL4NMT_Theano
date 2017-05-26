@@ -1,15 +1,15 @@
 @rem Make truecase dataset.
 @rem Usage: make_truecase.bat train1 train2 valid1 valid2 small1 small2
 
-set train1 = %1
-set train2 = %2
-set valid1 = %3
-set valid2 = %4
-set small1 = %5
-set small2 = %6
+set train1=%1
+set train2=%2
+set valid1=%3
+set valid2=%4
+set small1=%5
+set small2=%6
 
-set model1 = data/train/%1.model
-set model2 = data/train/%2.model
+set model1=data/train/%1.model
+set model2=data/train/%2.model
 
 @rem Build truecase model.
 perl train_truecaser.perl --model %model1% --corpus data/train/%train1%
