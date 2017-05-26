@@ -2,6 +2,8 @@ import argparse
 import sys
 import os
 
+from constants import Datasets
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -93,6 +95,8 @@ def main():
                         help='Generate attention from all decoder layers, default is False, set to True')
     parser.add_argument('--avg_ctx', action='store_true', dest='avg_ctx', default=False,
                         help='Average all context vectors to get softmax, default is False, set to True')
+    parser.add_argument('--dataset', action='store', dest='dataset', default='en-fr',
+                        help='Dataset, default is "%(default)s"')
 
     args = parser.parse_args()
 
@@ -115,6 +119,11 @@ def main():
         if args.n_decoder_layers <= 1:
             args.residual_dec = None
             args.attention_layer_id = 0
+
+    # If dataset is not 'en-fr', old value of dataset options like 'args.train1' will be omitted
+    if args.dataset != 'en-fr':
+        args.train1, args.train2, args.small1, args.small2, args.valid1, args.valid2, args.dic1, args.dic2 = \
+            Datasets[args.dataset]
 
     print 'Command line arguments:'
     print args

@@ -14,6 +14,9 @@ profile = False
 # name(hyperp, tparams, grads, inputs (list), cost) = f_grad_shared, f_update
 def adam(lr, tparams, grads, inp, cost, beta1=0.9, beta2=0.999, e=1e-8, **kwargs):
     g2 = kwargs.pop('g2', None)
+    given_imm_data = kwargs.pop('given_imm_data', None)
+    dump_imm = kwargs.pop('dump_imm', False)
+
     if g2 is None:
         outputs = cost
     else:
@@ -27,13 +30,27 @@ def adam(lr, tparams, grads, inp, cost, beta1=0.9, beta2=0.999, e=1e-8, **kwargs
 
     updates = []
 
-    t_prev = theano.shared(numpy.float32(0.))
+    ms = []
+    vs = []
+
+    if given_imm_data is not None:
+        t_prev = theano.shared(given_imm_data[0])
+    else:
+        t_prev = theano.shared(numpy.float32(0.))
     t = t_prev + 1.
     lr_t = lr * tensor.sqrt(1. - beta2 ** t) / (1. - beta1 ** t)
 
-    for p, g in zip(tparams.values(), gshared):
-        m = theano.shared(p.get_value() * 0., p.name + '_mean')
-        v = theano.shared(p.get_value() * 0., p.name + '_variance')
+    for i, (p, g) in enumerate(zip(tparams.values(), gshared)):
+        if given_imm_data is not None:
+            m = theano.shared(given_imm_data[1][i], p.name + '_mean')
+            v = theano.shared(given_imm_data[2][i], p.name + '_variance')
+        else:
+            m = theano.shared(p.get_value() * 0., p.name + '_mean')
+            v = theano.shared(p.get_value() * 0., p.name + '_variance')
+
+        ms.append(m)
+        vs.append(v)
+
         m_t = beta1 * m + (1. - beta1) * g
         v_t = beta2 * v + (1. - beta2) * g ** 2
         step = lr_t * m_t / (tensor.sqrt(v_t) + e)
@@ -46,6 +63,8 @@ def adam(lr, tparams, grads, inp, cost, beta1=0.9, beta2=0.999, e=1e-8, **kwargs
     f_update = theano.function([lr], [], updates=updates,
                                on_unused_input='ignore', profile=profile)
 
+    if dump_imm:
+        return f_grad_shared, f_update, [t_prev, ms, vs]
     return f_grad_shared, f_update, None
 
 

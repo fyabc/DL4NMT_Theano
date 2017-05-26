@@ -17,7 +17,7 @@ import theano
 import theano.tensor as tensor
 import numpy as np
 
-from constants import fX, ShuffleCycle
+from constants import *
 from data_iterator import TextIterator
 
 
@@ -417,11 +417,11 @@ def make_f_train(f_grad_shared, f_update):
 
 
 def get_adadelta_imm_data(optimizer, given_imm, saveto):
-    if optimizer == 'adadelta' and given_imm:
-        given_imm_filename = '{}_imm.pkl.gz'.format(os.path.splitext(saveto)[0])
+    if given_imm:
+        given_imm_filename = ImmediateFilename.format(os.path.splitext(saveto)[0])
 
         # For back compatibility
-        given_imm_filename_backup = '{}_imm.pkl'.format(os.path.splitext(saveto)[0])
+        given_imm_filename_backup = ImmediateFilenameBackup.format(os.path.splitext(saveto)[0])
         if os.path.exists(given_imm_filename):
             message('Loading adadelta immediate data')
             return pkl.load(fopen(given_imm_filename, 'rb'))
@@ -432,16 +432,42 @@ def get_adadelta_imm_data(optimizer, given_imm, saveto):
 
 
 def dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto):
-    if optimizer != 'adadelta' or imm_shared is None or dump_imm is None:
+    if imm_shared is None or dump_imm is None:
         return
 
-    with gzip.open('{}_imm.pkl.gz'.format(os.path.splitext(saveto)[0]), 'wb') as f:
-        message('Dumping adadelta immediate data...', end='')
-        pkl.dump([
-            [g.get_value() for g in imm_shared[0]],
-            [g.get_value() for g in imm_shared[1]],
-        ], f)
+    tmp_filename = TempImmediateFilename.format(os.path.splitext(saveto)[0])
+    imm_filename = ImmediateFilename.format(os.path.splitext(saveto)[0])
+
+    # Dump to temp file
+    with gzip.open(tmp_filename, 'wb') as f:
+        message('Dumping adadelta immediate data to temp file...', end='')
+        if optimizer == 'adadelta':
+            pkl.dump([
+                [g.get_value() for g in imm_shared[0]],
+                [g.get_value() for g in imm_shared[1]],
+            ], f)
+        elif optimizer == 'adam':
+            pkl.dump([
+                imm_shared[0].get_value(),
+                [g.get_value() for g in imm_shared[1]],
+                [g.get_value() for g in imm_shared[2]],
+            ], f)
+        else:
+            pass
         message('Done')
+
+    # Move temp file to immediate file
+    message('Moving temp file to immediate file...', end='')
+    try:
+        os.remove(ImmediateFilenameBackup.format(os.path.splitext(saveto)[0]))
+        os.remove(imm_filename)
+    except OSError as e:
+        if e.errno == errno.ENOENT:
+            pass
+        else:
+            raise
+    os.rename(tmp_filename, imm_filename)
+    message('Done')
 
 
 def create_shuffle_data(datasets_orig, dataset_src, dataset_tgt):
