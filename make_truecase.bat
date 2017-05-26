@@ -1,5 +1,5 @@
 @rem Make truecase dataset.
-@rem Usage: make_truecase.bat train1 train2 valid1 valid2 small1 small2
+@rem Usage: make_truecase.bat train1 train2 valid1 valid2 small1 small2 [single_dict]
 
 set train1=%1
 set train2=%2
@@ -7,6 +7,7 @@ set valid1=%3
 set valid2=%4
 set small1=%5
 set small2=%6
+set single_dict=%7
 
 set model1=data/train/%1.model
 set model2=data/train/%2.model
@@ -28,4 +29,9 @@ perl truecase.perl --model %model1% < data/dev/%valid1% > data/dev/tc_%valid1%
 perl truecase.perl --model %model2% < data/dev/%valid2% > data/dev/tc_%valid2%
 
 @rem Extract new dictionary.
-python build_dictionary.py tc_%train1% tc_%train2%
+if "%single_dict%" == "" (
+    python build_dictionary.py tc_%train1%
+    python build_dictionary.py tc_%train2%
+) else (
+    python build_dictionary.py tc_%train1% tc_%train2% -o %single_dict%
+)
