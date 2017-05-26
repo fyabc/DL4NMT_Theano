@@ -28,4 +28,4 @@ perl truecase.perl --model %model1% < data/dev/%valid1% > data/dev/tc_%valid1%
 perl truecase.perl --model %model2% < data/dev/%valid2% > data/dev/tc_%valid2%
 
 @rem Extract new dictionary.
-python build_dictionary.py data/train/tc_%train1% data/train/tc_%train2%
+python build_dictionary.py tc_%train1% tc_%train2%
