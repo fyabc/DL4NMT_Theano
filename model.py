@@ -833,9 +833,48 @@ class NMTModel(object):
             init_memory = [init_memory for _ in xrange(n_layers)]
 
         if all_att:
-            # todo: add decoder_all_attention
-            # return outputs[-1], context_decoder, alpha_decoder, kw_ret
-            return outputs[-1], None, None, kw_ret
+            # All decoder layers have attention.
+            context_decoder_list = []
+            context_decoder = None
+            alpha_decoder = None
+
+            for layer_id in xrange(0, n_layers):
+                # [NOTE] Do not add residual on layer 0 and 1
+                if layer_id == 0:
+                    inputs.append(tgt_embedding)
+                elif layer_id == 1:
+                    inputs.append(outputs[-1])
+                else:
+                    if residual == 'layer_wise':
+                        inputs.append(outputs[-1] + inputs[-1])
+                    elif residual == 'last' and layer_id == n_layers - 1:
+                        # only for last layer:
+                        # output of layer before + mean of inputs of all layers before (except layer 0)
+                        inputs.append(outputs[-1] + average(inputs[1:]))
+                    else:
+                        inputs.append(outputs[-1])
+
+                hidden_decoder, context_decoder, alpha_decoder, kw_ret_att = get_build(unit + '_cond')(
+                    self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, context=context,
+                    context_mask=x_mask, one_step=one_step, init_state=init_state[layer_id],
+                    dropout_params=dropout_params, layer_id=layer_id,
+                    init_memory=init_memory[layer_id],
+                )
+
+                context_decoder_list.append(context_decoder)
+
+                hiddens_without_dropout.append(kw_ret_att['hidden_without_dropout'])
+                if unit == 'lstm':
+                    memory_outputs.append(kw_ret_att['memory_output'])
+
+                outputs.append(hidden_decoder)
+
+            if avg_ctx:
+                ctx_output = T.mean(T.stack(context_decoder_list, axis=0), axis=0)
+            else:
+                ctx_output = context_decoder
+            return outputs[-1], ctx_output, alpha_decoder, kw_ret
+
         else:
             # Layers before attention layer
             for layer_id in xrange(0, attention_layer_id):
