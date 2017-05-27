@@ -460,6 +460,12 @@ def dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto):
     message('Moving temp file to immediate file...', end='')
     try:
         os.remove(ImmediateFilenameBackup.format(os.path.splitext(saveto)[0]))
+    except OSError as e:
+        if e.errno == errno.ENOENT:
+            pass
+        else:
+            raise
+    try:
         os.remove(imm_filename)
     except OSError as e:
         if e.errno == errno.ENOENT:
