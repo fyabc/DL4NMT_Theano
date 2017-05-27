@@ -59,27 +59,38 @@ class ParameterInitializer(object):
     def init_decoder(self, np_parameters):
         context_dim = 2 * self.O['dim']
         attention_layer_id = self.O['attention_layer_id']
+        n_layers = self.O['n_decoder_layers']
+        all_att = self.O['decoder_all_attention']
+        avg_ctx = self.O['average_context']
 
         # init_state, init_cell
         np_parameters = self.init_feed_forward(np_parameters, prefix='ff_state', nin=context_dim, nout=self.O['dim'])
 
-        # Layers before attention layer
-        for layer_id in xrange(0, attention_layer_id):
-            np_parameters = get_init(self.O['unit'])(
-                self.O, np_parameters, prefix='decoder', nin=self.O['dim_word'] if layer_id == 0 else self.O['dim'],
-                dim=self.O['dim'], layer_id=layer_id, context_dim=None)
+        if all_att:
+            # All decoder layers have attention.
+            for layer_id in xrange(0, n_layers):
+                np_parameters = get_init(self.O['unit'] + '_cond')(
+                    self.O, np_parameters, prefix='decoder',
+                    nin=self.O['dim_word'] if layer_id == 0 else self.O['dim'],
+                    dim=self.O['dim'], dimctx=context_dim, layer_id=layer_id)
+        else:
+            # Layers before attention layer
+            for layer_id in xrange(0, attention_layer_id):
+                np_parameters = get_init(self.O['unit'])(
+                    self.O, np_parameters, prefix='decoder', nin=self.O['dim_word'] if layer_id == 0 else self.O['dim'],
+                    dim=self.O['dim'], layer_id=layer_id, context_dim=None)
 
-        # Attention layer
-        np_parameters = get_init(self.O['unit'] + '_cond')(
-            self.O, np_parameters, prefix='decoder',
-            nin=self.O['dim_word'] if attention_layer_id == 0 else self.O['dim'],
-            dim=self.O['dim'], dimctx=context_dim, layer_id=attention_layer_id)
+            # Attention layer
+            np_parameters = get_init(self.O['unit'] + '_cond')(
+                self.O, np_parameters, prefix='decoder',
+                nin=self.O['dim_word'] if attention_layer_id == 0 else self.O['dim'],
+                dim=self.O['dim'], dimctx=context_dim, layer_id=attention_layer_id)
 
-        # Layers after attention layer
-        for layer_id in xrange(attention_layer_id + 1, self.O['n_decoder_layers']):
-            np_parameters = get_init(self.O['unit'])(
-                self.O, np_parameters, prefix='decoder', nin=self.O['dim'],
-                dim=self.O['dim'], layer_id=layer_id, context_dim=context_dim)
+            # Layers after attention layer
+            for layer_id in xrange(attention_layer_id + 1, n_layers):
+                np_parameters = get_init(self.O['unit'])(
+                    self.O, np_parameters, prefix='decoder', nin=self.O['dim'],
+                    dim=self.O['dim'], layer_id=layer_id, context_dim=context_dim)
 
         return np_parameters
 
