@@ -108,10 +108,10 @@ def main():
     # FIXME: Auto mode
     if args.auto:
         if args.n_encoder_layers <= 2:
-            args.dropout = 0.1
+            args.dropout = False
             args.clip = 1.0
         else:
-            args.dropout = False
+            args.dropout = 0.1
             args.clip = 5.0
 
         if args.n_encoder_layers <= 1:
