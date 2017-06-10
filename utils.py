@@ -245,15 +245,17 @@ def average(l):
     return sum(l) / len(l)
 
 
-def apply_gradient_clipping(clip_c, grads):
+def apply_gradient_clipping(clip_c, grads, clip_shared=None):
     g2 = 0.
     if clip_c > 0.:
+        clip_shared = theano.shared(clip_c, name='clip_shared') if clip_shared is None else clip_shared
+
         for g in grads:
             g2 += (g ** 2).sum()
         new_grads = []
         for g in grads:
-            new_grads.append(tensor.switch(g2 > (clip_c ** 2),
-                                           g / tensor.sqrt(g2) * clip_c,
+            new_grads.append(tensor.switch(g2 > (clip_shared ** 2),
+                                           g / tensor.sqrt(g2) * clip_shared,
                                            g))
         grads = new_grads
     return grads, g2

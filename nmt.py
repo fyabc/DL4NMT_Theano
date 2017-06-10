@@ -254,7 +254,8 @@ Start Time = {}
     print 'Done'
     sys.stdout.flush()
 
-    grads, g2 = apply_gradient_clipping(clip_c, grads)
+    clip_shared = theano.shared(clip_c, name='clip_shared')
+    grads, g2 = apply_gradient_clipping(clip_c, grads, clip_shared)
 
     # compile the optimizer, the actual computational graph is compiled here
     lr = tensor.scalar(name='lr')
@@ -328,8 +329,10 @@ Start Time = {}
                 return 1., 1., 1.
 
             # discount reward
+            # todo: change fine tune condition
             if lr_discount_freq > 0 and np.mod(uidx, lr_discount_freq) == 0:
                 lrate *= 0.5
+                clip_shared.set_value(clip_shared.get_value() * 0.5)
                 message('Discount learning rate to {} at iteration {}'.format(lrate, uidx))
 
             # sync batch
