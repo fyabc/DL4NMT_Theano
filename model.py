@@ -517,6 +517,7 @@ class NMTModel(object):
         """
 
         kw_ret = {}
+        have_kw_ret = bool(kwargs)
 
         ret_memory = kwargs.pop('ret_memory', False)
         if ret_memory:
@@ -628,7 +629,7 @@ class NMTModel(object):
                     sample.append(hyp_samples[idx])
                     sample_score.append(hyp_scores[idx])
 
-        if kwargs:
+        if have_kw_ret:
             return sample, sample_score, kw_ret
         return sample, sample_score
 

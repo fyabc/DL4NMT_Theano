@@ -17,6 +17,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 from config import DefaultOptions
 from model import NMTModel
 from utils import load_params
+from constants import Datasets
 
 __author__ = 'fyabc'
 
@@ -126,7 +127,9 @@ def main(model_name, dictionary, dictionary_target, source_file, args,
             inputs.append(x)
     print 'Done'
 
+    print 'Building model...',
     build_result = build_model(model_name, options)
+    print 'Done'
 
     print '=============================='
 
@@ -159,8 +162,17 @@ if __name__ == '__main__':
     parser.add_argument('source', type=str, help='The source input path')
     parser.add_argument('-N', '--number', type=int, default=1, dest='test_number',
                         help='Number of test sentences, default is %(default)s')
+    parser.add_argument('-D', '--dataset', type=str, default=None, dest='dataset',
+                        help='Set some default datasets (dict and test file)')
 
     args = parser.parse_args()
+
+    if args.dataset is not None:
+        dataset = Datasets[args.dataset]
+
+        args.dictionary_source = os.path.join('data', 'dic', dataset[6])
+        args.dictionary_target = os.path.join('data', 'dic', dataset[7])
+        args.source = os.path.join('data', 'test', dataset[8])
 
     main(args.model, args.dictionary_source, args.dictionary_target, args.source, args,
          k=args.k, normalize=args.n, chr_level=args.c)
