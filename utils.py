@@ -12,6 +12,7 @@ import re
 import errno
 import random
 import gzip
+import sys
 
 import theano
 import theano.tensor as tensor
@@ -101,6 +102,9 @@ def _p(*args, **kwargs):
 # These parameters should be duplicated for multiverso.
 dup_shared_var_list = ['decoder_c_tt']
 dup_size = 100
+
+def is_dup_params(name):
+    return name.startswith(tuple(dup_shared_var_list))
 
 
 def init_tparams(params, given_tparams=None, given_dup_tparams=None, sync=False):
@@ -357,6 +361,7 @@ def print_params(params, exit_=False):
         total_parameters += v.size
     print('Total parameters of the network: {}'.format(total_parameters))
     print('Model Parameters Done')
+    sys.stdout.flush()
 
     if exit_:
         exit(0)
@@ -522,7 +527,6 @@ def load_shuffle_text_iterator(
         message('Reset text iterator {}'.format(e))
         text_iterator_list[e].reset()
         return text_iterator_list[e]
-
 
 __all__ = [
     'set_logging_file',

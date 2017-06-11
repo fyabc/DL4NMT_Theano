@@ -177,9 +177,9 @@ if __name__ == '__main__':
     if args.dataset is not None:
         dataset = Datasets[args.dataset]
 
-        args.dictionary_source = os.path.join('data', 'dic', dataset[6])
-        args.dictionary_target = os.path.join('data', 'dic', dataset[7])
-        args.source = os.path.join('data', 'test', dataset[8])
+        args.dictionary_source = os.path.join('data', 'dic', dataset[8])
+        args.dictionary_target = os.path.join('data', 'dic', dataset[9])
+        args.source = os.path.join('data', 'test', dataset[6])
 
     main(args.model, args.dictionary_source, args.dictionary_target, args.source, args,
          k=args.k, normalize=args.n, chr_level=args.c)
