@@ -13,12 +13,11 @@ import numpy as np
 import theano
 import theano.tensor as tensor
 
-from constants import profile
+from constants import profile, fX
 from data_iterator import TextIterator
 from optimizers import Optimizers
 from utils import *
 from model import NMTModel
-
 
 def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True, normalize=False):
     """Calculate the log probablities on a given corpus using translation model"""
@@ -127,6 +126,9 @@ def train(dim_word=100,  # word vector dimensionality
 
           decoder_all_attention=False,
           average_context=False,
+          allreduce_recover_lr_iter=False,
+          mpi_communicator = None,
+          task = 'en-fr'
           ):
     model_options = locals().copy()
 
@@ -139,14 +141,22 @@ def train(dim_word=100,  # word vector dimensionality
             import multiverso_ as mv
 
         worker_id = mv.worker_id()
+        assert not allreduce_recover_lr_iter
     else:
         worker_id = 0
-    print 'Use multiverso: {}, worker id: {}'.format(sync, worker_id)
+
+    if allreduce_recover_lr_iter :
+        from mpi4py import MPI
+        worker_id = mpi_communicator.Get_rank()
+        workers_cnt = mpi_communicator.Get_size()
+
+    print 'Use {}, worker id: {}'.format('multiverso' if sync else 'mpi' if allreduce_recover_lr_iter else 'none', worker_id)
+    sys.stdout.flush()
 
     # Set logging file
-    set_logging_file('log/complete/e{}d{}_res{}_att{}_worker{}_{}.txt'.format(
+    set_logging_file('log/complete/e{}d{}_res{}_att{}_worker{}_task{}_{}.txt'.format(
         n_encoder_layers, n_decoder_layers, residual_enc, attention_layer_id,
-        worker_id, time.strftime('%m-%d-%H-%M-%S'),
+        worker_id, task, time.strftime('%m-%d-%H-%M-%S'),
     ))
 
     log('''\
@@ -160,12 +170,13 @@ Start Time = {}
     pprint(model_options)
     pprint(model_options, stream=get_logging_file())
     message('Done')
+    sys.stdout.flush()
 
     load_options(model_options, reload_, preload)
 
     print 'Loading data'
     log('\n\n\nStart to prepare data\n@Current Time = {}'.format(time.time()))
-    if sync:
+    if sync or allreduce_recover_lr_iter:
         dataset_src = '{}_{}'.format(datasets[0], worker_id)
         dataset_tgt = '{}_{}'.format(datasets[1], worker_id)
     else:
@@ -202,6 +213,7 @@ Start Time = {}
     if reload_ and os.path.exists(preload):
         print 'Reloading model parameters'
         load_params(preload, params)
+    sys.stdout.flush()
 
     # Given embedding
     if given_embedding is not None:
@@ -253,15 +265,15 @@ Start Time = {}
     grads = tensor.grad(cost, wrt=itemlist(model.P))
     print 'Done'
     sys.stdout.flush()
-
     grads, g2 = apply_gradient_clipping(clip_c, grads)
 
     # compile the optimizer, the actual computational graph is compiled here
     lr = tensor.scalar(name='lr')
     print 'Building optimizers...',
+
     given_imm_data = get_adadelta_imm_data(optimizer, given_imm, saveto)
 
-    f_grad_shared, f_update, imm_shared = Optimizers[optimizer](
+    f_grad_shared, f_update, grads_shared, imm_shared = Optimizers[optimizer](
         lr, model.P, grads, inps, cost, g2=g2, given_imm_data=given_imm_data, dump_imm=dump_imm)
     print 'Done'
 
@@ -270,6 +282,9 @@ Start Time = {}
 
     if sync:
         mv.barrier()
+    if allreduce_recover_lr_iter:
+        mpi_communicator.Barrier()
+        rec_grads = [np.zeros_like(p.get_value()) for p in model.P.itervalues()]
 
     best_p = None
     bad_counter = 0
@@ -298,6 +313,8 @@ Start Time = {}
             )
 
         n_samples = 0
+        if allreduce_recover_lr_iter:
+            mpi_communicator.Barrier()
 
         for i, (x, y) in enumerate(text_iterator):
             n_samples += len(x)
@@ -315,8 +332,20 @@ Start Time = {}
 
             # compute cost, grads and copy grads to shared variables
             cost, g2_value = f_grad_shared(x, x_mask, y, y_mask)
+            if allreduce_recover_lr_iter:
+                comm_start = time.time()
+                for (sent_grad, rec_grad) in zip(grads_shared, rec_grads):
+                    sent_grad_value = sent_grad.get_value()
+                    mpi_communicator.Allreduce([sent_grad_value, MPI.FLOAT], [rec_grad, MPI.FLOAT],
+                                           op = MPI.SUM)
+                    sent_grad.set_value(rec_grad / workers_cnt)
+                message('@Comm time = {:.5f}'.format(time.time() - comm_start))
 
             # do the update on parameters
+            curr_lr = lrate if not allreduce_recover_lr_iter or allreduce_recover_lr_iter < uidx else lrate *0.05 + uidx * lrate / allreduce_recover_lr_iter * 0.95
+            if curr_lr < lrate:
+                print 'Curr lr %.3f' % curr_lr
+
             f_update(lrate)
 
             ud = time.time() - ud_start
@@ -325,6 +354,7 @@ Start Time = {}
             # and continue training - but not done here
             if np.isnan(cost) or np.isinf(cost):
                 message('NaN detected')
+                sys.stdout.flush()
                 return 1., 1., 1.
 
             # discount reward
@@ -333,7 +363,7 @@ Start Time = {}
                 message('Discount learning rate to {} at iteration {}'.format(lrate, uidx))
 
             # sync batch
-            if sync and np.mod(uidx, syncbatch) == 0:
+            if sync and np.mod(uidx, dispFreq) == 0:
                 comm_start = time.time()
                 model.sync_tparams()
                 message('@Comm time = {:.5f}'.format(time.time() - comm_start))
