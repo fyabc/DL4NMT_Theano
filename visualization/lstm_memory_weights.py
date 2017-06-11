@@ -32,7 +32,7 @@ def seq2words(tgt_seq, tgt_dict):
     return ' '.join(words)
 
 
-def translate_sentence(src_seq, model_name, options, k, normalize):
+def build_model(model_name, options):
     from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
     trng = RandomStreams(1234)
     use_noise = theano.shared(np.float32(0.))
@@ -47,6 +47,12 @@ def translate_sentence(src_seq, model_name, options, k, normalize):
 
     # word index
     f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise)
+
+    return model, f_init, f_next, trng
+
+
+def translate_sentence(src_seq, build_result, k, normalize):
+    model, f_init, f_next, trng = build_result
 
     # sample given an input sequence and obtain scores
     sample, score, kw_ret = model.gen_sample(
@@ -66,10 +72,10 @@ def translate_sentence(src_seq, model_name, options, k, normalize):
     return sample[sidx], kw_ret
 
 
-def main(model, dictionary, dictionary_target, source_file, args,
+def main(model_name, dictionary, dictionary_target, source_file, args,
          k=5, normalize=False, chr_level=False):
     # load model model_options
-    with open('%s.pkl' % model, 'rb') as f:
+    with open('%s.pkl' % model_name, 'rb') as f:
         options = DefaultOptions.copy()
         options.update(pkl.load(f))
 
@@ -120,15 +126,17 @@ def main(model, dictionary, dictionary_target, source_file, args,
             inputs.append(x)
     print 'Done'
 
+    build_result = build_model(model_name, options)
+
     print '=============================='
 
     for i, src_seq in enumerate(inputs):
         print 'Translating sentence {}:'.format(i)
-        print 'Input sentence:', lines[i]
+        print 'Input sentence:', lines[i],
 
-        tgt_seq, kw_ret = translate_sentence(src_seq, model, options, k, normalize)
+        tgt_seq, kw_ret = translate_sentence(src_seq, build_result, k, normalize)
 
-        print 'Output sentence:', seq2words(tgt_seq, word_dict_trg)
+        print 'Output sentence:', seq2words(tgt_seq, word_dict_trg),
         print 'Visualize LSTM memory:', 'TODO'
 
         print
