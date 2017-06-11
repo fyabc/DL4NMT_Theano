@@ -148,6 +148,7 @@ def main(model_name, dictionary, dictionary_target, source_file, args,
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Visualize LSTM memory weights when translating')
+    parser.add_argument('model', type=str, help='The model path')
     parser.add_argument('-k', type=int, default=4,
                         help='Beam size (?), default is %(default)s, can also use 12')
     parser.add_argument('-p', type=int, default=5,
@@ -156,10 +157,12 @@ if __name__ == '__main__':
                         help='Use normalize, default to False, set to True')
     parser.add_argument('-c', action="store_true", default=False,
                         help='Char level model, default to False, set to True')
-    parser.add_argument('model', type=str, help='The model path')
-    parser.add_argument('dictionary_source', type=str, help='The source dict path')
-    parser.add_argument('dictionary_target', type=str, help='The target dict path')
-    parser.add_argument('source', type=str, help='The source input path')
+    parser.add_argument('--dic1', type=str, dest='dictionary_source',
+                        help='The source dict path')
+    parser.add_argument('--dic2', type=str, dest='dictionary_target',
+                        help='The target dict path')
+    parser.add_argument('--src', type=str, dest='source',
+                        help='The source input path')
     parser.add_argument('-N', '--number', type=int, default=1, dest='test_number',
                         help='Number of test sentences, default is %(default)s')
     parser.add_argument('-D', '--dataset', type=str, default=None, dest='dataset',
