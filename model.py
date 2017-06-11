@@ -554,13 +554,13 @@ class NMTModel(object):
             if unit == 'lstm':
                 inps.append(next_memory)
 
-                if ret_memory:
-                    kw_ret['memory'].append(next_memory)
-
             ret = f_next(*inps)
             next_p, next_w, next_state = ret[0], ret[1], ret[2]
             if unit == 'lstm':
                 next_memory = ret[3]
+
+                if ret_memory:
+                    kw_ret['memory'].append(next_memory)
 
             if stochastic:
                 if argmax:

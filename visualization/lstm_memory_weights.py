@@ -139,8 +139,12 @@ def main(model_name, dictionary, dictionary_target, source_file, args,
 
         tgt_seq, kw_ret = translate_sentence(src_seq, build_result, k, normalize)
 
-        print 'Output sentence:', seq2words(tgt_seq, word_idict_trg),
-        print 'Visualize LSTM memory:', 'TODO'
+        print 'Output sentence:', seq2words(tgt_seq, word_idict_trg)
+        print 'Visualize LSTM memory:'
+
+        for memory in kw_ret['memory']:
+            # Memory shape: (1, 1 ~ beam size, dim)
+            print 'tanh:', np.tanh(np.mean(memory))
 
         print
 
