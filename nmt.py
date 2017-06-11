@@ -17,6 +17,7 @@ from constants import profile, fX
 from data_iterator import TextIterator
 from optimizers import Optimizers
 from utils import *
+from utils_fine_tune import *
 from model import NMTModel
 
 
@@ -127,9 +128,12 @@ def train(dim_word=100,  # word vector dimensionality
 
           decoder_all_attention=False,
           average_context=False,
+
           allreduce_recover_lr_iter=False,
           mpi_communicator=None,
-          task='en-fr'
+          task='en-fr',
+
+          fine_tune_patience=8,
           ):
     model_options = locals().copy()
 
@@ -175,6 +179,7 @@ Start Time = {}
     sys.stdout.flush()
 
     load_options(model_options, reload_, preload)
+    check_options(model_options)
 
     print 'Loading data'
     log('\n\n\nStart to prepare data\n@Current Time = {}'.format(time.time()))
@@ -290,13 +295,13 @@ Start Time = {}
         mpi_communicator.Barrier()
         rec_grads = [np.zeros_like(p.get_value()) for p in model.P.itervalues()]
 
+    estop = False
+    history_errs = []
+    best_bleu = -1.0
     best_p = None
     bad_counter = 0
     uidx = search_start_uidx(reload_, preload)
     print 'uidx', uidx, 'l_rate', lrate
-
-    estop = False
-    history_errs = []
 
     if dump_before_train:
         print 'Dumping before train...',
@@ -362,7 +367,7 @@ Start Time = {}
                 return 1., 1., 1.
 
             # discount reward
-            # todo: change fine tune condition
+            # FIXME: Do NOT enable this and fine-tune
             if lr_discount_freq > 0 and np.mod(uidx, lr_discount_freq) == 0:
                 lrate *= 0.5
                 clip_shared.set_value(clip_shared.get_value() * 0.5)
@@ -401,6 +406,22 @@ Start Time = {}
                 small_train_cost = validation(small_train_iterator, f_cost, maxlen=maxlen)
                 message('Valid cost {:.5f} Small train cost {:.5f}'.format(valid_cost, small_train_cost))
                 sys.stdout.flush()
+
+                # Fine-tune based on dev BLEU
+                if fine_tune_patience > 0:
+                    new_bleu = translate_dev_get_bleu(model, f_init, f_next, trng, task)
+
+                    if new_bleu > best_bleu:
+                        bad_counter = 0
+                        best_bleu = new_bleu
+                    else:
+                        bad_counter += 1
+                        if bad_counter >= fine_tune_patience:
+                            print 'Fine tune:',
+                            lrate *= 0.5
+                            clip_shared.set_value(clip_shared.get_value() * 0.5)
+                            message('Discount learning rate to {} at iteration {}'.format(lrate, uidx))
+                            bad_counter = 0
 
             # finish after this many updates
             if uidx >= finish_after:

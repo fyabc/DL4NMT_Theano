@@ -5,6 +5,7 @@ import os
 from constants import Datasets
 from gpu_manager import get_gpu_usage
 
+
 def main():
     parser = argparse.ArgumentParser()
 
@@ -90,16 +91,20 @@ def main():
                         default=80000, help='The learning rate discount frequency, default is 80000')
     parser.add_argument('--sync', action='store', metavar='batch', dest='syncbatch', type=int, default=0,
                         help='Sync batch frequency, default is 0 (means do not use multiverso)')
-    parser.add_argument('--allreduce', action='store', dest='allreduce_recover_lr', type = int, default=False,
-                        help='Use allreduce to sync gradients in every minibatch, the mini-batch index to recover lrate, default is False (no allreduce).')
+    parser.add_argument('--allreduce', action='store', dest='allreduce_recover_lr', type=int, default=False,
+                        help='Use allreduce to sync gradients in every minibatch, '
+                             'the mini-batch index to recover lrate, default is False (no allreduce).')
     parser.add_argument('--all_att', action='store_true', dest='all_att', default=False,
                         help='Generate attention from all decoder layers, default is False, set to True')
     parser.add_argument('--avg_ctx', action='store_true', dest='avg_ctx', default=False,
                         help='Average all context vectors to get softmax, default is False, set to True')
     parser.add_argument('--dataset', action='store', dest='dataset', default='en-fr',
                         help='Dataset, default is "%(default)s"')
-    parser.add_argument('--gpu_map_file', action='store', metavar='filename', dest='gpu_map_file', type=str, default=None,
-                        help='The file containing gpu id mapping information, each line is in the form physical_gpu_id\\ttheano_id')
+    parser.add_argument('--gpu_map_file', action='store', metavar='filename', dest='gpu_map_file', type=str,
+                        default=None, help='The file containing gpu id mapping information, '
+                                           'each line is in the form physical_gpu_id\\theano_id')
+    parser.add_argument('--ft_patience', action='store', metavar='N', dest='fine_tune_patience', type=int, default=8,
+                        help='Fine tune patience, default is %(default)s, set -1 to disable it')
 
     args = parser.parse_args()
 
@@ -146,18 +151,17 @@ def main():
         worker_id = mv.worker_id()
         workers_cnt = mv.workers_num()
 
-
     if args.allreduce_recover_lr:
         from mpi4py import MPI
         communicator = MPI.COMM_WORLD
         worker_id = communicator.Get_rank()
         workers_cnt = communicator.Get_size()
     else:
-        communicator=None
+        communicator = None
 
     if sync or args.allreduce_recover_lr:
         available_gpus = get_gpu_usage(workers_cnt)
-        gpu_maps_info = {idx:idx for idx in available_gpus}
+        gpu_maps_info = {idx: idx for idx in available_gpus}
         if args.gpu_map_file:
             for line in open(args.gpu_map_file, 'r'):
                 phy_id, theano_id = line.split()
@@ -185,7 +189,7 @@ def main():
         valid_batch_size=128,
         dispFreq=1,
         saveFreq=args.save_freq,
-        validFreq=2500,
+        validFreq=5000,  # Change it from 2500 to 5000 @ 6/11/2017
         datasets=('./data/train/{}'.format(args.train1),
                   './data/train/{}'.format(args.train2)),
         valid_datasets=('./data/dev/{}'.format(args.valid1),
@@ -222,9 +226,11 @@ def main():
 
         decoder_all_attention=args.all_att,
         average_context=args.avg_ctx,
-        allreduce_recover_lr_iter = args.allreduce_recover_lr,
-        mpi_communicator = communicator,
-        task =args.dataset
+        allreduce_recover_lr_iter=args.allreduce_recover_lr,
+        mpi_communicator=communicator,
+        task=args.dataset,
+
+        fine_tune_patience=args.fine_tune_patience,
     )
 
 

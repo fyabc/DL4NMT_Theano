@@ -401,6 +401,13 @@ def save_options(options, iteration, saveto=None):
         pkl.dump(options, f)
 
 
+def check_options(options):
+    """Check conflict options."""
+
+    if options['lr_discount_freq'] > 0 and options['fine_tune_patience'] > 0:
+        raise Exception('Cannot enable lr discount and fine-tune at the same time')
+
+
 def search_start_uidx(reload_, preload):
     if not reload_:
         return 0
@@ -557,6 +564,7 @@ __all__ = [
     'print_params',
     'load_options',
     'save_options',
+    'check_options',
     'search_start_uidx',
     'make_f_train',
     'get_adadelta_imm_data',

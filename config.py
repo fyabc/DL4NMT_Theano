@@ -122,4 +122,12 @@ DefaultOptions = dict(
     # Average context vector? default is False (use last context vector)
     # Used only when decoder_all_attention is True.
     average_context=False,
+
+    # MPI options
+    allreduce_recover_lr_iter=False,
+    mpi_communicator=None,
+    task='en-fr',
+
+    # Fine-tune options
+    fine_tune_patience=8,
 )
