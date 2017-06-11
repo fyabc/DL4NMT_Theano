@@ -3,6 +3,7 @@ import theano.tensor as tensor
 import numpy
 
 from utils import itemlist
+from utils import dup_shared_var_list, is_dup_params
 
 profile = False
 
@@ -58,7 +59,7 @@ def adam(lr, tparams, grads, inp, cost, beta1=0.9, beta2=0.999, e=1e-8, **kwargs
         updates.append((m, m_t))
         updates.append((v, v_t))
         updates.append((p, p_t))
-    updates.append((t_prev, t))
+        updates.append((t_prev, t))
 
     f_update = theano.function([lr], [], updates=updates,
                                on_unused_input='ignore', profile=profile)
@@ -76,7 +77,7 @@ def adadelta(lr, tparams, grads, inp, cost, **kwargs):
     if g2 is None:
         outputs = cost
     else:
-        outputs = [cost, g2]
+        outputs =[cost, g2]
 
     zipped_grads = [theano.shared(p.get_value() * numpy.float32(0.),
                                   name='%s_grad' % k)
@@ -94,11 +95,12 @@ def adadelta(lr, tparams, grads, inp, cost, **kwargs):
                           for k, p in tparams.iteritems()]
 
     zgup = [(zg, g) for zg, g in zip(zipped_grads, grads)]
-    rg2up = [(rg2, 0.95 * rg2 + 0.05 * (g ** 2))
-             for rg2, g in zip(running_grads2, grads)]
 
-    f_grad_shared = theano.function(inp, outputs, updates=zgup + rg2up,
+    f_grad_shared = theano.function(inp, outputs, updates=zgup ,
                                     profile=profile)
+
+    rg2up = [(rg2, 0.95 * rg2 + 0.05 * (g ** 2))
+             for rg2, g in zip(running_grads2, zipped_grads)]
 
     updir = [-tensor.sqrt(ru2 + 1e-6) / tensor.sqrt(rg2 + 1e-6) * zg
              for zg, ru2, rg2 in zip(zipped_grads, running_up2,
@@ -107,12 +109,12 @@ def adadelta(lr, tparams, grads, inp, cost, **kwargs):
              for ru2, ud in zip(running_up2, updir)]
     param_up = [(p, p + lr * ud) for p, ud in zip(itemlist(tparams), updir)]
 
-    f_update = theano.function([lr], [], updates=ru2up + param_up,
+    f_update = theano.function([lr], [], updates=rg2up + ru2up + param_up,
                                on_unused_input='ignore', profile=profile)
 
     if dump_imm:
-        return f_grad_shared, f_update, [running_up2, running_grads2]
-    return f_grad_shared, f_update, None
+        return f_grad_shared, f_update, zipped_grads, [running_up2, running_grads2]
+    return f_grad_shared, f_update, zipped_grads, None
 
 
 def rmsprop(lr, tparams, grads, inp, cost, **kwargs):

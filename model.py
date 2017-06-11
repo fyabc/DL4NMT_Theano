@@ -510,11 +510,18 @@ class NMTModel(object):
         return f_init, f_next
 
     def gen_sample(self, f_init, f_next, x, trng=None, k=1, maxlen=30,
-                   stochastic=True, argmax=False):
+                   stochastic=True, argmax=False, **kwargs):
         """Generate sample, either with stochastic sampling or beam search. Note that,
 
         this function iteratively calls f_init and f_next functions.
         """
+
+        kw_ret = {}
+        have_kw_ret = bool(kwargs)
+
+        ret_memory = kwargs.pop('ret_memory', False)
+        if ret_memory:
+            kw_ret['memory'] = []
 
         unit = self.O['unit']
 
@@ -551,6 +558,9 @@ class NMTModel(object):
             next_p, next_w, next_state = ret[0], ret[1], ret[2]
             if unit == 'lstm':
                 next_memory = ret[3]
+
+                if ret_memory:
+                    kw_ret['memory'].append(next_memory)
 
             if stochastic:
                 if argmax:
@@ -619,6 +629,8 @@ class NMTModel(object):
                     sample.append(hyp_samples[idx])
                     sample_score.append(hyp_scores[idx])
 
+        if have_kw_ret:
+            return sample, sample_score, kw_ret
         return sample, sample_score
 
     # Methods to build the each component of the model
