@@ -446,6 +446,9 @@ def get_adadelta_imm_data(optimizer, given_imm, saveto):
 
 
 def dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto):
+    if optimizer == 'sgd':
+        return
+
     if imm_shared is None or dump_imm is None:
         return
 
