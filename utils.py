@@ -260,15 +260,17 @@ def average(l):
     return sum(l) / len(l)
 
 
-def apply_gradient_clipping(clip_c, grads):
+def apply_gradient_clipping(clip_c, grads, clip_shared=None):
     g2 = 0.
     if clip_c > 0.:
+        clip_shared = theano.shared(np.array(clip_c, dtype=fX), name='clip_shared') if clip_shared is None else clip_shared
+
         for g in grads:
             g2 += (g ** 2).sum()
         new_grads = []
         for g in grads:
-            new_grads.append(tensor.switch(g2 > (clip_c ** 2),
-                                           g / tensor.sqrt(g2) * clip_c,
+            new_grads.append(tensor.switch(g2 > (clip_shared ** 2),
+                                           g / tensor.sqrt(g2) * clip_shared,
                                            g))
         grads = new_grads
     return grads, g2
@@ -410,6 +412,13 @@ def save_options(options, iteration, saveto=None):
         pkl.dump(options, f)
 
 
+def check_options(options):
+    """Check conflict options."""
+
+    if options['lr_discount_freq'] > 0 and options['fine_tune_patience'] > 0:
+        raise Exception('Cannot enable lr discount and fine-tune at the same time')
+
+
 def search_start_uidx(reload_, preload):
     if not reload_:
         return 0
@@ -448,6 +457,9 @@ def get_adadelta_imm_data(optimizer, given_imm, saveto):
 
 
 def dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto):
+    if optimizer == 'sgd':
+        return
+
     if imm_shared is None or dump_imm is None:
         return
 
@@ -566,6 +578,7 @@ __all__ = [
     'print_params',
     'load_options',
     'save_options',
+    'check_options',
     'search_start_uidx',
     'make_f_train',
     'get_adadelta_imm_data',

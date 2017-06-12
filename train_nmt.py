@@ -5,6 +5,7 @@ import os
 from constants import Datasets
 from gpu_manager import get_gpu_usage
 
+
 def main():
     parser = argparse.ArgumentParser()
 
@@ -97,15 +98,17 @@ def main():
                         help='The mini-batch index to recover lrate in distributed mode, default is 10000.')
     parser.add_argument('--sync_models', action='store_true', dest='sync_models', default=False,
                         help='Sync grads, otherwise sync model parameters. Set to True')
-
     parser.add_argument('--all_att', action='store_true', dest='all_att', default=False,
                         help='Generate attention from all decoder layers, default is False, set to True')
     parser.add_argument('--avg_ctx', action='store_true', dest='avg_ctx', default=False,
                         help='Average all context vectors to get softmax, default is False, set to True')
     parser.add_argument('--dataset', action='store', dest='dataset', default='en-fr',
                         help='Dataset, default is "%(default)s"')
-    parser.add_argument('--gpu_map_file', action='store', metavar='filename', dest='gpu_map_file', type=str, default=None,
-                        help='The file containing gpu id mapping information, each line is in the form physical_gpu_id\\ttheano_id')
+    parser.add_argument('--gpu_map_file', action='store', metavar='filename', dest='gpu_map_file', type=str,
+                        default=None, help='The file containing gpu id mapping information, '
+                                           'each line is in the form physical_gpu_id\\theano_id')
+    parser.add_argument('--ft_patience', action='store', metavar='N', dest='fine_tune_patience', type=int, default=8,
+                        help='Fine tune patience, default is %(default)s, set -1 to disable it')
 
     args = parser.parse_args()
     print args
@@ -161,7 +164,7 @@ def main():
 
     if args.dist_type:
         available_gpus = get_gpu_usage(workers_cnt)
-        gpu_maps_info = {idx:idx for idx in available_gpus}
+        gpu_maps_info = {idx: idx for idx in available_gpus}
         if args.gpu_map_file:
             for line in open(args.gpu_map_file, 'r'):
                 phy_id, theano_id = line.split()
@@ -189,7 +192,7 @@ def main():
         valid_batch_size=128,
         dispFreq=1,
         saveFreq=args.save_freq,
-        validFreq=2500,
+        validFreq=5000,  # Change it from 2500 to 5000 @ 6/11/2017
         datasets=('./data/train/{}'.format(args.train1),
                   './data/train/{}'.format(args.train2)),
         valid_datasets=('./data/dev/{}'.format(args.valid1),
@@ -227,10 +230,12 @@ def main():
         decoder_all_attention=args.all_att,
         average_context=args.avg_ctx,
 
-        dist_type= args.dist_type,
+        dist_type=args.dist_type,
         sync_batch=args.sync_batch,
-        dist_recover_lr_iter = args.dist_recover_lr,
-        sync_grads = not args.sync_models
+        dist_recover_lr_iter=args.dist_recover_lr,
+        sync_grads=not args.sync_models,
+
+        fine_tune_patience=args.fine_tune_patience,
     )
 
 
