@@ -123,10 +123,13 @@ DefaultOptions = dict(
     # Used only when decoder_all_attention is True.
     average_context=False,
 
-    # MPI options
-    allreduce_recover_lr_iter=False,
-    mpi_communicator=None,
     task='en-fr',
+
+    # MPI options
+    dist_type=None,
+    sync_batch=0,
+    dist_recover_lr_iter=False,
+    sync_grads=True,
 
     # Fine-tune options
     fine_tune_patience=8,
