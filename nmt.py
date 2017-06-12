@@ -273,7 +273,7 @@ Start Time = {}
     print 'Done'
     sys.stdout.flush()
 
-    clip_shared = theano.shared(clip_c, name='clip_shared')
+    clip_shared = theano.shared(np.array(clip_c, dtype=fX), name='clip_shared')
     grads, g2 = apply_gradient_clipping(clip_c, grads, clip_shared)
 
     # compile the optimizer, the actual computational graph is compiled here

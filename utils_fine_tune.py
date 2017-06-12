@@ -113,7 +113,7 @@ def get_bleu(ref_file, hyp_in=None, type_in='filename'):
         pl_process = subprocess.Popen(
             'perl multi-bleu.perl {}\n'.format(ref_file), shell=True, stdin=subprocess.PIPE,
             stdout=subprocess.PIPE, stderr=open(os.devnull, 'w'))
-        pl_output = pl_process.communicate(hyp_in)
+        pl_output = pl_process.communicate(hyp_in)[0]
     else:
         raise ValueError('Wrong type_in')
 
