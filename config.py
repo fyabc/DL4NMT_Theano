@@ -128,4 +128,7 @@ DefaultOptions = dict(
     # Average context vector? default is False (use last context vector)
     # Used only when decoder_all_attention is True.
     average_context=False,
+
+    #The file storing physical_gpu_id -> theano_id information. Per gpu infor, per line
+    gpu_map_file = None,
 )
