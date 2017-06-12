@@ -409,7 +409,9 @@ Start Time = {}
 
                 # Fine-tune based on dev BLEU
                 if fine_tune_patience > 0:
-                    new_bleu = translate_dev_get_bleu(model, f_init, f_next, trng, task)
+                    new_bleu = translate_dev_get_bleu(model, f_init, f_next, trng, task, n_words_src)
+
+                    print 'BLEU = {:.2f} at iteration {}'.format(new_bleu, uidx)
 
                     if new_bleu > best_bleu:
                         bad_counter = 0

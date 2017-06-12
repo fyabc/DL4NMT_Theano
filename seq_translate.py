@@ -65,7 +65,7 @@ def main():
         trans_result_file = '%s.iter%d.txt' % (os.path.splitext(args.result_file)[0], idx * args.interval)
 
         if not os.path.exists(trans_result_file):
-            exec_str = 'python translate.py -k {} -p 1 -n {} {} {} {} {}\n'.format(
+            exec_str = 'python _translate_whole.py -k {} -p 1 -n {} {} {} {} {}\n'.format(
                 args.beam_size, trans_model_file, './data/dic/{}'.format(dic1), './data/dic/{}'.format(dic2), './data/test/{}'.format(test1), trans_result_file
             )
             print 'Translate model {} '.format(trans_model_file)
