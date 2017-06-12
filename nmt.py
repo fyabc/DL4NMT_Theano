@@ -17,7 +17,9 @@ from constants import profile, fX
 from data_iterator import TextIterator
 from optimizers import Optimizers
 from utils import *
+
 from model import NMTModel
+from utils import all_reduce_params
 
 def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True, normalize=False):
     """Calculate the log probablities on a given corpus using translation model"""
@@ -115,7 +117,10 @@ def train(dim_word=100,  # word vector dimensionality
           initializer='orthogonal',
           given_embedding=None,
 
-          syncbatch=0,
+          dist_type =None,
+          sync_batch=0,
+          dist_recover_lr_iter=False,
+          sync_grads=True,
 
           unit_size=2,
           cond_unit_size=2,
@@ -126,31 +131,29 @@ def train(dim_word=100,  # word vector dimensionality
 
           decoder_all_attention=False,
           average_context=False,
-          allreduce_recover_lr_iter=False,
-          mpi_communicator = None,
-          task = 'en-fr'
+          task = 'en-fr',
+
           ):
     model_options = locals().copy()
 
-    # Set multiverso
-    sync = syncbatch > 0
-    if sync:
+    # Set distributed computing environment
+    worker_id = 0
+    if dist_type == 'mv':
         try:
             import multiverso as mv
         except ImportError:
             import multiverso_ as mv
 
         worker_id = mv.worker_id()
-        assert not allreduce_recover_lr_iter
-    else:
-        worker_id = 0
-
-    if allreduce_recover_lr_iter :
+    elif dist_type == 'mpi_reduce' :
         from mpi4py import MPI
+        mpi_communicator = MPI.COMM_WORLD
         worker_id = mpi_communicator.Get_rank()
         workers_cnt = mpi_communicator.Get_size()
+    if dist_type and sync_grads:
+        sync_batch = 1 #force sync gradient in every mini-batch
 
-    print 'Use {}, worker id: {}'.format('multiverso' if sync else 'mpi' if allreduce_recover_lr_iter else 'none', worker_id)
+    print 'Use {}, worker id: {}'.format('multiverso' if dist_type == 'mv' else 'mpi' if dist_recover_lr_iter else 'none', worker_id)
     sys.stdout.flush()
 
     # Set logging file
@@ -176,7 +179,7 @@ Start Time = {}
 
     print 'Loading data'
     log('\n\n\nStart to prepare data\n@Current Time = {}'.format(time.time()))
-    if sync or allreduce_recover_lr_iter:
+    if dist_type:
         dataset_src = '{}_{}'.format(datasets[0], worker_id)
         dataset_tgt = '{}_{}'.format(datasets[1], worker_id)
     else:
@@ -280,11 +283,18 @@ Start Time = {}
     print 'Optimization'
     log('Preparation Done\n@Current Time = {}'.format(time.time()))
 
-    if sync:
+    if dist_type == 'mv':
         mv.barrier()
-    if allreduce_recover_lr_iter:
+    elif dist_type == 'mpi_reduce':
         mpi_communicator.Barrier()
-        rec_grads = [np.zeros_like(p.get_value()) for p in model.P.itervalues()]
+        #create receive buffers for mpi allreduce
+        if not sync_grads:
+            rec_models = [np.zeros_like(p.get_value()) for p in model.P.itervalues()]
+            rec_immes_list = [None for _ in imm_shared]
+            for i in xrange(len(imm_shared)):
+                rec_immes_list[i] = [np.zeros_like(p.get_value()) for p in model.P.itervalues()]
+        else:
+            rec_grads = [np.zeros_like(p.get_value()) for p in model.P.itervalues()]
 
     best_p = None
     bad_counter = 0
@@ -313,7 +323,7 @@ Start Time = {}
             )
 
         n_samples = 0
-        if allreduce_recover_lr_iter:
+        if dist_recover_lr_iter:
             mpi_communicator.Barrier()
 
         for i, (x, y) in enumerate(text_iterator):
@@ -332,17 +342,19 @@ Start Time = {}
 
             # compute cost, grads and copy grads to shared variables
             cost, g2_value = f_grad_shared(x, x_mask, y, y_mask)
-            if allreduce_recover_lr_iter:
-                comm_start = time.time()
-                for (sent_grad, rec_grad) in zip(grads_shared, rec_grads):
-                    sent_grad_value = sent_grad.get_value()
-                    mpi_communicator.Allreduce([sent_grad_value, MPI.FLOAT], [rec_grad, MPI.FLOAT],
-                                           op = MPI.SUM)
-                    sent_grad.set_value(rec_grad / workers_cnt)
-                message('@Comm time = {:.5f}'.format(time.time() - comm_start))
+            if dist_type == 'mpi_reduce' and uidx % sync_batch == 0:
+                reduce_start = time.time()
+                commu_time = 0
+                if not sync_grads: #sync model parameters
+                    commu_time += all_reduce_params(model.P.itervalues(), rec_models, workers_cnt)
+                    for i in xrange(len(imm_shared)):  # sync immediate parameters in ada* algorithm
+                        commu_time += all_reduce_params(imm_shared[i], rec_immes_list[i], workers_cnt)
+                else: #sync gradients
+                    commu_time += all_reduce_params(grads_shared, rec_grads)
+                print '@Reduce time = {:.5f}, Commu time = {:.5f}'.format(time.time() - reduce_start, commu_time)
 
             # do the update on parameters
-            curr_lr = lrate if not allreduce_recover_lr_iter or allreduce_recover_lr_iter < uidx else lrate *0.05 + uidx * lrate / allreduce_recover_lr_iter * 0.95
+            curr_lr = lrate if not dist_recover_lr_iter or dist_recover_lr_iter < uidx else lrate *0.05 + uidx * lrate / dist_recover_lr_iter * 0.95
             if curr_lr < lrate:
                 print 'Curr lr %.3f' % curr_lr
 
@@ -363,7 +375,7 @@ Start Time = {}
                 message('Discount learning rate to {} at iteration {}'.format(lrate, uidx))
 
             # sync batch
-            if sync and np.mod(uidx, dispFreq) == 0:
+            if dist_type == 'mv' and np.mod(uidx, dispFreq) == 0:
                 comm_start = time.time()
                 model.sync_tparams()
                 message('@Comm time = {:.5f}'.format(time.time() - comm_start))

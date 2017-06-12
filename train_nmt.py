@@ -88,10 +88,16 @@ def main():
                         help='Given embedding model file, default is None')
     parser.add_argument('--lr_discount', action='store', metavar='freq', dest='lr_discount_freq', type=int,
                         default=80000, help='The learning rate discount frequency, default is 80000')
-    parser.add_argument('--sync', action='store', metavar='batch', dest='syncbatch', type=int, default=0,
-                        help='Sync batch frequency, default is 0 (means do not use multiverso)')
-    parser.add_argument('--allreduce', action='store', dest='allreduce_recover_lr', type = int, default=False,
-                        help='Use allreduce to sync gradients in every minibatch, the mini-batch index to recover lrate, default is False (no allreduce).')
+
+    parser.add_argument('--distribute', action = 'store', metavar ='type', dest = 'dist_type', type = str, default= None,
+                        help = 'The distribution version, default is None (singe GPU mode), candiates are "mv", "mpi_reduce"')
+    parser.add_argument('--syncbatch', action='store', metavar='batch', dest='sync_batch', type=int, default=1,
+                        help='Sync batch frequency, default is 1')
+    parser.add_argument('--recover_lr_iter', action='store', dest='dist_recover_lr', type = int, default=10000,
+                        help='The mini-batch index to recover lrate in distributed mode, default is 10000.')
+    parser.add_argument('--sync_models', action='store_true', dest='sync_models', default=False,
+                        help='Sync grads, otherwise sync model parameters. Set to True')
+
     parser.add_argument('--all_att', action='store_true', dest='all_att', default=False,
                         help='Generate attention from all decoder layers, default is False, set to True')
     parser.add_argument('--avg_ctx', action='store_true', dest='avg_ctx', default=False,
@@ -102,11 +108,14 @@ def main():
                         help='The file containing gpu id mapping information, each line is in the form physical_gpu_id\\ttheano_id')
 
     args = parser.parse_args()
+    print args
 
     if args.residual_enc == 'None':
         args.residual_enc = None
     if args.residual_dec == 'None':
         args.residual_dec = None
+    if args.dist_type != 'mv' and args.dist_type != 'mpi_reduce':
+        args.dist_type = None
 
     # FIXME: Auto mode
     if args.auto:
@@ -132,30 +141,25 @@ def main():
     print args
     sys.stdout.flush()
 
-    # Init multiverso and set theano flags.
-    sync = args.syncbatch > 0
-    if sync:
+     # Init multiverso or mpi and set theano flags.
+    if args.dist_type == 'mv':
         try:
             import multiverso as mv
         except ImportError:
             import multiverso_ as mv
 
         # FIXME: This must before the import of theano!
-        assert not args.allreduce_recover_lr
         mv.init(sync=True)
         worker_id = mv.worker_id()
         workers_cnt = mv.workers_num()
-
-
-    if args.allreduce_recover_lr:
+    elif args.dist_type == 'mpi_reduce':
         from mpi4py import MPI
         communicator = MPI.COMM_WORLD
         worker_id = communicator.Get_rank()
         workers_cnt = communicator.Get_size()
-    else:
-        communicator=None
+        args.learning_rate *= workers_cnt
 
-    if sync or args.allreduce_recover_lr:
+    if args.dist_type:
         available_gpus = get_gpu_usage(workers_cnt)
         gpu_maps_info = {idx:idx for idx in available_gpus}
         if args.gpu_map_file:
@@ -164,8 +168,8 @@ def main():
                 gpu_maps_info[int(phy_id)] = int(theano_id)
         theano_id = gpu_maps_info[available_gpus[worker_id]]
         print 'worker id:%d, using theano id:%d, physical id %d' % (worker_id, theano_id, available_gpus[worker_id])
-        sys.stdout.flush()
         os.environ['THEANO_FLAGS'] = 'device=gpu{},floatX=float32'.format(theano_id)
+        sys.stdout.flush()
 
     from nmt import train
 
@@ -194,6 +198,7 @@ def main():
                               './data/train/{}'.format(args.small2)),
         vocab_filenames=('./data/dic/{}'.format(args.dic1),
                          './data/dic/{}'.format(args.dic2)),
+        task=args.dataset,
         use_dropout=args.dropout,
         overwrite=False,
         n_words=30000,
@@ -215,16 +220,17 @@ def main():
         use_zigzag=args.use_zigzag,
         given_embedding=args.given_embedding,
 
-        syncbatch=args.syncbatch,
         given_imm=True,
         dump_imm=True,
         shuffle_data=args.shuffle,
 
         decoder_all_attention=args.all_att,
         average_context=args.avg_ctx,
-        allreduce_recover_lr_iter = args.allreduce_recover_lr,
-        mpi_communicator = communicator,
-        task =args.dataset
+
+        dist_type= args.dist_type,
+        sync_batch=args.sync_batch,
+        dist_recover_lr_iter = args.dist_recover_lr,
+        sync_grads = not args.sync_models
     )
 
 

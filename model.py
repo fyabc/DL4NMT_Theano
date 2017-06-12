@@ -370,7 +370,7 @@ class NMTModel(object):
         return [x, x_mask, y, y_mask], hidden_decoder, context_decoder
 
     def init_tparams(self, np_parameters):
-        self.P, self.dupP = init_tparams(np_parameters, sync=self.O['syncbatch'] > 0)
+        self.P, self.dupP = init_tparams(np_parameters, use_mv= self.O['dist_type'] == 'mv')
 
     def sync_tparams(self):
         sync_tparams(self.P, self.dupP)

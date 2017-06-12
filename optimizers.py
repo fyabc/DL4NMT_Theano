@@ -112,9 +112,7 @@ def adadelta(lr, tparams, grads, inp, cost, **kwargs):
     f_update = theano.function([lr], [], updates=rg2up + ru2up + param_up,
                                on_unused_input='ignore', profile=profile)
 
-    if dump_imm:
-        return f_grad_shared, f_update, zipped_grads, [running_up2, running_grads2]
-    return f_grad_shared, f_update, zipped_grads, None
+    return f_grad_shared, f_update, zipped_grads, [running_up2, running_grads2]
 
 
 def rmsprop(lr, tparams, grads, inp, cost, **kwargs):

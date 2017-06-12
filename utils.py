@@ -13,6 +13,7 @@ import errno
 import random
 import gzip
 import sys
+import time
 
 import theano
 import theano.tensor as tensor
@@ -20,7 +21,6 @@ import numpy as np
 
 from constants import *
 from data_iterator import TextIterator
-
 
 _fp_log = None
 
@@ -107,13 +107,13 @@ def is_dup_params(name):
     return name.startswith(tuple(dup_shared_var_list))
 
 
-def init_tparams(params, given_tparams=None, given_dup_tparams=None, sync=False):
+def init_tparams(params, given_tparams=None, given_dup_tparams=None, use_mv=False):
     """Initialize Theano shared variables according to the initial parameters"""
 
     tparams = OrderedDict() if given_tparams is None else given_tparams
     dup_tparams = OrderedDict() if given_dup_tparams is None else given_dup_tparams
 
-    if not sync:
+    if not use_mv:
         for kk, pp in params.iteritems():
             tparams[kk] = theano.shared(params[kk], name=kk)
     else:
@@ -143,6 +143,17 @@ def sync_tparams(tparams, dup_tparams):
     for kk, vv in dup_tparams.iteritems():
         tparams[kk].set_value(np.array([vv.get_value()[0]], dtype=fX).reshape((1,)))
 
+def all_reduce_params(sent_buffers, rec_buffers , average_cnt = 1):
+    from mpi4py import MPI
+    mpi_communicator = MPI.COMM_WORLD
+    commu_time = 0.0
+    for (sent_model, rec_model) in zip(sent_buffers, rec_buffers):
+        sent_model_value = sent_model.get_value()
+        commu_start = time.time()
+        mpi_communicator.Allreduce([sent_model_value, MPI.FLOAT], [rec_model, MPI.FLOAT], op=MPI.SUM)
+        commu_time += time.time() - commu_start
+        sent_model.set_value(rec_model / average_cnt)
+    return commu_time
 
 def load_params(path, params):
     """Load parameters
