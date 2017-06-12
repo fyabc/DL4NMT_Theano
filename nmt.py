@@ -18,8 +18,10 @@ from data_iterator import TextIterator
 from optimizers import Optimizers
 from utils import *
 
+from utils_fine_tune import *
 from model import NMTModel
 from utils import all_reduce_params
+
 
 def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True, normalize=False):
     """Calculate the log probablities on a given corpus using translation model"""
@@ -117,7 +119,7 @@ def train(dim_word=100,  # word vector dimensionality
           initializer='orthogonal',
           given_embedding=None,
 
-          dist_type =None,
+          dist_type=None,
           sync_batch=0,
           dist_recover_lr_iter=False,
           sync_grads=True,
@@ -131,8 +133,9 @@ def train(dim_word=100,  # word vector dimensionality
 
           decoder_all_attention=False,
           average_context=False,
-          task = 'en-fr',
+          task='en-fr',
 
+          fine_tune_patience=8,
           ):
     model_options = locals().copy()
 
@@ -151,7 +154,7 @@ def train(dim_word=100,  # word vector dimensionality
         worker_id = mpi_communicator.Get_rank()
         workers_cnt = mpi_communicator.Get_size()
     if dist_type and sync_grads:
-        sync_batch = 1 #force sync gradient in every mini-batch
+        sync_batch = 1  # force sync gradient in every mini-batch
 
     print 'Use {}, worker id: {}'.format('multiverso' if dist_type == 'mv' else 'mpi' if dist_recover_lr_iter else 'none', worker_id)
     sys.stdout.flush()
@@ -176,6 +179,7 @@ Start Time = {}
     sys.stdout.flush()
 
     load_options(model_options, reload_, preload)
+    check_options(model_options)
 
     print 'Loading data'
     log('\n\n\nStart to prepare data\n@Current Time = {}'.format(time.time()))
@@ -268,7 +272,9 @@ Start Time = {}
     grads = tensor.grad(cost, wrt=itemlist(model.P))
     print 'Done'
     sys.stdout.flush()
-    grads, g2 = apply_gradient_clipping(clip_c, grads)
+
+    clip_shared = theano.shared(np.array(clip_c, dtype=fX), name='clip_shared')
+    grads, g2 = apply_gradient_clipping(clip_c, grads, clip_shared)
 
     # compile the optimizer, the actual computational graph is compiled here
     lr = tensor.scalar(name='lr')
@@ -287,7 +293,7 @@ Start Time = {}
         mv.barrier()
     elif dist_type == 'mpi_reduce':
         mpi_communicator.Barrier()
-        #create receive buffers for mpi allreduce
+        # create receive buffers for mpi allreduce
         if not sync_grads:
             rec_models = [np.zeros_like(p.get_value()) for p in model.P.itervalues()]
             rec_immes_list = [None for _ in imm_shared]
@@ -296,13 +302,13 @@ Start Time = {}
         else:
             rec_grads = [np.zeros_like(p.get_value()) for p in model.P.itervalues()]
 
+    estop = False
+    history_errs = []
+    best_bleu = -1.0
     best_p = None
     bad_counter = 0
     uidx = search_start_uidx(reload_, preload)
     print 'uidx', uidx, 'l_rate', lrate
-
-    estop = False
-    history_errs = []
 
     if dump_before_train:
         print 'Dumping before train...',
@@ -345,11 +351,11 @@ Start Time = {}
             if dist_type == 'mpi_reduce' and uidx % sync_batch == 0:
                 reduce_start = time.time()
                 commu_time = 0
-                if not sync_grads: #sync model parameters
+                if not sync_grads:  # sync model parameters
                     commu_time += all_reduce_params(model.P.itervalues(), rec_models, workers_cnt)
-                    for i in xrange(len(imm_shared)):  # sync immediate parameters in ada* algorithm
-                        commu_time += all_reduce_params(imm_shared[i], rec_immes_list[i], workers_cnt)
-                else: #sync gradients
+                    for j in xrange(len(imm_shared)):  # sync immediate parameters in ada* algorithm
+                        commu_time += all_reduce_params(imm_shared[i], rec_immes_list[j], workers_cnt)
+                else:   # sync gradients
                     commu_time += all_reduce_params(grads_shared, rec_grads)
                 print '@Reduce time = {:.5f}, Commu time = {:.5f}'.format(time.time() - reduce_start, commu_time)
 
@@ -370,8 +376,10 @@ Start Time = {}
                 return 1., 1., 1.
 
             # discount reward
+            # FIXME: Do NOT enable this and fine-tune at the same time
             if lr_discount_freq > 0 and np.mod(uidx, lr_discount_freq) == 0:
                 lrate *= 0.5
+                clip_shared.set_value(clip_shared.get_value() * 0.5)
                 message('Discount learning rate to {} at iteration {}'.format(lrate, uidx))
 
             # sync batch
@@ -407,6 +415,24 @@ Start Time = {}
                 small_train_cost = validation(small_train_iterator, f_cost, maxlen=maxlen)
                 message('Valid cost {:.5f} Small train cost {:.5f}'.format(valid_cost, small_train_cost))
                 sys.stdout.flush()
+
+                # Fine-tune based on dev BLEU
+                if fine_tune_patience > 0:
+                    new_bleu = translate_dev_get_bleu(model, f_init, f_next, trng, task, n_words_src)
+
+                    print 'BLEU = {:.2f} at iteration {}'.format(new_bleu, uidx)
+
+                    if new_bleu > best_bleu:
+                        bad_counter = 0
+                        best_bleu = new_bleu
+                    else:
+                        bad_counter += 1
+                        if bad_counter >= fine_tune_patience:
+                            print 'Fine tune:',
+                            lrate *= 0.5
+                            clip_shared.set_value(clip_shared.get_value() * 0.5)
+                            message('Discount learning rate to {} at iteration {}'.format(lrate, uidx))
+                            bad_counter = 0
 
             # finish after this many updates
             if uidx >= finish_after:
