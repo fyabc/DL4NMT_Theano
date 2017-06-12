@@ -94,9 +94,15 @@ DefaultOptions = dict(
     # Given embedding file
     given_embedding=None,
 
-    # Multiverso sync batch
-    # If is 0, do not use multiverso
-    syncbatch=0,
+    # Options for sync distribution
+    #Set it to none to run single GPU version. Other options include 'mv' and 'mpi_reduce'
+    dist_type=None,
+    #The sync frequency. Will be automatically fixed to be 1 when syncing gradients
+    sync_batch=1,
+    #From start to dist_recover_lr iteration, linearly increase lr to normal lr, s.t. nan is avoided
+    dist_recover_lr = 10000,
+    #Whether to sync models (i.e., model average) or gradients (per batch)
+    sync_models = False,
 
     # Options for multi-gru/lstm
     # Used only when unit is "multi_gru" or "multi_lstm"

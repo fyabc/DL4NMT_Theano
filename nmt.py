@@ -302,6 +302,7 @@ Start Time = {}
     bad_counter = 0
     uidx = search_start_uidx(reload_, preload)
     print 'uidx', uidx, 'l_rate', lrate
+    start_uidx = uidx
 
     estop = False
     history_errs = []
@@ -362,11 +363,12 @@ Start Time = {}
                 print '@Reduce time = {:.5f}, Commu time = {:.5f}, GPUCPU time = {:.5f}'.format(time.time() - reduce_start, commu_time, cp_time)
 
             # do the update on parameters
-            curr_lr = lrate if not dist_recover_lr_iter or dist_recover_lr_iter < uidx else lrate *0.05 + uidx * lrate / dist_recover_lr_iter * 0.95
+            effective_uidx = uidx - start_uidx
+            curr_lr = lrate if not dist_type or dist_recover_lr_iter < effective_uidx else lrate * 0.05 + effective_uidx * lrate / dist_recover_lr_iter * 0.95
             if curr_lr < lrate:
                 print 'Curr lr %.3f' % curr_lr
 
-            f_update(lrate)
+            f_update(curr_lr)
 
             ud = time.time() - ud_start
 
