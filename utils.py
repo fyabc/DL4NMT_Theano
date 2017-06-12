@@ -14,6 +14,7 @@ import random
 import gzip
 import sys
 import time
+from mpi4py import MPI
 
 import theano
 import theano.tensor as tensor
@@ -143,17 +144,25 @@ def sync_tparams(tparams, dup_tparams):
     for kk, vv in dup_tparams.iteritems():
         tparams[kk].set_value(np.array([vv.get_value()[0]], dtype=fX).reshape((1,)))
 
-def all_reduce_params(sent_buffers, rec_buffers , average_cnt = 1):
-    from mpi4py import MPI
+def all_reduce_params(sent_shared_params, rec_buffers, average_cnt = 1):
     mpi_communicator = MPI.COMM_WORLD
     commu_time = 0.0
-    for (sent_model, rec_model) in zip(sent_buffers, rec_buffers):
-        sent_model_value = sent_model.get_value()
+    gpu2cpu_cp_time = 0.0
+    for (sent_model, rec_model) in zip(sent_shared_params, rec_buffers):
+        cp_start = time.time()
+        model_val = sent_model.get_value()
+        gpu2cpu_cp_time += time.time() - cp_start
+
         commu_start = time.time()
-        mpi_communicator.Allreduce([sent_model_value, MPI.FLOAT], [rec_model, MPI.FLOAT], op=MPI.SUM)
+        mpi_communicator.Allreduce([model_val, MPI.FLOAT], [rec_model, MPI.FLOAT], op=MPI.SUM)
         commu_time += time.time() - commu_start
-        sent_model.set_value(rec_model / average_cnt)
-    return commu_time
+        if average_cnt != 1: #try to avoid dividing since it is very cost
+            rec_model = rec_model / average_cnt
+
+        cp_start = time.time()
+        sent_model.set_value(rec_model)
+        gpu2cpu_cp_time += time.time() - cp_start
+    return commu_time,  gpu2cpu_cp_time
 
 def load_params(path, params):
     """Load parameters

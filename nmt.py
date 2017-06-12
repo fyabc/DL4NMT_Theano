@@ -179,6 +179,8 @@ Start Time = {}
 
     print 'Loading data'
     log('\n\n\nStart to prepare data\n@Current Time = {}'.format(time.time()))
+    sys.stdout.flush()
+
     if dist_type:
         dataset_src = '{}_{}'.format(datasets[0], worker_id)
         dataset_tgt = '{}_{}'.format(datasets[1], worker_id)
@@ -323,7 +325,7 @@ Start Time = {}
             )
 
         n_samples = 0
-        if dist_recover_lr_iter:
+        if dist_type == 'mpi_reduce':
             mpi_communicator.Barrier()
 
         for i, (x, y) in enumerate(text_iterator):
@@ -345,13 +347,19 @@ Start Time = {}
             if dist_type == 'mpi_reduce' and uidx % sync_batch == 0:
                 reduce_start = time.time()
                 commu_time = 0
+                gpucpu_cp_time = 0
                 if not sync_grads: #sync model parameters
-                    commu_time += all_reduce_params(model.P.itervalues(), rec_models, workers_cnt)
+                    commu_time_delta, cp_time_delta = all_reduce_params(model.P.itervalues(), rec_models, workers_cnt)
+                    commu_time += commu_time_delta
+                    gpucpu_cp_time += cp_time_delta
                     for i in xrange(len(imm_shared)):  # sync immediate parameters in ada* algorithm
-                        commu_time += all_reduce_params(imm_shared[i], rec_immes_list[i], workers_cnt)
+                        commu_time_delta, cp_time_delta = all_reduce_params(imm_shared[i], rec_immes_list[i], workers_cnt)
+                        commu_time += commu_time_delta
+                        gpucpu_cp_time += cp_time_delta
                 else: #sync gradients
-                    commu_time += all_reduce_params(grads_shared, rec_grads)
-                print '@Reduce time = {:.5f}, Commu time = {:.5f}'.format(time.time() - reduce_start, commu_time)
+                    commu_time, cp_time = all_reduce_params(grads_shared, rec_grads)
+
+                print '@Reduce time = {:.5f}, Commu time = {:.5f}, GPUCPU time = {:.5f}'.format(time.time() - reduce_start, commu_time, cp_time)
 
             # do the update on parameters
             curr_lr = lrate if not dist_recover_lr_iter or dist_recover_lr_iter < uidx else lrate *0.05 + uidx * lrate / dist_recover_lr_iter * 0.95
