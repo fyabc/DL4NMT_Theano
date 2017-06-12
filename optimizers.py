@@ -151,7 +151,7 @@ def rmsprop(lr, tparams, grads, inp, cost, **kwargs):
     f_update = theano.function([lr], [], updates=updir_new + param_up,
                                on_unused_input='ignore', profile=profile)
 
-    return f_grad_shared, f_update, None
+    return f_grad_shared, f_update, zipped_grads, None
 
 
 def sgd(lr, tparams, grads, inp, cost, **kwargs):
@@ -172,7 +172,7 @@ def sgd(lr, tparams, grads, inp, cost, **kwargs):
     pup = [(p, p - lr * g) for p, g in zip(itemlist(tparams), gshared)]
     f_update = theano.function([lr], [], updates=pup, profile=profile)
 
-    return f_grad_shared, f_update, None
+    return f_grad_shared, f_update, gshared, None
 
 
 Optimizers = {
