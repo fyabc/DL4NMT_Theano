@@ -15,6 +15,7 @@ import cPickle as pkl
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
 from constants import fX, profile
+from config import DefaultOptions
 from utils import *
 from layers import *
 
@@ -1060,6 +1061,7 @@ def build_and_init_model(model_name, options=None, build=True):
     if options is None:
         with open('{}.pkl'.format(model_name), 'rb') as f:
             options = pkl.load(f)
+            options = DefaultOptions.copy().update(options)
 
     model = NMTModel(options)
 

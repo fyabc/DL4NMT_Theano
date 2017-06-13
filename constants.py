@@ -22,7 +22,7 @@ Datasets = {
         'filtered_en-fr.en', 'filtered_en-fr.fr',
         'small_en-fr.en', 'small_en-fr.fr',
         'dev_en.tok', 'dev_fr.tok',
-        'test_en-fr.en.tok','test_en-fr.fr.tok'
+        'test_en-fr.en.tok','test_en-fr.fr.tok',
         'filtered_dic_en-fr.en.pkl', 'filtered_dic_en-fr.fr.pkl',
     ],
     'en-fr_tc': [
