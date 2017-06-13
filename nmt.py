@@ -329,7 +329,7 @@ Start Time = {}
             )
 
         n_samples = 0
-        if dist_recover_lr_iter:
+        if dist_type == 'mpi_reduce':
             mpi_communicator.Barrier()
 
         for i, (x, y) in enumerate(text_iterator):
