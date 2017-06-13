@@ -7,7 +7,7 @@ import theano
 import numpy as np
 
 from constants import Datasets
-from utils_fine_tune import get_bleu
+from utils_fine_tune import get_bleu, de_bpe
 from utils import prepare_data
 from model import build_and_init_model
 
@@ -27,7 +27,6 @@ def _load_data(args, dic1, dic2, test1):
     with open(dic2, 'rb') as f:
         word_dict_tgt_raw = pkl.load(f)
     word_dict_tgt = {k: v for k, v in word_dict_tgt_raw.iteritems() if v < options['n_words']}
-    word_idict_tgt = {v: k for k, v in word_dict_tgt.iteritems()}
 
     if args.nbest == 1:
         with open(args.translated_file, 'r') as f:
@@ -40,7 +39,7 @@ def _load_data(args, dic1, dic2, test1):
                 if idx % args.nbest == 0
             ]
 
-    trans_sents_num = [[word_idict_tgt.get(w, 1) for w in s] for s in trans_sents_str]
+    trans_sents_num = [[word_dict_tgt.get(w, 1) for w in s] for s in trans_sents_str]
 
     with open(test1, 'r') as f:
         src_sents_str = [s.strip().split() for s in f]
@@ -104,7 +103,7 @@ def main():
     parser.add_argument('translated_file', help='The translated file with UNK')
     parser.add_argument('table', nargs='?', default='./data/dic/fastAlign_en2fr.pkl',
                         help='Source-Target table path, default is %(default)s')
-    parser.add_argument('--dataset', action='store', dest='dataset', default='en-fr',
+    parser.add_argument('--dataset', action='store', dest='dataset', default='en-fr_bpe',
                         help='Dataset, default is "%(default)s"')
     parser.add_argument('--nbest', action="store", metavar="N", dest="nbest", type=int, default=1,
                         help='number of best, default is %(default)s')
@@ -127,8 +126,14 @@ def main():
 
     translated_string = '\n'.join(' '.join(w for w in s) for s in trans_sents_str) + '\n'
 
+    postfix = '.nounk'
+
+    if 'bpe' in args.dataset:
+        translated_string = de_bpe(translated_string)
+        postfix = '.bpe' + postfix
+
     if args.dump:
-        with open('{}.nounk'.format(args.translated_file), 'w') as f:
+        with open('{}{}'.format(args.translated_file, postfix), 'w') as f:
             print >>f, translated_string,
 
     if args.bleu:

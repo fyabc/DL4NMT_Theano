@@ -1060,8 +1060,8 @@ class NMTModel(object):
 def build_and_init_model(model_name, options=None, build=True):
     if options is None:
         with open('{}.pkl'.format(model_name), 'rb') as f:
-            options = pkl.load(f)
-            options = DefaultOptions.copy().update(options)
+            options = DefaultOptions.copy()
+            options.update(pkl.load(f))
 
     model = NMTModel(options)
 
@@ -1072,5 +1072,6 @@ def build_and_init_model(model_name, options=None, build=True):
     model.init_tparams(params)
 
     if build:
-        return model, options, model.build_model()
+        ret = model.build_model()
+        return model, options, ret
     return model, options
