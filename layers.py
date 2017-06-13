@@ -693,11 +693,11 @@ def multi_gru_cond_layer(P, state_below, O, prefix='gru', mask=None, context=Non
     state_belows = [
         T.dot(state_below, P[_p(prefix, 'W', layer_id, i)]) + P[_p(prefix, 'b', layer_id, i)]
         for i in xrange(1, cond_unit_size + 1)
-        ]
+    ]
     state_belowxs = [
         T.dot(state_below, P[_p(prefix, 'Wx', layer_id, i)]) + P[_p(prefix, 'bx', layer_id, i)]
         for i in xrange(1, cond_unit_size + 1)
-        ]
+    ]
 
     def _step_slice(m_, x_0, x_1, xx_0, xx_1,
                     h_, ctx_, alpha_,
@@ -825,14 +825,7 @@ def param_init_lstm(O, params, prefix='lstm', nin=None, dim=None, **kwargs):
     return params
 
 
-def _lstm_step_slice(
-        mask_, x_,
-        h_, c_,
-        U):
-    _dim = U.shape[1] // 4
-
-    preact = T.dot(h_, U) + x_
-
+def _lstm_step_kernel(preact, mask_, h_, c_, _dim):
     i = T.nnet.sigmoid(_slice(preact, 0, _dim))
     f = T.nnet.sigmoid(_slice(preact, 1, _dim))
     o = T.nnet.sigmoid(_slice(preact, 2, _dim))
@@ -844,7 +837,29 @@ def _lstm_step_slice(
     h = o * T.tanh(c)
     h = mask_[:, None] * h + (1. - mask_)[:, None] * h_
 
+    return i, f, o, c, h
+
+
+def _lstm_step_slice(
+        mask_, x_,
+        h_, c_,
+        U):
+    _dim = U.shape[1] // 4
+    preact = T.dot(h_, U) + x_
+
+    i, f, o, c, h = _lstm_step_kernel(preact, mask_, h_, c_, _dim)
     return h, c
+
+
+def _lstm_step_slice_gates(
+        mask_, x_,
+        h_, c_, i_, f_, o_,
+        U):
+    _dim = U.shape[1] // 4
+    preact = T.dot(h_, U) + x_
+
+    i, f, o, c, h = _lstm_step_kernel(preact, mask_, h_, c_, _dim)
+    return h, c, i, f, o
 
 
 def _lstm_step_slice_attention(
@@ -852,21 +867,21 @@ def _lstm_step_slice_attention(
         h_, c_,
         U, Wc):
     _dim = U.shape[1] // 4
-
     preact = T.dot(h_, U) + x_ + T.dot(context, Wc)
 
-    i = T.nnet.sigmoid(_slice(preact, 0, _dim))
-    f = T.nnet.sigmoid(_slice(preact, 1, _dim))
-    o = T.nnet.sigmoid(_slice(preact, 2, _dim))
-    c = T.tanh(_slice(preact, 3, _dim))
-
-    c = f * c_ + i * c
-    c = mask_[:, None] * c + (1. - mask_)[:, None] * c_
-
-    h = o * T.tanh(c)
-    h = mask_[:, None] * h + (1. - mask_)[:, None] * h_
-
+    i, f, o, c, h = _lstm_step_kernel(preact, mask_, h_, c_, _dim)
     return h, c
+
+
+def _lstm_step_slice_attention_gates(
+        mask_, x_, context,
+        h_, c_, i_, f_, o_,
+        U, Wc):
+    _dim = U.shape[1] // 4
+    preact = T.dot(h_, U) + x_ + T.dot(context, Wc)
+
+    i, f, o, c, h = _lstm_step_kernel(preact, mask_, h_, c_, _dim)
+    return h, c, i, f, o
 
 
 def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
@@ -883,6 +898,7 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
     one_step = kwargs.pop('one_step', False)
     init_state = kwargs.pop('init_state', None)
     init_memory = kwargs.pop('init_memory', None)
+    get_gates = kwargs.pop('get_gates', False)
 
     kw_ret = {}
 
@@ -898,15 +914,23 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
     init_states = [T.alloc(0., n_samples, dim) if init_state is None else init_state,
                    T.alloc(0., n_samples, dim) if init_memory is None else init_memory, ]
 
+    if get_gates:
+        init_states.extend([T.alloc(0., n_samples, dim) for _ in range(3)])
+
     if context is None:
         seqs = [mask, state_below]
         shared_vars = [P[_p(prefix, 'U', layer_id)]]
-        _step = _lstm_step_slice
     else:
         seqs = [mask, state_below, context]
         shared_vars = [P[_p(prefix, 'U', layer_id)],
                        P[_p(prefix, 'Wc', layer_id)]]
-        _step = _lstm_step_slice_attention
+
+    step_str = '_lstm_step'
+    if context is not None:
+        step_str += '_attention'
+    if get_gates:
+        step_str += '_gates'
+    _step = eval(step_str)
 
     if one_step:
         outputs = _step(*(seqs + init_states + shared_vars))
@@ -925,8 +949,12 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
     kw_ret['hidden_without_dropout'] = outputs[0]
     kw_ret['memory_output'] = outputs[1]
 
-    outputs = list(outputs)
-    outputs.append(kw_ret)
+    if get_gates:
+        kw_ret['input_gates'] = outputs[2]
+        kw_ret['forget_gates'] = outputs[3]
+        kw_ret['output_gates'] = outputs[4]
+
+    outputs = [outputs[0], outputs[1], kw_ret]
 
     if dropout_params:
         outputs[0] = dropout_layer(outputs[0], *dropout_params)
@@ -998,6 +1026,56 @@ def param_init_lstm_cond(O, params, prefix='lstm_cond', nin=None, dim=None, dimc
     return params
 
 
+def _lstm_step_cond_kernel(
+        x_, dim, mask_, c_, h_, U,
+        W_comb_att, projected_context_, U_att, c_tt, context_mask, context_,
+        U_nl, b_nl, Wc,
+):
+    # LSTM 1
+    preact1 = T.dot(h_, U) + x_
+
+    i1 = T.nnet.sigmoid(_slice(preact1, 0, dim))
+    f1 = T.nnet.sigmoid(_slice(preact1, 1, dim))
+    o1 = T.nnet.sigmoid(_slice(preact1, 2, dim))
+    c1 = T.tanh(_slice(preact1, 3, dim))
+
+    c1 = f1 * c_ + i1 * c1
+    c1 = mask_[:, None] * c1 + (1. - mask_)[:, None] * c_
+
+    h1 = o1 * T.tanh(c1)
+    h1 = mask_[:, None] * h1 + (1. - mask_)[:, None] * h_
+
+    # Attention
+    pstate_ = T.dot(h1, W_comb_att)
+    pctx__ = projected_context_ + pstate_[None, :, :]
+    # pctx__ += xc_
+    pctx__ = T.tanh(pctx__)
+
+    alpha = T.dot(pctx__, U_att) + c_tt
+    alpha = alpha.reshape([alpha.shape[0], alpha.shape[1]])
+    alpha = T.exp(alpha)
+    if context_mask:
+        alpha = alpha * context_mask
+    alpha = alpha / alpha.sum(0, keepdims=True)
+    ctx_ = (context_ * alpha[:, :, None]).sum(0)  # current context
+
+    # LSTM 2 (with attention)
+    preact2 = T.dot(h1, U_nl) + b_nl + T.dot(ctx_, Wc)
+
+    i2 = T.nnet.sigmoid(_slice(preact2, 0, dim))
+    f2 = T.nnet.sigmoid(_slice(preact2, 1, dim))
+    o2 = T.nnet.sigmoid(_slice(preact2, 2, dim))
+    c2 = T.tanh(_slice(preact2, 3, dim))
+
+    c2 = f2 * c1 + i2 * c2
+    c2 = mask_[:, None] * c2 + (1. - mask_)[:, None] * c1
+
+    h2 = o2 * T.tanh(c2)
+    h2 = mask_[:, None] * h2 + (1. - mask_)[:, None] * h1
+
+    return h2, c2, ctx_, alpha, i1, f1, o1, i2, f2, o2
+
+
 def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, one_step=False, init_memory=None,
                     init_state=None, context_mask=None, **kwargs):
     """Conditional LSTM layer with attention
@@ -1006,6 +1084,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
     """
 
     layer_id = kwargs.pop('layer_id', 0)
+    get_gates = kwargs.pop('get_gates', False)
 
     kw_ret = {}
 
@@ -1040,59 +1119,36 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
                     h_, c_, ctx_, alpha_,
                     projected_context_, context_,
                     U, Wc, W_comb_att, U_att, c_tt, U_nl, b_nl):
-        # LSTM 1
-        preact1 = T.dot(h_, U) + x_
-
-        i1 = T.nnet.sigmoid(_slice(preact1, 0, dim))
-        f1 = T.nnet.sigmoid(_slice(preact1, 1, dim))
-        o1 = T.nnet.sigmoid(_slice(preact1, 2, dim))
-        c1 = T.tanh(_slice(preact1, 3, dim))
-
-        c1 = f1 * c_ + i1 * c1
-        c1 = mask_[:, None] * c1 + (1. - mask_)[:, None] * c_
-
-        h1 = o1 * T.tanh(c1)
-        h1 = mask_[:, None] * h1 + (1. - mask_)[:, None] * h_
-
-        # Attention
-        pstate_ = T.dot(h1, W_comb_att)
-        pctx__ = projected_context_ + pstate_[None, :, :]
-        # pctx__ += xc_
-        pctx__ = T.tanh(pctx__)
-
-        alpha = T.dot(pctx__, U_att) + c_tt
-        alpha = alpha.reshape([alpha.shape[0], alpha.shape[1]])
-        alpha = T.exp(alpha)
-        if context_mask:
-            alpha = alpha * context_mask
-        alpha = alpha / alpha.sum(0, keepdims=True)
-        ctx_ = (context_ * alpha[:, :, None]).sum(0)  # current context
-
-        # LSTM 2 (with attention)
-        preact2 = T.dot(h1, U_nl) + b_nl + T.dot(ctx_, Wc)
-
-        i2 = T.nnet.sigmoid(_slice(preact2, 0, dim))
-        f2 = T.nnet.sigmoid(_slice(preact2, 1, dim))
-        o2 = T.nnet.sigmoid(_slice(preact2, 2, dim))
-        c2 = T.tanh(_slice(preact2, 3, dim))
-
-        c2 = f2 * c1 + i2 * c2
-        c2 = mask_[:, None] * c2 + (1. - mask_)[:, None] * c1
-
-        h2 = o2 * T.tanh(c2)
-        h2 = mask_[:, None] * h2 + (1. - mask_)[:, None] * h1
+        h2, c2, ctx_, alpha, i1, f1, o1, i2, f2, o2 = _lstm_step_cond_kernel(
+            x_, dim, mask_, c_, h_, U, W_comb_att, projected_context_, U_att, c_tt, context_mask,
+            context_, U_nl, b_nl, Wc,
+        )
 
         return h2, c2, ctx_, alpha.T
 
+    def _step_slice_gates(
+            mask_, x_,
+            h_, c_, ctx_, alpha_, i1_, f1_, o1_, i2_, f2_, o2_,
+            projected_context_, context_,
+            U, Wc, W_comb_att, U_att, c_tt, U_nl, b_nl):
+        h2, c2, ctx_, alpha, i1, f1, o1, i2, f2, o2 = _lstm_step_cond_kernel(
+            x_, dim, mask_, c_, h_, U, W_comb_att, projected_context_, U_att, c_tt, context_mask,
+            context_, U_nl, b_nl, Wc,
+        )
+
+        return h2, c2, ctx_, alpha.T, i1, f1, o1, i2, f2, o2
+
     # Prepare scan arguments
     seqs = [mask, state_below]
-    _step = _step_slice
     init_states = [
         init_state,
         T.alloc(0., n_samples, dim) if init_memory is None else init_memory,
         T.alloc(0., n_samples, context.shape[2]),
         T.alloc(0., n_samples, context.shape[0]),
     ]
+    if get_gates:
+        init_states.extend([T.alloc(0., n_samples, dim) for _ in range(6)])
+
     shared_vars = [
         P[_p(prefix, 'U', layer_id)],
         P[_p(prefix, 'Wc', layer_id)],
@@ -1102,6 +1158,11 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
         P[_p(prefix, 'U_nl', layer_id)],
         P[_p(prefix, 'b_nl', layer_id)],
     ]
+
+    step_str = '_step_slice'
+    if get_gates:
+        step_str += '_gates'
+    _step = eval(step_str)
 
     if one_step:
         result = _step(*(seqs + init_states + [projected_context, context] + shared_vars))
@@ -1119,6 +1180,14 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
 
     kw_ret['hidden_without_dropout'] = result[0]
     kw_ret['memory_output'] = result[1]
+
+    if get_gates:
+        kw_ret['input_gates'] = result[4]
+        kw_ret['forget_gates'] = result[5]
+        kw_ret['output_gates'] = result[6]
+        kw_ret['input_gates2'] = result[7]
+        kw_ret['forget_gates2'] = result[8]
+        kw_ret['output_gates2'] = result[9]
 
     result = list(result)
 
