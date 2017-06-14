@@ -157,7 +157,6 @@ def main():
         communicator = MPI.COMM_WORLD
         worker_id = communicator.Get_rank()
         workers_cnt = communicator.Get_size()
-        args.learning_rate *= workers_cnt
 
     if args.dist_type:
         available_gpus = get_gpu_usage(workers_cnt)
@@ -230,7 +229,7 @@ def main():
         dist_type= args.dist_type,
         sync_batch=args.sync_batch,
         dist_recover_lr_iter = args.dist_recover_lr,
-        sync_grads = not args.sync_models
+        sync_models = args.sync_models
     )
 
 

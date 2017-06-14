@@ -375,12 +375,14 @@ def get_minibatches_idx(n, minibatch_size, shuffle=False):
 def print_params(params, exit_=False):
     total_parameters = 0
 
-    print('Model Parameters:')
     for k, v in params.iteritems():
-        print('  >', k, v.shape, v.dtype)
         total_parameters += v.size
     print('Total parameters of the network: {}'.format(total_parameters))
-    print('Model Parameters Done')
+
+    print('Model Parameters:')
+    for idx, (k, v) in enumerate(params.iteritems()):
+        ratio = v.size * 100.0 / total_parameters
+        print('  >', k, v.shape, v.dtype, '%.2f%%' % ratio)
     sys.stdout.flush()
 
     if exit_:
@@ -560,6 +562,7 @@ __all__ = [
     '_p',
     'init_tparams',
     'sync_tparams',
+    'all_reduce_params',
     'load_params',
     'load_embedding',
     'orthogonal_weight',

@@ -19,7 +19,6 @@ from optimizers import Optimizers
 from utils import *
 
 from model import NMTModel
-from utils import all_reduce_params
 
 def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True, normalize=False):
     """Calculate the log probablities on a given corpus using translation model"""
@@ -120,7 +119,7 @@ def train(dim_word=100,  # word vector dimensionality
           dist_type =None,
           sync_batch=0,
           dist_recover_lr_iter=False,
-          sync_grads=True,
+          sync_models=False,
 
           unit_size=2,
           cond_unit_size=2,
@@ -150,7 +149,7 @@ def train(dim_word=100,  # word vector dimensionality
         mpi_communicator = MPI.COMM_WORLD
         worker_id = mpi_communicator.Get_rank()
         workers_cnt = mpi_communicator.Get_size()
-    if dist_type and sync_grads:
+    if dist_type and not sync_models:
         sync_batch = 1 #force sync gradient in every mini-batch
 
     print 'Use {}, worker id: {}'.format('multiverso' if dist_type == 'mv' else 'mpi' if dist_recover_lr_iter else 'none', worker_id)
@@ -226,8 +225,7 @@ Start Time = {}
         load_embedding(params, given_embedding)
         print 'Done'
 
-    if True:
-        print_params(params)
+    print_params(params)
 
     model.init_tparams(params)
 
@@ -268,9 +266,9 @@ Start Time = {}
 
     print 'Computing gradient...',
     grads = tensor.grad(cost, wrt=itemlist(model.P))
+    grads, g2 = apply_gradient_clipping(clip_c, grads)
     print 'Done'
     sys.stdout.flush()
-    grads, g2 = apply_gradient_clipping(clip_c, grads)
 
     # compile the optimizer, the actual computational graph is compiled here
     lr = tensor.scalar(name='lr')
@@ -290,7 +288,7 @@ Start Time = {}
     elif dist_type == 'mpi_reduce':
         mpi_communicator.Barrier()
         #create receive buffers for mpi allreduce
-        if not sync_grads:
+        if sync_models:
             rec_models = [np.zeros_like(p.get_value()) for p in model.P.itervalues()]
             rec_immes_list = [None for _ in imm_shared]
             for i in xrange(len(imm_shared)):
@@ -315,6 +313,10 @@ Start Time = {}
                  uidx=uidx, **unzip(model.P))
         save_options(model_options, uidx, saveto)
         print 'Done'
+
+    commu_time_sum = 0.0
+    cp_time_sum =0.0
+    reduce_time_sum=0.0
 
     start_time = time.time()
 
@@ -341,15 +343,17 @@ Start Time = {}
                 uidx -= 1
                 continue
 
+            effective_uidx = uidx - start_uidx
             ud_start = time.time()
 
             # compute cost, grads and copy grads to shared variables
             cost, g2_value = f_grad_shared(x, x_mask, y, y_mask)
+
             if dist_type == 'mpi_reduce' and uidx % sync_batch == 0:
                 reduce_start = time.time()
                 commu_time = 0
                 gpucpu_cp_time = 0
-                if not sync_grads: #sync model parameters
+                if sync_models: #sync model parameters
                     commu_time_delta, cp_time_delta = all_reduce_params(model.P.itervalues(), rec_models, workers_cnt)
                     commu_time += commu_time_delta
                     gpucpu_cp_time += cp_time_delta
@@ -358,12 +362,18 @@ Start Time = {}
                         commu_time += commu_time_delta
                         gpucpu_cp_time += cp_time_delta
                 else: #sync gradients
-                    commu_time, cp_time = all_reduce_params(grads_shared, rec_grads)
+                    commu_time, gpucpu_cp_time = all_reduce_params(grads_shared, rec_grads)
 
-                print '@Reduce time = {:.5f}, Commu time = {:.5f}, GPUCPU time = {:.5f}'.format(time.time() - reduce_start, commu_time, cp_time)
+                reduce_time = time.time() - reduce_start
+                commu_time_sum += commu_time
+                reduce_time_sum += reduce_time
+                cp_time_sum += gpucpu_cp_time
+
+                print '@Worker = {}, Reduce time = {:.5f}, Commu time = {:.5f}, GPUCPU time = {:.5f}'.format(
+                    worker_id, reduce_time_sum / effective_uidx, commu_time_sum / effective_uidx, cp_time_sum /effective_uidx)
 
             # do the update on parameters
-            effective_uidx = uidx - start_uidx
+
             curr_lr = lrate if not dist_type or dist_recover_lr_iter < effective_uidx else lrate * 0.05 + effective_uidx * lrate / dist_recover_lr_iter * 0.95
             if curr_lr < lrate:
                 print 'Curr lr %.3f' % curr_lr
