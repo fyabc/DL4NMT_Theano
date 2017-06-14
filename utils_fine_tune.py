@@ -10,6 +10,7 @@ import numpy as np
 import subprocess
 
 from constants import Datasets
+from utils import prepare_data
 
 __author__ = 'fyabc'
 
@@ -39,11 +40,17 @@ def _translate(input_, model, f_init, f_next, trng, k, normalize):
     return output
 
 
-def _translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target, source_file,
-                     k=5, normalize=False, chr_level=False, **kwargs):
-    n_words_src = kwargs.pop('n_words_src', )
+def _translate_batch(input_, model, f_init, f_next, ):
+    pass
+
+
+def load_translate_data(dictionary, dictionary_target, source_file, batch_mode=False, **kwargs):
+    options = kwargs.pop('options', {})
+
+    chr_level = kwargs.pop('chr_level', False)
 
     # load source dictionary and invert
+    print('Load and invert source dictionary...', end='')
     with open(dictionary, 'rb') as f:
         word_dict = pkl.load(f)
     word_idict = dict()
@@ -51,8 +58,10 @@ def _translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target,
         word_idict[vv] = kk
     word_idict[0] = '<eos>'
     word_idict[1] = 'UNK'
+    print('Done')
 
     # load target dictionary and invert
+    print('Load and invert target dictionary...', end='')
     with open(dictionary_target, 'rb') as f:
         word_dict_trg = pkl.load(f)
     word_idict_trg = dict()
@@ -60,37 +69,58 @@ def _translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target,
         word_idict_trg[vv] = kk
     word_idict_trg[0] = '<eos>'
     word_idict_trg[1] = 'UNK'
+    print('Done')
 
-    input_ = []
+    if not batch_mode:
+        input_ = []
 
-    # Loading input
-    with open(source_file, 'r') as f:
-        for idx, line in enumerate(f):
-            if chr_level:
-                words = list(line.decode('utf-8').strip())
-            else:
-                words = line.strip().split()
+        print('Loading input...', end='')
 
-            x = [word_dict[w] if w in word_dict else 1 for w in words]
-            x = [ii if ii < n_words_src else 1 for ii in x]
-            x.append(0)
+        with open(source_file, 'r') as f:
+            for idx, line in enumerate(f):
+                if chr_level:
+                    words = list(line.decode('utf-8').strip())
+                else:
+                    words = line.strip().split()
 
-            input_.append(x)
+                x = [word_dict[w] if w in word_dict else 1 for w in words]
+                x = [ii if ii < options['n_words_src'] else 1 for ii in x]
+                x.append(0)
 
-    # utility function
-    def _seqs2words(caps):
-        capsw = []
-        for cc in caps:
-            ww = []
-            for w in cc:
-                if w == 0:
-                    break
-                ww.append(word_idict_trg[w])
-            capsw.append(' '.join(ww))
-        return capsw
+                input_.append(x)
+        print('Done')
+
+        return word_dict, word_idict, word_idict_trg, input_
+    else:
+        pass
+
+
+def seqs2words(caps, word_idict_trg):
+    capsw = []
+    for cc in caps:
+        ww = []
+        for w in cc:
+            if w == 0:
+                break
+            ww.append(word_idict_trg[w])
+        capsw.append(' '.join(ww))
+    return capsw
+
+
+def _translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target, source_file,
+                     k=5, normalize=False, chr_level=False, **kwargs):
+    n_words_src = kwargs.pop('n_words_src', )
+
+    word_dict, word_idict, word_idict_trg, input_ = load_translate_data(
+        dictionary, dictionary_target, source_file,
+        batch_mode=False, chr_level=chr_level, options={'n_words_src': n_words_src}
+    )
 
     # Translate file
-    trans = _seqs2words(_translate(input_, model, f_init, f_next, trng, k, normalize))
+    trans = seqs2words(
+        _translate(input_, model, f_init, f_next, trng, k, normalize),
+        word_idict_trg
+    )
 
     return '\n'.join(trans) + '\n'
 
@@ -139,7 +169,7 @@ def translate_dev_get_bleu(model, f_init, f_next, trng, dataset, n_words_src):
         model, f_init, f_next, trng,
         './data/dic/{}'.format(dic1),
         './data/dic/{}'.format(dic2),
-        './data/test/{}'.format(test1),
+        './data/dev/{}'.format(dev1),
         k=2, n_words_src=n_words_src,
     )
 
@@ -154,7 +184,7 @@ def translate_dev_get_bleu(model, f_init, f_next, trng, dataset, n_words_src):
     if 'bpe' in dataset:
         translated_string = de_bpe(translated_string)
 
-    return get_bleu('./data/test/{}'.format(test2), translated_string, type_in='string')
+    return get_bleu('./data/dev/{}'.format(dev2), translated_string, type_in='string')
 
 
 __all__ = [

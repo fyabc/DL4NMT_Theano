@@ -514,6 +514,24 @@ class NMTModel(object):
 
         return f_init, f_next
 
+    def build_batch_sampler(self, **kwargs):
+        """Build a batch sampler."""
+
+        unit = self.O['unit']
+
+        trng = kwargs.pop('trng', RandomStreams(1234))
+        use_noise = kwargs.pop('use_noise', theano.shared(np.float32(0.)))
+
+        x = T.matrix('x', dtype='int64')
+        xr = x[::-1]
+        n_timestep = x.shape[0]
+        n_samples = x.shape[1]
+
+        # Word embedding for forward rnn and backward rnn (source)
+        src_embedding = self.embedding(x, n_timestep, n_samples)
+        src_embedding_r = self.embedding(xr, n_timestep, n_samples)
+        pass
+
     def gen_sample(self, f_init, f_next, x, trng=None, k=1, maxlen=30,
                    stochastic=True, argmax=False, **kwargs):
         """Generate sample, either with stochastic sampling or beam search. Note that,
@@ -637,6 +655,9 @@ class NMTModel(object):
         if have_kw_ret:
             return sample, sample_score, kw_ret
         return sample, sample_score
+
+    def gen_batch_sample(self):
+        pass
 
     # Methods to build the each component of the model
 
