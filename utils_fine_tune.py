@@ -41,6 +41,10 @@ def translate(input_, model, f_init, f_next, trng, k, normalize):
 
 
 def translate_block(input_, model, f_init, f_next, trng, k):
+    """Translate for batch sampler.
+
+    :return output: a list of word indices
+    """
     x, x_mask = prepare_data_x(input_, maxlen=None, pad_eos=True, pad_sos=False)
 
     batch_sample, batch_sample_score = model.gen_batch_sample(
@@ -53,8 +57,9 @@ def translate_block(input_, model, f_init, f_next, trng, k):
 
     for sample, sample_score in zip(batch_sample, batch_sample_score):
         score = sample_score / np.array([len(s) for s in sample])
-        sidx = np.argsort(score)
-        output.append([sample[ii] for ii in sidx])
+        # sidx = np.argsort(score)
+        # output.append([sample[ii] for ii in sidx])
+        output.append(sample[np.argmin(score)])
 
     return output
 
@@ -63,29 +68,35 @@ def load_translate_data(dictionary, dictionary_target, source_file, batch_mode=F
     chr_level = kwargs.pop('chr_level', False)
     unk_id = kwargs.pop('unk_id', 1)
     n_words_src = kwargs.pop('n_words_src', 30000)
+    echo = kwargs.pop('echo', True)
 
     # load source dictionary and invert
-    print('Load and invert source dictionary...', end='')
+    if echo:
+        print('Load and invert source dictionary...', end='')
     with open(dictionary, 'rb') as f:
         word_dict = pkl.load(f)
     word_idict = {v: k for k, v in word_dict.iteritems()}
     word_idict[0] = '<eos>'
     word_idict[unk_id] = 'UNK'
-    print('Done')
+    if echo:
+        print('Done')
 
     # load target dictionary and invert
-    print('Load and invert target dictionary...', end='')
+    if echo:
+        print('Load and invert target dictionary...', end='')
     with open(dictionary_target, 'rb') as f:
         word_dict_trg = pkl.load(f)
     word_idict_trg = {v: k for k, v in word_dict_trg.iteritems()}
     word_idict_trg[0] = '<eos>'
     word_idict_trg[unk_id] = 'UNK'
-    print('Done')
+    if echo:
+        print('Done')
 
     if not batch_mode:
         input_ = []
 
-        print('Loading input...', end='')
+        if echo:
+            print('Loading input...', end='')
 
         with open(source_file, 'r') as f:
             for idx, line in enumerate(f):
@@ -99,7 +110,8 @@ def load_translate_data(dictionary, dictionary_target, source_file, batch_mode=F
                 x.append(0)
 
                 input_.append(x)
-        print('Done')
+        if echo:
+            print('Done')
 
         return word_dict, word_idict, word_idict_trg, input_
     else:
@@ -150,6 +162,7 @@ def _translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target,
         word_dict, word_idict, word_idict_trg, input_ = load_translate_data(
             dictionary, dictionary_target, source_file,
             batch_mode=batch_mode, chr_level=chr_level, n_words_src=n_words_src,
+            echo=False,
         )
 
         trans = seqs2words(
@@ -162,6 +175,7 @@ def _translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target,
         word_dict, word_idict, word_idict_trg, all_src_blocks, m_block = load_translate_data(
             dictionary, dictionary_target, source_file,
             batch_mode=batch_mode, chr_level=chr_level, n_words_src=n_words_src,
+            echo=False,
         )
 
         all_sample = []
@@ -223,7 +237,7 @@ def translate_dev_get_bleu(model, f_init, f_next, trng, **kwargs):
     translated_string = _translate_whole(
         model, f_init, f_next, trng,
         dic1, dic2, dev1,
-        k=2, batch_mode=False,
+        k=2, batch_mode=True,
     )
 
     # first de-truecase, then de-bpe

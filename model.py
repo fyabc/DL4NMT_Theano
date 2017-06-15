@@ -713,6 +713,7 @@ class NMTModel(object):
 
             next_w_list = []
             next_state_list = []
+            next_memory_list = []
 
             next_p, next_state = ret[0], ret[2]
             cursor_start, cursor_end = 0, lives_k[0]
@@ -726,7 +727,7 @@ class NMTModel(object):
                 cand_scores = batch_hyp_scores[jj][:, None] - np.log(next_p[index_range, :])
                 cand_flat = cand_scores.flatten()
 
-                ranks_flat = bottleneck.argpartsort(cand_flat, n=k - deads_k[jj])[:k - deads_k[jj]]
+                ranks_flat = bottleneck.argpartsort(cand_flat, k - deads_k[jj])[:k - deads_k[jj]]
 
                 voc_size = next_p.shape[1]
                 trans_indices = ranks_flat / voc_size
@@ -736,17 +737,20 @@ class NMTModel(object):
                 new_hyp_samples = []
                 new_hyp_scores = np.zeros(k - deads_k[jj]).astype('float32')
                 new_hyp_states = []
+                new_hyp_memories = []
 
                 for idx, [ti, wi] in enumerate(zip(trans_indices, word_indices)):
                     new_hyp_samples.append(batch_hyp_samples[jj][ti] + [wi])
                     new_hyp_scores[idx] = copy.copy(costs[idx])
-                    new_hyp_states.append(copy.copy(next_state[cursor_start + ti]))
+                    new_hyp_states.append(copy.copy(next_state[:, cursor_start + ti, :]))
+                    new_hyp_memories.append(copy.copy(next_memory[:, cursor_start + ti, :]))
 
                 # check the finished samples
                 new_live_k = 0
                 batch_hyp_samples[jj] = []
                 hyp_scores = []
                 hyp_states = []
+                hyp_memories = []
 
                 for idx in xrange(len(new_hyp_samples)):
                     if new_hyp_samples[idx][-1] == eos_id:
@@ -758,6 +762,7 @@ class NMTModel(object):
                         batch_hyp_samples[jj].append(new_hyp_samples[idx])
                         hyp_scores.append(new_hyp_scores[idx])
                         hyp_states.append(new_hyp_states[idx])
+                        hyp_memories.append(new_hyp_memories[idx])
 
                 batch_hyp_scores[jj] = np.array(hyp_scores)
                 lives_k[jj] = new_live_k
@@ -768,11 +773,13 @@ class NMTModel(object):
 
                 if hyp_states:
                     next_w_list += [w[-1] for w in batch_hyp_samples[jj]]
-                    next_state_list.append(hyp_states)
+                    next_state_list += [xx[:, None, :] for xx in hyp_states]
+                    next_memory_list += [xx[:, None, :] for xx in hyp_memories]
 
             if np.array(lives_k).sum() > 0:
                 next_w = np.array(next_w_list)
-                next_state = np.row_stack(next_state_list[:])
+                next_state = np.concatenate(next_state_list[:], axis=1)
+                next_memory = np.concatenate(next_memory_list[:], axis=1)
             else:
                 break
 
