@@ -453,7 +453,7 @@ class NMTModel(object):
 
         if batch_mode:
             x_mask = T.matrix('x_mask', dtype=fX)
-            xr_mask = xr[::-1]
+            xr_mask = x_mask[::-1]
 
         # Word embedding for forward rnn and backward rnn (source)
         src_embedding = self.embedding(x, n_timestep, n_samples)
@@ -688,8 +688,8 @@ class NMTModel(object):
         next_memory = np.zeros((self.O['n_decoder_layers'], next_state.shape[1], next_state.shape[2]), dtype=fX)
 
         for ii in xrange(maxlen):
-            ctx = np.zeros([ctx0.shape[0], np.array(lives_k).sum(), ctx0.shape[2]], dtype=np.float32)
-            x_extend_masks = np.zeros([x_mask.shape[0], np.array(lives_k).sum()], dtype=np.float32)
+            ctx = np.repeat(ctx0, lives_k, axis=1)
+            x_extend_masks = np.repeat(x_mask, lives_k, axis=1)
             cursor_start, cursor_end = 0, lives_k[0]
             for jj in xrange(batch_size):
                 if lives_k[jj] > 0:

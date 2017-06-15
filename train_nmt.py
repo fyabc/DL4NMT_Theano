@@ -107,8 +107,8 @@ def main():
     parser.add_argument('--gpu_map_file', action='store', metavar='filename', dest='gpu_map_file', type=str,
                         default=None, help='The file containing gpu id mapping information, '
                                            'each line is in the form physical_gpu_id\\theano_id')
-    parser.add_argument('--ft_patience', action='store', metavar='N', dest='fine_tune_patience', type=int, default=8,
-                        help='Fine tune patience, default is %(default)s, set -1 to disable it')
+    parser.add_argument('--ft_patience', action='store', metavar='N', dest='fine_tune_patience', type=int, default=-1,
+                        help='Fine tune patience, default is %(default)s, set 8 to enable it')
 
     args = parser.parse_args()
     print args

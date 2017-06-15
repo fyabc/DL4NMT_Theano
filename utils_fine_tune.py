@@ -214,8 +214,7 @@ def de_bpe(input_str):
 def translate_dev_get_bleu(model, f_init, f_next, trng, **kwargs):
     dataset = kwargs.pop('dataset', model.O['task'])
 
-    _, _, _, _, dev1, dev2, _, _, dic1, dic2 = Datasets[dataset]
-
+    # [NOTE]: Filenames here are with path prefix.
     dev1 = kwargs.pop('dev1', model.O['valid_datasets'][0])
     dev2 = kwargs.pop('dev2', model.O['valid_datasets'][1])
     dic1 = kwargs.pop('dic1', model.O['vocab_filenames'][0])
@@ -223,9 +222,7 @@ def translate_dev_get_bleu(model, f_init, f_next, trng, **kwargs):
 
     translated_string = _translate_whole(
         model, f_init, f_next, trng,
-        './data/dic/{}'.format(dic1),
-        './data/dic/{}'.format(dic2),
-        './data/dev/{}'.format(dev1),
+        dic1, dic2, dev1,
         k=2, batch_mode=False,
     )
 
@@ -240,7 +237,7 @@ def translate_dev_get_bleu(model, f_init, f_next, trng, **kwargs):
     if 'bpe' in dataset:
         translated_string = de_bpe(translated_string)
 
-    return get_bleu('./data/dev/{}'.format(dev2), translated_string, type_in='string')
+    return get_bleu(dev2, translated_string, type_in='string')
 
 
 __all__ = [
