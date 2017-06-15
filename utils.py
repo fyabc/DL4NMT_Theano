@@ -341,6 +341,52 @@ def prepare_data(seqs_x, seqs_y, maxlen=None):
     return x, x_mask, y, y_mask
 
 
+def prepare_data_x(seqs_x, maxlen=None, pad_eos=True, pad_sos=False, n_word=30000):
+    # x: a list of sentences
+    lengths_x = [len(s) for s in seqs_x]
+
+    if maxlen is not None:
+        new_seqs_x = []
+        new_lengths_x = []
+        for l_x, s_x in zip(lengths_x, seqs_x):
+            if l_x < maxlen:
+                new_seqs_x.append(s_x)
+                new_lengths_x.append(l_x)
+
+        lengths_x = new_lengths_x
+        seqs_x = new_seqs_x
+
+        if len(lengths_x) < 1:
+            return None, None,
+
+    n_samples = len(seqs_x)
+    if pad_eos:
+        maxlen_x = np.max(lengths_x) + 1
+    else:
+        maxlen_x = np.max(lengths_x)
+
+    x = np.zeros((maxlen_x, n_samples)).astype('int64')
+
+    x_mask = np.zeros((maxlen_x, n_samples)).astype('float32')
+
+    for idx, s_x in enumerate(seqs_x):
+        x[:lengths_x[idx], idx] = s_x
+        if pad_eos:
+            x_mask[:lengths_x[idx]+1, idx] = 1.
+        else:
+            x_mask[:lengths_x[idx], idx] = 1.
+
+    if pad_sos:
+        x = np.concatenate((
+            np.full([1, n_samples], n_word - 1, dtype='int64'), x
+        ), axis=0)
+        x_mask = np.concatenate((
+            np.full([1, n_samples], 1., dtype='float32'), x_mask
+        ), axis=0)
+
+    return x, x_mask
+
+
 def get_minibatches_idx(n, minibatch_size, shuffle=False):
     """
     Used to shuffle the dataset at each iteration.
@@ -574,6 +620,7 @@ __all__ = [
     'l2_regularization',
     'regularize_alpha_weights',
     'prepare_data',
+    'prepare_data_x',
     'get_minibatches_idx',
     'print_params',
     'load_options',

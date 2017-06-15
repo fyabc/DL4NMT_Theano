@@ -10,12 +10,12 @@ import numpy as np
 import subprocess
 
 from constants import Datasets
-from utils import prepare_data
+from utils import prepare_data_x
 
 __author__ = 'fyabc'
 
 
-def _translate(input_, model, f_init, f_next, trng, k, normalize):
+def translate(input_, model, f_init, f_next, trng, k, normalize):
     def _trans(seq):
         # sample given an input sequence and obtain scores
         sample, score = model.gen_sample(
@@ -40,35 +40,46 @@ def _translate(input_, model, f_init, f_next, trng, k, normalize):
     return output
 
 
-def _translate_batch(input_, model, f_init, f_next, ):
-    pass
+def translate_block(input_, model, f_init, f_next, trng, k):
+    x, x_mask = prepare_data_x(input_, maxlen=None, pad_eos=True, pad_sos=False)
+
+    batch_sample, batch_sample_score = model.gen_batch_sample(
+        f_init, f_next, x, x_mask, trng,
+        k=k, maxlen=200, eos_id=0,
+    )
+    assert len(batch_sample) == len(batch_sample_score)
+
+    output = []
+
+    for sample, sample_score in zip(batch_sample, batch_sample_score):
+        score = sample_score / np.array([len(s) for s in sample])
+        sidx = np.argsort(score)
+        output.append([sample[ii] for ii in sidx])
+
+    return output
 
 
 def load_translate_data(dictionary, dictionary_target, source_file, batch_mode=False, **kwargs):
-    options = kwargs.pop('options', {})
-
     chr_level = kwargs.pop('chr_level', False)
+    unk_id = kwargs.pop('unk_id', 1)
+    n_words_src = kwargs.pop('n_words_src', 30000)
 
     # load source dictionary and invert
     print('Load and invert source dictionary...', end='')
     with open(dictionary, 'rb') as f:
         word_dict = pkl.load(f)
-    word_idict = dict()
-    for kk, vv in word_dict.iteritems():
-        word_idict[vv] = kk
+    word_idict = {v: k for k, v in word_dict.iteritems()}
     word_idict[0] = '<eos>'
-    word_idict[1] = 'UNK'
+    word_idict[unk_id] = 'UNK'
     print('Done')
 
     # load target dictionary and invert
     print('Load and invert target dictionary...', end='')
     with open(dictionary_target, 'rb') as f:
         word_dict_trg = pkl.load(f)
-    word_idict_trg = dict()
-    for kk, vv in word_dict_trg.iteritems():
-        word_idict_trg[vv] = kk
+    word_idict_trg = {v: k for k, v in word_dict_trg.iteritems()}
     word_idict_trg[0] = '<eos>'
-    word_idict_trg[1] = 'UNK'
+    word_idict_trg[unk_id] = 'UNK'
     print('Done')
 
     if not batch_mode:
@@ -83,8 +94,8 @@ def load_translate_data(dictionary, dictionary_target, source_file, batch_mode=F
                 else:
                     words = line.strip().split()
 
-                x = [word_dict[w] if w in word_dict else 1 for w in words]
-                x = [ii if ii < options['n_words_src'] else 1 for ii in x]
+                x = [word_dict[w] if w in word_dict else unk_id for w in words]
+                x = [ii if ii < n_words_src else unk_id for ii in x]
                 x.append(0)
 
                 input_.append(x)
@@ -92,10 +103,32 @@ def load_translate_data(dictionary, dictionary_target, source_file, batch_mode=F
 
         return word_dict, word_idict, word_idict_trg, input_
     else:
-        pass
+        batch_size = kwargs.pop('batch_size', 30)
+
+        with open(source_file, 'r') as f:
+            all_src_sent = [line.strip().split() for line in f]
+
+        all_src_num = []
+        for seg in all_src_sent:
+            tmp = [word_dict.get(w, unk_id) for w in seg]
+            all_src_num.append([w if w < n_words_src else unk_id for w in tmp])
+
+        all_src_blocks = []
+        m_block = (len(all_src_num) + batch_size - 1) // batch_size
+        for idx in xrange(m_block):
+            all_src_blocks.append(all_src_num[batch_size * idx: batch_size * (idx + 1)])
+
+        return word_dict, word_idict, word_idict_trg, all_src_blocks, m_block
 
 
 def seqs2words(caps, word_idict_trg):
+    """Sequences -> Sentences
+
+    :param caps: a list of word indices
+    :param word_idict_trg: inverted target word dict
+    :return: a list of sentences
+    """
+
     capsw = []
     for cc in caps:
         ww = []
@@ -109,20 +142,36 @@ def seqs2words(caps, word_idict_trg):
 
 def _translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target, source_file,
                      k=5, normalize=False, chr_level=False, **kwargs):
-    n_words_src = kwargs.pop('n_words_src', )
-
-    word_dict, word_idict, word_idict_trg, input_ = load_translate_data(
-        dictionary, dictionary_target, source_file,
-        batch_mode=False, chr_level=chr_level, options={'n_words_src': n_words_src}
-    )
+    n_words_src = kwargs.pop('n_words_src', model.O['n_words_src'])
+    batch_mode = kwargs.pop('batch_mode', False)
 
     # Translate file
-    trans = seqs2words(
-        _translate(input_, model, f_init, f_next, trng, k, normalize),
-        word_idict_trg
-    )
+    if not batch_mode:
+        word_dict, word_idict, word_idict_trg, input_ = load_translate_data(
+            dictionary, dictionary_target, source_file,
+            batch_mode=batch_mode, chr_level=chr_level, n_words_src=n_words_src,
+        )
 
-    return '\n'.join(trans) + '\n'
+        trans = seqs2words(
+            translate(input_, model, f_init, f_next, trng, k, normalize),
+            word_idict_trg,
+        )
+
+        return '\n'.join(trans) + '\n'
+    else:
+        word_dict, word_idict, word_idict_trg, all_src_blocks, m_block = load_translate_data(
+            dictionary, dictionary_target, source_file,
+            batch_mode=batch_mode, chr_level=chr_level, n_words_src=n_words_src,
+        )
+
+        all_sample = []
+        for bidx, seqs in enumerate(all_src_blocks):
+            all_sample.extend(translate_block(seqs, model, f_init, f_next, trng, k))
+            # print(bidx, '/', m_block, 'Done')
+
+        trans = seqs2words(all_sample, word_idict_trg)
+
+        return '\n'.join(trans) + '\n'
 
 
 def get_bleu(ref_file, hyp_in=None, type_in='filename'):
@@ -162,15 +211,22 @@ def de_bpe(input_str):
     return re.sub(r'(@@ )|(@@ ?$)', '', input_str)
 
 
-def translate_dev_get_bleu(model, f_init, f_next, trng, dataset, n_words_src):
-    train1, train2, small1, small2, dev1, dev2, test1, test2, dic1, dic2 = Datasets[dataset]
+def translate_dev_get_bleu(model, f_init, f_next, trng, **kwargs):
+    dataset = kwargs.pop('dataset', model.O['task'])
+
+    _, _, _, _, dev1, dev2, _, _, dic1, dic2 = Datasets[dataset]
+
+    dev1 = kwargs.pop('dev1', model.O['valid_datasets'][0])
+    dev2 = kwargs.pop('dev2', model.O['valid_datasets'][1])
+    dic1 = kwargs.pop('dic1', model.O['vocab_filenames'][0])
+    dic2 = kwargs.pop('dic2', model.O['vocab_filenames'][1])
 
     translated_string = _translate_whole(
         model, f_init, f_next, trng,
         './data/dic/{}'.format(dic1),
         './data/dic/{}'.format(dic2),
         './data/dev/{}'.format(dev1),
-        k=2, n_words_src=n_words_src,
+        k=2, batch_mode=False,
     )
 
     # first de-truecase, then de-bpe
@@ -179,7 +235,7 @@ def translate_dev_get_bleu(model, f_init, f_next, trng, dataset, n_words_src):
             'perl detruecase.perl',
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=open(os.devnull, 'w'),
             shell=True,
-        ).communicate(translated_string)
+        ).communicate(translated_string)[0]
 
     if 'bpe' in dataset:
         translated_string = de_bpe(translated_string)

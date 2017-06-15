@@ -9,9 +9,8 @@ import numpy as np
 import theano
 
 from config import DefaultOptions
-from utils import load_params
-from utils_fine_tune import load_translate_data, seqs2words
-from model import NMTModel
+from utils_fine_tune import load_translate_data, seqs2words, translate
+from model import build_and_init_model
 
 __author__ = 'fyabc'
 
@@ -21,41 +20,12 @@ def translate_model_single(input_, model_name, options, k, normalize):
     trng = RandomStreams(1234)
     use_noise = theano.shared(np.float32(0.))
 
-    model = NMTModel(options)
-
-    # allocate model parameters
-    params = model.initializer.init_params()
-    # load model parameters and set theano shared variables
-    params = load_params(model_name, params)
-    model.init_tparams(params)
+    model, _ = build_and_init_model(model_name, options=options, build=False)
 
     # word index
     f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise)
 
-    def _translate(seq):
-        # sample given an input sequence and obtain scores
-        sample, score = model.gen_sample(
-            f_init, f_next,
-            np.array(seq).reshape([len(seq), 1]),
-            trng=trng, k=k, maxlen=200,
-            stochastic=False, argmax=False,
-        )
-
-        # normalize scores according to sequence lengths
-        if normalize:
-            lengths = np.array([len(s) for s in sample])
-            score = score / lengths
-        sidx = np.argmin(score)
-        return sample[sidx]
-
-    output = []
-
-    for idx, x in enumerate(input_):
-        print idx
-
-        output.append(_translate(x))
-
-    return output
+    return translate(input_, model, f_init, f_next, trng, k, normalize)
 
 
 def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
