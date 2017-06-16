@@ -12,6 +12,7 @@ import theano
 
 from config import DefaultOptions
 from utils import load_params
+from utils_fine_tune import seqs2words, load_translate_data
 from model import NMTModel
 
 
@@ -71,23 +72,11 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
         print 'Options:'
         pprint(options)
 
-    # load source dictionary and invert
-    with open(dictionary, 'rb') as f:
-        word_dict = pkl.load(f)
-    word_idict = dict()
-    for kk, vv in word_dict.iteritems():
-        word_idict[vv] = kk
-    word_idict[0] = '<eos>'
-    word_idict[1] = 'UNK'
-
-    # load target dictionary and invert
-    with open(dictionary_target, 'rb') as f:
-        word_dict_trg = pkl.load(f)
-    word_idict_trg = dict()
-    for kk, vv in word_dict_trg.iteritems():
-        word_idict_trg[vv] = kk
-    word_idict_trg[0] = '<eos>'
-    word_idict_trg[1] = 'UNK'
+    word_dict, word_idict, word_idict_trg = load_translate_data(
+        dictionary, dictionary_target, source_file,
+        batch_mode=False, chr_level=chr_level, load_input=False,
+        echo=False,
+    )
 
     # create input and output queues for processes
     queue = Queue()
@@ -100,17 +89,6 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
         processes[midx].start()
 
     # utility function
-    def _seqs2words(caps):
-        capsw = []
-        for cc in caps:
-            ww = []
-            for w in cc:
-                if w == 0:
-                    break
-                ww.append(word_idict_trg[w])
-            capsw.append(' '.join(ww))
-        return capsw
-
     def _send_jobs(fname):
         with open(fname, 'r') as f:
             for idx, line in enumerate(f):
@@ -139,7 +117,7 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
 
     print 'Translating ', source_file, '...'
     n_samples = _send_jobs(source_file)
-    trans = _seqs2words(_retrieve_jobs(n_samples))
+    trans = seqs2words(_retrieve_jobs(n_samples), word_idict_trg)
     _finish_processes()
     with open(saveto, 'w') as f:
         print >> f, '\n'.join(trans)
