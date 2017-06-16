@@ -9,8 +9,9 @@ profile = False
 fX = 'float32'
 
 ImmediateFilenameBackup = '{}_imm.pkl'
-ImmediateFilename = '{}_imm.pkl.gz'
-TempImmediateFilename = '{}_imm_tmp.pkl.gz'
+ImmediateFilenameBackup2 = '{}_imm.pkl.gz'
+ImmediateFilename = '{}_imm.npz'
+TempImmediateFilename = '{}_imm_tmp.npz'
 
 # Cycle of shuffle data.
 ShuffleCycle = 8

@@ -493,10 +493,29 @@ def get_adadelta_imm_data(optimizer, given_imm, saveto):
 
         # For back compatibility
         given_imm_filename_backup = ImmediateFilenameBackup.format(os.path.splitext(saveto)[0])
+        given_imm_filename_backup2 = ImmediateFilenameBackup2.format(os.path.splitext(saveto)[0])
         if os.path.exists(given_imm_filename):
             message('Loading adadelta immediate data')
+            with np.load(given_imm_filename) as data:
+                data_size = len(data)
+                if optimizer == 'adadelta':
+                    return [
+                        [data['arr_{}'.format(i)] for i in range(0, data_size // 2)],
+                        [data['arr_{}'.format(i)] for i in range(data_size // 2, data_size)],
+                    ]
+                elif optimizer == 'adam':
+                    return [
+                        data['arr_0'],
+                        [data['arr_{}'.format(i)] for i in range(1, data_size // 2 + 1)],
+                        [data['arr_{}'.format(i)] for i in range(data_size // 2 + 1, data_size)],
+                    ]
+                else:
+                    pass
             return pkl.load(fopen(given_imm_filename, 'rb'))
         elif os.path.exists(given_imm_filename_backup):
+            message('Loading adadelta immediate data')
+            return pkl.load(fopen(given_imm_filename_backup, 'rb'))
+        elif os.path.exists(given_imm_filename_backup2):
             message('Loading adadelta immediate data')
             return pkl.load(fopen(given_imm_filename_backup, 'rb'))
     return None
@@ -513,27 +532,31 @@ def dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto):
     imm_filename = ImmediateFilename.format(os.path.splitext(saveto)[0])
 
     # Dump to temp file
-    with gzip.open(tmp_filename, 'wb') as f:
-        message('Dumping adadelta immediate data to temp file...', end='')
-        if optimizer == 'adadelta':
-            pkl.dump([
-                [g.get_value() for g in imm_shared[0]],
-                [g.get_value() for g in imm_shared[1]],
-            ], f)
-        elif optimizer == 'adam':
-            pkl.dump([
-                imm_shared[0].get_value(),
-                [g.get_value() for g in imm_shared[1]],
-                [g.get_value() for g in imm_shared[2]],
-            ], f)
-        else:
-            pass
-        message('Done')
+    message('Dumping adadelta immediate data to temp file...', end='')
+    if optimizer == 'adadelta':
+        np.savez(tmp_filename,
+                 [g.get_value() for g in imm_shared[0]] +
+                 [g.get_value() for g in imm_shared[1]])
+    elif optimizer == 'adam':
+        np.savez(tmp_filename,
+                 [imm_shared[0].get_value()] +
+                 [g.get_value() for g in imm_shared[1]] +
+                 [g.get_value() for g in imm_shared[2]])
+    else:
+        pass
+    message('Done')
 
     # Move temp file to immediate file
     message('Moving temp file to immediate file...', end='')
     try:
         os.remove(ImmediateFilenameBackup.format(os.path.splitext(saveto)[0]))
+    except OSError as e:
+        if e.errno == errno.ENOENT:
+            pass
+        else:
+            raise
+    try:
+        os.remove(ImmediateFilenameBackup2.format(os.path.splitext(saveto)[0]))
     except OSError as e:
         if e.errno == errno.ENOENT:
             pass
