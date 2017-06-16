@@ -497,7 +497,7 @@ def get_adadelta_imm_data(optimizer, given_imm, saveto):
         if os.path.exists(given_imm_filename):
             message('Loading adadelta immediate data')
             with np.load(given_imm_filename) as data:
-                data_size = len(data)
+                data_size = len(data.files)
                 if optimizer == 'adadelta':
                     return [
                         [data['arr_{}'.format(i)] for i in range(0, data_size // 2)],
@@ -511,7 +511,6 @@ def get_adadelta_imm_data(optimizer, given_imm, saveto):
                     ]
                 else:
                     pass
-            return pkl.load(fopen(given_imm_filename, 'rb'))
         elif os.path.exists(given_imm_filename_backup):
             message('Loading adadelta immediate data')
             return pkl.load(fopen(given_imm_filename_backup, 'rb'))
