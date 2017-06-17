@@ -8,7 +8,7 @@ import theano
 from theano import tensor as T
 
 from constants import fX, profile
-from utils import _p, normal_weight, orthogonal_weight, concatenate
+from utils import _p, normal_weight, orthogonal_weight
 
 __author__ = 'fyabc'
 
@@ -83,6 +83,23 @@ def feed_forward(P, state_below, O, prefix='rconv',
     if isinstance(activ, (str, unicode)):
         activ = eval(activ)
     return activ(T.dot(state_below, P[_p(prefix, 'W')]) + P[_p(prefix, 'b')])
+
+
+def _attention(h1, projected_context_, context_, W_comb_att, U_att, c_tt, context_mask=None):
+    pstate_ = T.dot(h1, W_comb_att)
+    pctx__ = projected_context_ + pstate_[None, :, :]
+    # pctx__ += xc_
+    pctx__ = T.tanh(pctx__)
+
+    alpha = T.dot(pctx__, U_att) + c_tt
+    alpha = alpha.reshape([alpha.shape[0], alpha.shape[1]])
+    alpha = T.exp(alpha)
+    if context_mask:
+        alpha = alpha * context_mask
+    alpha = alpha / alpha.sum(0, keepdims=True)
+    ctx_ = (context_ * alpha[:, :, None]).sum(0)  # current context
+
+    return ctx_, alpha
 
 
 def param_init_gru(O, params, prefix='gru', nin=None, dim=None, **kwargs):
@@ -235,11 +252,11 @@ def gru_layer(P, state_below, O, prefix='gru', mask=None, **kwargs):
 
     # state_below is the input word embeddings, to the gates and the hidden state proposal
     if multi:
-        state_below_ = concatenate([
+        state_below_ = T.concatenate([
             T.dot(state_below, P[_p(prefix, 'W', layer_id)][j]) + P[_p(prefix, 'b', layer_id)][j]
             for j in range(unit_size)
         ], axis=-1)
-        state_belowx = concatenate([
+        state_belowx = T.concatenate([
             T.dot(state_below, P[_p(prefix, 'Wx', layer_id)][j]) + P[_p(prefix, 'bx', layer_id)][j]
             for j in range(unit_size)
         ], axis=-1)
@@ -489,33 +506,17 @@ def gru_cond_layer(P, state_below, O, prefix='gru', mask=None, context=None, one
 
     # projected x
     if multi:
-        state_belowx = concatenate([
+        state_belowx = T.concatenate([
             T.dot(state_below, P[_p(prefix, 'Wx', layer_id)][j]) + P[_p(prefix, 'bx', layer_id)][j]
             for j in range(unit_size)
         ], axis=-1)
-        state_below_ = concatenate([
+        state_below_ = T.concatenate([
             T.dot(state_below, P[_p(prefix, 'W', layer_id)][j]) + P[_p(prefix, 'b', layer_id)][j]
             for j in range(unit_size)
         ], axis=-1)
     else:
         state_belowx = T.dot(state_below, P[_p(prefix, 'Wx', layer_id)]) + P[_p(prefix, 'bx', layer_id)]
         state_below_ = T.dot(state_below, P[_p(prefix, 'W', layer_id)]) + P[_p(prefix, 'b', layer_id)]
-
-    def _attention(h1, projected_context_, context_, W_comb_att, U_att, c_tt):
-        pstate_ = T.dot(h1, W_comb_att)
-        pctx__ = projected_context_ + pstate_[None, :, :]
-        # pctx__ += xc_
-        pctx__ = T.tanh(pctx__)
-
-        alpha = T.dot(pctx__, U_att) + c_tt
-        alpha = alpha.reshape([alpha.shape[0], alpha.shape[1]])
-        alpha = T.exp(alpha)
-        if context_mask:
-            alpha = alpha * context_mask
-        alpha = alpha / alpha.sum(0, keepdims=True)
-        ctx_ = (context_ * alpha[:, :, None]).sum(0)  # current context
-
-        return ctx_, alpha
 
     def _one_step_att_slice(m_, ctx_, h1, Wc, Wcx, U_nl, Ux_nl, b_nl, bx_nl):
         preact2 = T.nnet.sigmoid(T.dot(h1, U_nl) + b_nl + T.dot(ctx_, Wc))
@@ -539,7 +540,7 @@ def gru_cond_layer(P, state_below, O, prefix='gru', mask=None, context=None, one
         h1 = _gru_step_slice(m_, x_, xx_, h_, U, Ux)
 
         # attention
-        ctx_, alpha = _attention(h1, projected_context_, context_, W_comb_att, U_att, c_tt)
+        ctx_, alpha = _attention(h1, projected_context_, context_, W_comb_att, U_att, c_tt, context_mask=context_mask)
 
         # GRU 2 (with attention)
         h2 = _one_step_att_slice(m_, ctx_, h1, Wc, Wcx, U_nl, Ux_nl, b_nl, bx_nl)
@@ -554,16 +555,16 @@ def gru_cond_layer(P, state_below, O, prefix='gru', mask=None, context=None, one
         for j in range(unit_size):
             x = _slice(x_, j, 2 * dim)
             xx = _slice(xx_, j, dim)
-            h1 = _gru_step_slice(mask, x, xx, h_tmp, U[j], Ux[j])
+            h1 = _gru_step_slice(m_, x, xx, h_tmp, U[j], Ux[j])
             h_tmp = h1
 
         # attention
-        ctx_, alpha = _attention(h1, projected_context_, context_, W_comb_att, U_att, c_tt)
+        ctx_, alpha = _attention(h1, projected_context_, context_, W_comb_att, U_att, c_tt, context_mask=context_mask)
 
         # GRU 2 (with attention)
         h_tmp_att = h1
         for j in range(unit_size):
-            h2 = _one_step_att_slice(m_, ctx_, h_tmp_att, Wc, Wcx, U_nl, Ux_nl, b_nl, bx_nl)
+            h2 = _one_step_att_slice(m_, ctx_, h_tmp_att, Wc[j], Wcx[j], U_nl[j], Ux_nl[j], b_nl[j], bx_nl[j])
             h_tmp_att = h2
 
         return h2, ctx_, alpha.T
@@ -621,30 +622,57 @@ def param_init_lstm(O, params, prefix='lstm', nin=None, dim=None, **kwargs):
 
     layer_id = kwargs.pop('layer_id', 0)
     context_dim = kwargs.pop('context_dim', None)
+    multi = 'multi' in O.get('unit', 'lstm')
+    unit_size = O.get('unit_size', 2)
 
-    params[_p(prefix, 'W', layer_id)] = np.concatenate([
-        normal_weight(nin, dim),
-        normal_weight(nin, dim),
-        normal_weight(nin, dim),
-        normal_weight(nin, dim),
-    ], axis=1)
-
-    params[_p(prefix, 'U', layer_id)] = np.concatenate([
-        orthogonal_weight(dim),
-        orthogonal_weight(dim),
-        orthogonal_weight(dim),
-        orthogonal_weight(dim),
-    ], axis=1)
-
-    params[_p(prefix, 'b', layer_id)] = np.zeros((4 * dim,), dtype=fX)
-
-    if context_dim is not None:
-        params[_p(prefix, 'Wc', layer_id)] = np.concatenate([
-            normal_weight(context_dim, dim),
-            normal_weight(context_dim, dim),
-            normal_weight(context_dim, dim),
-            normal_weight(context_dim, dim),
+    if not multi:
+        params[_p(prefix, 'W', layer_id)] = np.concatenate([
+            normal_weight(nin, dim),
+            normal_weight(nin, dim),
+            normal_weight(nin, dim),
+            normal_weight(nin, dim),
         ], axis=1)
+
+        params[_p(prefix, 'U', layer_id)] = np.concatenate([
+            orthogonal_weight(dim),
+            orthogonal_weight(dim),
+            orthogonal_weight(dim),
+            orthogonal_weight(dim),
+        ], axis=1)
+
+        params[_p(prefix, 'b', layer_id)] = np.zeros((4 * dim,), dtype=fX)
+
+        if context_dim is not None:
+            params[_p(prefix, 'Wc', layer_id)] = np.concatenate([
+                normal_weight(context_dim, dim),
+                normal_weight(context_dim, dim),
+                normal_weight(context_dim, dim),
+                normal_weight(context_dim, dim),
+            ], axis=1)
+    else:
+        params[_p(prefix, 'W', layer_id)] = np.stack([np.concatenate([
+            normal_weight(nin, dim),
+            normal_weight(nin, dim),
+            normal_weight(nin, dim),
+            normal_weight(nin, dim),
+        ], axis=1) for _ in xrange(unit_size)], axis=0)
+
+        params[_p(prefix, 'U', layer_id)] = np.stack([np.concatenate([
+            orthogonal_weight(dim),
+            orthogonal_weight(dim),
+            orthogonal_weight(dim),
+            orthogonal_weight(dim),
+        ], axis=1) for _ in xrange(unit_size)], axis=0)
+
+        params[_p(prefix, 'b', layer_id)] = np.zeros((unit_size, 4 * dim,), dtype=fX)
+
+        if context_dim is not None:
+            params[_p(prefix, 'Wc', layer_id)] = np.stack([np.concatenate([
+                normal_weight(context_dim, dim),
+                normal_weight(context_dim, dim),
+                normal_weight(context_dim, dim),
+                normal_weight(context_dim, dim),
+            ], axis=1) for _ in xrange(unit_size)], axis=0)
 
     return params
 
@@ -707,16 +735,47 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
     one_step = kwargs.pop('one_step', False)
     init_state = kwargs.pop('init_state', None)
     init_memory = kwargs.pop('init_memory', None)
+    multi = 'multi' in O.get('unit', 'lstm')
+    unit_size = O.get('unit_size', 2)
 
     kw_ret = {}
 
     n_steps = state_below.shape[0]
     n_samples = state_below.shape[1] if state_below.ndim == 3 else 1
-    dim = P[_p(prefix, 'U', layer_id)].shape[1] // 4
+    if multi:
+        dim = P[_p(prefix, 'U', layer_id)][0].shape[1] // 4
+    else:
+        dim = P[_p(prefix, 'U', layer_id)].shape[1] // 4
 
     mask = T.alloc(1., n_steps, 1) if mask is None else mask
 
-    state_below = T.dot(state_below, P[_p(prefix, 'W', layer_id)]) + P[_p(prefix, 'b', layer_id)]
+    if multi:
+        state_below = T.concatenate([
+            T.dot(state_below, P[_p(prefix, 'W', layer_id)][j]) + P[_p(prefix, 'b', layer_id)][j]
+            for j in range(unit_size)
+        ], axis=-1)
+    else:
+        state_below = T.dot(state_below, P[_p(prefix, 'W', layer_id)]) + P[_p(prefix, 'b', layer_id)]
+
+    def _step_slice(mask_, x_, h_, c_, U):
+        h_tmp = h_
+        c_tmp = c_
+        for j in range(unit_size):
+            x = _slice(x_, layer_id, 4 * dim)
+            h, c = _lstm_step_slice(mask_, x, h_tmp, c_tmp, U[j])
+            h_tmp = h
+            c_tmp = c
+        return h, c
+
+    def _step_slice_attention(mask_, x_, context, h_, c_, U, Wc):
+        h_tmp = h_
+        c_tmp = c_
+        for j in range(unit_size):
+            x = _slice(x_, layer_id, 4 * dim)
+            h, c = _lstm_step_slice_attention(mask_, x, context, h_tmp, c_tmp, U[j], Wc[j])
+            h_tmp = h
+            c_tmp = c
+        return h, c
 
     # prepare scan arguments
     init_states = [T.alloc(0., n_samples, dim) if init_state is None else init_state,
@@ -725,12 +784,18 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
     if context is None:
         seqs = [mask, state_below]
         shared_vars = [P[_p(prefix, 'U', layer_id)]]
-        _step = _lstm_step_slice
+        if multi:
+            _step = _step_slice
+        else:
+            _step = _lstm_step_slice
     else:
         seqs = [mask, state_below, context]
         shared_vars = [P[_p(prefix, 'U', layer_id)],
                        P[_p(prefix, 'Wc', layer_id)]]
-        _step = _lstm_step_slice_attention
+        if multi:
+            _step = _step_slice_attention
+        else:
+            _step = _lstm_step_slice_attention
 
     if one_step:
         outputs = _step(*(seqs + init_states + shared_vars))
@@ -771,53 +836,73 @@ def param_init_lstm_cond(O, params, prefix='lstm_cond', nin=None, dim=None, dimc
     if dim_nonlin is None:
         dim_nonlin = dim
     layer_id = kwargs.pop('layer_id', 0)
+    multi = 'multi' in O.get('unit', 'lstm_cond')
+    unit_size = O.get('unit_size_cond', 2)
 
-    W = np.concatenate([
-        normal_weight(nin, dim),
-        normal_weight(nin, dim),
-        normal_weight(nin, dim),
-        normal_weight(nin_nonlin, dim),
-    ], axis=1)
-    params[_p(prefix, 'W', layer_id)] = W
-    params[_p(prefix, 'b', layer_id)] = np.zeros((4 * dim,), dtype=fX)
-    U = np.concatenate([
-        orthogonal_weight(dim_nonlin),
-        orthogonal_weight(dim_nonlin),
-        orthogonal_weight(dim_nonlin),
-        orthogonal_weight(dim_nonlin),
-    ], axis=1)
-    params[_p(prefix, 'U', layer_id)] = U
+    if not multi:
+        params[_p(prefix, 'W', layer_id)] = np.concatenate([
+            normal_weight(nin, dim),
+            normal_weight(nin, dim),
+            normal_weight(nin, dim),
+            normal_weight(nin_nonlin, dim),
+        ], axis=1)
+        params[_p(prefix, 'b', layer_id)] = np.zeros((4 * dim,), dtype=fX)
+        params[_p(prefix, 'U', layer_id)] = np.concatenate([
+            orthogonal_weight(dim_nonlin),
+            orthogonal_weight(dim_nonlin),
+            orthogonal_weight(dim_nonlin),
+            orthogonal_weight(dim_nonlin),
+        ], axis=1)
 
-    U_nl = np.concatenate([
-        orthogonal_weight(dim_nonlin),
-        orthogonal_weight(dim_nonlin),
-        orthogonal_weight(dim_nonlin),
-        orthogonal_weight(dim_nonlin),
-    ], axis=1)
-    params[_p(prefix, 'U_nl', layer_id)] = U_nl
-    params[_p(prefix, 'b_nl', layer_id)] = np.zeros((4 * dim_nonlin,), dtype=fX)
+        params[_p(prefix, 'U_nl', layer_id)] = np.concatenate([
+            orthogonal_weight(dim_nonlin),
+            orthogonal_weight(dim_nonlin),
+            orthogonal_weight(dim_nonlin),
+            orthogonal_weight(dim_nonlin),
+        ], axis=1)
+        params[_p(prefix, 'b_nl', layer_id)] = np.zeros((4 * dim_nonlin,), dtype=fX)
 
-    # context to LSTM
-    Wc = normal_weight(dimctx, dim * 4)
-    params[_p(prefix, 'Wc', layer_id)] = Wc
+        # context to LSTM
+        params[_p(prefix, 'Wc', layer_id)] = normal_weight(dimctx, dim * 4)
+    else:
+        params[_p(prefix, 'W', layer_id)] = np.stack([np.concatenate([
+            normal_weight(nin, dim),
+            normal_weight(nin, dim),
+            normal_weight(nin, dim),
+            normal_weight(nin_nonlin, dim),
+        ], axis=1) for _ in xrange(unit_size)], axis=0)
+        params[_p(prefix, 'b', layer_id)] = np.zeros((unit_size, 4 * dim,), dtype=fX)
+        params[_p(prefix, 'U', layer_id)] = np.stack([np.concatenate([
+            orthogonal_weight(dim_nonlin),
+            orthogonal_weight(dim_nonlin),
+            orthogonal_weight(dim_nonlin),
+            orthogonal_weight(dim_nonlin),
+        ], axis=1) for _ in xrange(unit_size)], axis=0)
+
+        params[_p(prefix, 'U_nl', layer_id)] = np.stack([np.concatenate([
+            orthogonal_weight(dim_nonlin),
+            orthogonal_weight(dim_nonlin),
+            orthogonal_weight(dim_nonlin),
+            orthogonal_weight(dim_nonlin),
+        ], axis=1) for _ in xrange(unit_size)], axis=0)
+        params[_p(prefix, 'b_nl', layer_id)] = np.zeros((unit_size, 4 * dim_nonlin,), dtype=fX)
+
+        # context to LSTM
+        params[_p(prefix, 'Wc', layer_id)] = np.stack([
+            normal_weight(dimctx, dim * 4) for _ in xrange(unit_size)], axis=0)
 
     # attention: combined -> hidden
-    W_comb_att = normal_weight(dim, dimctx)
-    params[_p(prefix, 'W_comb_att', layer_id)] = W_comb_att
+    params[_p(prefix, 'W_comb_att', layer_id)] = normal_weight(dim, dimctx)
 
     # attention: context -> hidden
-    Wc_att = normal_weight(dimctx)
-    params[_p(prefix, 'Wc_att', layer_id)] = Wc_att
+    params[_p(prefix, 'Wc_att', layer_id)] = normal_weight(dimctx)
 
     # attention: hidden bias
-    b_att = np.zeros((dimctx,), dtype=fX)
-    params[_p(prefix, 'b_att', layer_id)] = b_att
+    params[_p(prefix, 'b_att', layer_id)] = np.zeros((dimctx,), dtype=fX)
 
     # attention:
-    U_att = normal_weight(dimctx, 1)
-    params[_p(prefix, 'U_att', layer_id)] = U_att
-    c_att = np.zeros((1,), dtype=fX)
-    params[_p(prefix, 'c_tt', layer_id)] = c_att
+    params[_p(prefix, 'U_att', layer_id)] = normal_weight(dimctx, 1)
+    params[_p(prefix, 'c_tt', layer_id)] = np.zeros((1,), dtype=fX)
 
     return params
 
@@ -830,6 +915,8 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
     """
 
     layer_id = kwargs.pop('layer_id', 0)
+    multi = 'multi' in O.get('unit', 'lstm_cond')
+    unit_size = O.get('unit_size_cond', 2)
 
     kw_ret = {}
 
@@ -844,7 +931,10 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
         n_samples = state_below.shape[1]
     else:
         n_samples = 1
-    dim = P[_p(prefix, 'Wc', layer_id)].shape[1] // 4
+    if multi:
+        dim = P[_p(prefix, 'Wc', layer_id)][0].shape[1] // 4
+    else:
+        dim = P[_p(prefix, 'Wc', layer_id)].shape[1] // 4
     dropout_params = kwargs.pop('dropout_params', None)
 
     # Mask
@@ -858,41 +948,15 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
     projected_context = T.dot(context, P[_p(prefix, 'Wc_att', layer_id)]) + P[_p(prefix, 'b_att', layer_id)]
 
     # Projected x
-    state_below = T.dot(state_below, P[_p(prefix, 'W', layer_id)]) + P[_p(prefix, 'b', layer_id)]
+    if multi:
+        state_below = T.concatenate([
+            T.dot(state_below, P[_p(prefix, 'W', layer_id)][j]) + P[_p(prefix, 'b', layer_id)][j]
+            for j in range(unit_size)
+        ], axis=-1)
+    else:
+        state_below = T.dot(state_below, P[_p(prefix, 'W', layer_id)]) + P[_p(prefix, 'b', layer_id)]
 
-    def _step_slice(mask_, x_,
-                    h_, c_, ctx_, alpha_,
-                    projected_context_, context_,
-                    U, Wc, W_comb_att, U_att, c_tt, U_nl, b_nl):
-        # LSTM 1
-        preact1 = T.dot(h_, U) + x_
-
-        i1 = T.nnet.sigmoid(_slice(preact1, 0, dim))
-        f1 = T.nnet.sigmoid(_slice(preact1, 1, dim))
-        o1 = T.nnet.sigmoid(_slice(preact1, 2, dim))
-        c1 = T.tanh(_slice(preact1, 3, dim))
-
-        c1 = f1 * c_ + i1 * c1
-        c1 = mask_[:, None] * c1 + (1. - mask_)[:, None] * c_
-
-        h1 = o1 * T.tanh(c1)
-        h1 = mask_[:, None] * h1 + (1. - mask_)[:, None] * h_
-
-        # Attention
-        pstate_ = T.dot(h1, W_comb_att)
-        pctx__ = projected_context_ + pstate_[None, :, :]
-        # pctx__ += xc_
-        pctx__ = T.tanh(pctx__)
-
-        alpha = T.dot(pctx__, U_att) + c_tt
-        alpha = alpha.reshape([alpha.shape[0], alpha.shape[1]])
-        alpha = T.exp(alpha)
-        if context_mask:
-            alpha = alpha * context_mask
-        alpha = alpha / alpha.sum(0, keepdims=True)
-        ctx_ = (context_ * alpha[:, :, None]).sum(0)  # current context
-
-        # LSTM 2 (with attention)
+    def _one_step_attention_slice(mask_, h1, c1, ctx_, Wc, U_nl, b_nl):
         preact2 = T.dot(h1, U_nl) + b_nl + T.dot(ctx_, Wc)
 
         i2 = T.nnet.sigmoid(_slice(preact2, 0, dim))
@@ -906,11 +970,55 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
         h2 = o2 * T.tanh(c2)
         h2 = mask_[:, None] * h2 + (1. - mask_)[:, None] * h1
 
+        return h2, c2
+
+    def _step_slice(mask_, x_,
+                    h_, c_, ctx_, alpha_,
+                    projected_context_, context_,
+                    U, Wc, W_comb_att, U_att, c_tt, U_nl, b_nl):
+        # LSTM 1
+        h1, c1 = _lstm_step_slice(mask_, x_, h_, c_, U)
+
+        # Attention
+        ctx_, alpha = _attention(h1, projected_context_, context_, W_comb_att, U_att, c_tt, context_mask=context_mask)
+
+        # LSTM 2 (with attention)
+        h2, c2 = _one_step_attention_slice(mask_, h1, c1, ctx_, Wc, U_nl, b_nl)
+
+        return h2, c2, ctx_, alpha.T
+
+    def _multi_step_slice(mask_, x_,
+                          h_, c_, ctx_, alpha_,
+                          projected_context_, context_,
+                          U, Wc, W_comb_att, U_att, c_tt, U_nl, b_nl):
+        # LSTM 1
+        h_tmp = h_
+        c_tmp = c_
+        for j in range(unit_size):
+            x = _slice(x_, j, 4 * dim)
+            h1, c1 = _lstm_step_slice(mask_, x, h_tmp, c_tmp, U[j])
+            h_tmp = h1
+            c_tmp = c1
+
+        # Attention
+        ctx_, alpha = _attention(h1, projected_context_, context_, W_comb_att, U_att, c_tt, context_mask=context_mask)
+
+        # LSTM 2 (with attention)
+        h_tmp_att = h1
+        c_tmp_att = c1
+        for j in range(unit_size):
+            h2, c2 = _one_step_attention_slice(mask_, h_tmp_att, c_tmp_att, ctx_, Wc[j], U_nl[j], b_nl[j])
+            h_tmp_att = h2
+            c_tmp_att = c2
+
         return h2, c2, ctx_, alpha.T
 
     # Prepare scan arguments
     seqs = [mask, state_below]
-    _step = _step_slice
+    if multi:
+        _step = _multi_step_slice
+    else:
+        _step = _step_slice
     init_states = [
         init_state,
         T.alloc(0., n_samples, dim) if init_memory is None else init_memory,
