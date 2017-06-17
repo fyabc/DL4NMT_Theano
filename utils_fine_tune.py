@@ -69,6 +69,7 @@ def load_translate_data(dictionary, dictionary_target, source_file, batch_mode=F
     unk_id = kwargs.pop('unk_id', 1)
     n_words_src = kwargs.pop('n_words_src', 30000)
     echo = kwargs.pop('echo', True)
+    load_input = kwargs.pop('load_input', True)
 
     # load source dictionary and invert
     if echo:
@@ -91,6 +92,9 @@ def load_translate_data(dictionary, dictionary_target, source_file, batch_mode=F
     word_idict_trg[unk_id] = 'UNK'
     if echo:
         print('Done')
+
+    if not load_input:
+        return word_dict, word_idict, word_idict_trg
 
     if not batch_mode:
         input_ = []
