@@ -519,7 +519,7 @@ def get_adadelta_imm_data(optimizer, given_imm, saveto):
             return pkl.load(fopen(given_imm_filename_backup, 'rb'))
         elif os.path.exists(given_imm_filename_backup2):
             message('Loading adadelta immediate data')
-            return pkl.load(fopen(given_imm_filename_backup, 'rb'))
+            return pkl.load(fopen(given_imm_filename_backup2, 'rb'))
     return None
 
 
