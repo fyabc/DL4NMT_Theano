@@ -9,9 +9,8 @@ import numpy as np
 import theano
 
 from config import DefaultOptions
-from utils import load_params
-from model import NMTModel
-
+from utils_fine_tune import load_translate_data, seqs2words, translate
+from model import build_and_init_model
 
 __author__ = 'fyabc'
 
@@ -21,41 +20,12 @@ def translate_model_single(input_, model_name, options, k, normalize):
     trng = RandomStreams(1234)
     use_noise = theano.shared(np.float32(0.))
 
-    model = NMTModel(options)
-
-    # allocate model parameters
-    params = model.initializer.init_params()
-    # load model parameters and set theano shared variables
-    params = load_params(model_name, params)
-    model.init_tparams(params)
+    model, _ = build_and_init_model(model_name, options=options, build=False)
 
     # word index
     f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise)
 
-    def _translate(seq):
-        # sample given an input sequence and obtain scores
-        sample, score = model.gen_sample(
-            f_init, f_next,
-            np.array(seq).reshape([len(seq), 1]),
-            trng=trng, k=k, maxlen=200,
-            stochastic=False, argmax=False,
-        )
-
-        # normalize scores according to sequence lengths
-        if normalize:
-            lengths = np.array([len(s) for s in sample])
-            score = score / lengths
-        sidx = np.argmin(score)
-        return sample[sidx]
-
-    output = []
-
-    for idx, x in enumerate(input_):
-        print idx
-
-        output.append(_translate(x))
-
-    return output
+    return translate(input_, model, f_init, f_next, trng, k, normalize)
 
 
 def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
@@ -68,59 +38,16 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
         print 'Options:'
         pprint(options)
 
-    # load source dictionary and invert
-    print 'Load and invert source dictionary...',
-    with open(dictionary, 'rb') as f:
-        word_dict = pkl.load(f)
-    word_idict = dict()
-    for kk, vv in word_dict.iteritems():
-        word_idict[vv] = kk
-    word_idict[0] = '<eos>'
-    word_idict[1] = 'UNK'
-    print 'Done'
-
-    # load target dictionary and invert
-    print 'Load and invert target dictionary...',
-    with open(dictionary_target, 'rb') as f:
-        word_dict_trg = pkl.load(f)
-    word_idict_trg = dict()
-    for kk, vv in word_dict_trg.iteritems():
-        word_idict_trg[vv] = kk
-    word_idict_trg[0] = '<eos>'
-    word_idict_trg[1] = 'UNK'
-    print 'Done'
-
-    input_ = []
-
-    print 'Loading input...',
-    with open(source_file, 'r') as f:
-        for idx, line in enumerate(f):
-            if chr_level:
-                words = list(line.decode('utf-8').strip())
-            else:
-                words = line.strip().split()
-
-            x = [word_dict[w] if w in word_dict else 1 for w in words]
-            x = [ii if ii < options['n_words_src'] else 1 for ii in x]
-            x.append(0)
-
-            input_.append(x)
-    print 'Done'
-
-    # utility function
-    def _seqs2words(caps):
-        capsw = []
-        for cc in caps:
-            ww = []
-            for w in cc:
-                if w == 0:
-                    break
-                ww.append(word_idict_trg[w])
-            capsw.append(' '.join(ww))
-        return capsw
+    word_dict, word_idict, word_idict_trg, input_ = load_translate_data(
+        dictionary, dictionary_target, source_file,
+        batch_mode=False, chr_level=chr_level, options=options,
+    )
 
     print 'Translating ', source_file, '...'
-    trans = _seqs2words(translate_model_single(input_, model, options, k, normalize))
+    trans = seqs2words(
+        translate_model_single(input_, model, options, k, normalize),
+        word_idict_trg,
+    )
     with open(saveto, 'w') as f:
         print >> f, '\n'.join(trans)
     print 'Done'
