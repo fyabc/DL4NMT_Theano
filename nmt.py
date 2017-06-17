@@ -241,7 +241,8 @@ Start Time = {}
     inps = [x, x_mask, y, y_mask]
 
     print 'Building sampler'
-    f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise)
+    # f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise)
+    f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise, batch_mode=True)
 
     # before any regularizer
     print 'Building f_log_probs...',
@@ -418,7 +419,7 @@ Start Time = {}
 
                 # Fine-tune based on dev BLEU
                 if fine_tune_patience > 0:
-                    new_bleu = translate_dev_get_bleu(model, f_init, f_next, trng, task, n_words_src)
+                    new_bleu = translate_dev_get_bleu(model, f_init, f_next, trng)
 
                     print 'BLEU = {:.2f} at iteration {}'.format(new_bleu, uidx)
 

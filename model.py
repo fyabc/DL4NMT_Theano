@@ -8,6 +8,7 @@ import sys
 import os
 import copy
 
+import bottleneck
 import theano
 import theano.tensor as T
 import numpy as np
@@ -438,6 +439,8 @@ class NMTModel(object):
     def build_sampler(self, **kwargs):
         """Build a sampler."""
 
+        batch_mode = kwargs.pop('batch_mode', False)
+
         unit = self.O['unit']
 
         trng = kwargs.pop('trng', RandomStreams(1234))
@@ -448,20 +451,31 @@ class NMTModel(object):
         n_timestep = x.shape[0]
         n_samples = x.shape[1]
 
+        if batch_mode:
+            x_mask = T.matrix('x_mask', dtype=fX)
+            xr_mask = x_mask[::-1]
+
         # Word embedding for forward rnn and backward rnn (source)
         src_embedding = self.embedding(x, n_timestep, n_samples)
         src_embedding_r = self.embedding(xr, n_timestep, n_samples)
 
         # Encoder
-        ctx = self.encoder(src_embedding, src_embedding_r, None, None, dropout_params=None)
+        ctx = self.encoder(
+            src_embedding, src_embedding_r,
+            x_mask if batch_mode else None, xr_mask if batch_mode else None,
+            dropout_params=None,
+        )
 
         # Get the input for decoder rnn initializer mlp
         ctx_mean = ctx.mean(0)
         init_state = self.feed_forward(ctx_mean, prefix='ff_state', activation=tanh)
 
         print('Building f_init...', end='')
+        inps = [x]
+        if batch_mode:
+            inps.append(x_mask)
         outs = [init_state, ctx]
-        f_init = theano.function([x], outs, name='f_init', profile=profile)
+        f_init = theano.function(inps, outs, name='f_init', profile=profile)
         print('Done')
 
         # x: 1 x 1
@@ -476,7 +490,8 @@ class NMTModel(object):
 
         # Apply one step of conditional gru with attention
         hidden_decoder, context_decoder, _, kw_ret = self.decoder(
-            emb, y_mask=None, init_state=init_state, context=ctx, x_mask=None,
+            emb, y_mask=None, init_state=init_state, context=ctx,
+            x_mask=x_mask if batch_mode else None,
             dropout_params=None, one_step=True, init_memory=init_memory,
         )
 
@@ -505,6 +520,8 @@ class NMTModel(object):
         # sampled word for the next target, next hidden state to be used
         print('Building f_next..', end='')
         inps = [y, ctx, init_state]
+        if batch_mode:
+            inps.insert(2, x_mask)
         outs = [next_probs, next_sample, hiddens_without_dropout]
         if unit == 'lstm':
             inps.append(init_memory)
@@ -633,6 +650,145 @@ class NMTModel(object):
                 for idx in xrange(live_k):
                     sample.append(hyp_samples[idx])
                     sample_score.append(hyp_scores[idx])
+
+        if have_kw_ret:
+            return sample, sample_score, kw_ret
+        return sample, sample_score
+
+    def gen_batch_sample(self, f_init, f_next, x, x_mask, trng=None, k=1, maxlen=30, eos_id=0, **kwargs):
+        """
+        Only used for Batch Beam Search;
+        Do not Support Stochastic Sampling
+        """
+
+        kw_ret = {}
+        have_kw_ret = bool(kwargs)
+
+        ret_memory = kwargs.pop('ret_memory', False)
+        if ret_memory:
+            kw_ret['memory'] = []
+
+        unit = self.O['unit']
+
+        batch_size = x.shape[1]
+        sample = [[] for _ in xrange(batch_size)]
+        sample_score = [[] for _ in xrange(batch_size)]
+
+        lives_k = [1] * batch_size
+        deads_k = [0] * batch_size
+
+        batch_hyp_samples = [[[]] for _ in xrange(batch_size)]
+        batch_hyp_scores = [np.zeros(ii, dtype=fX) for ii in lives_k]
+
+        # get initial state of decoder rnn and encoder context
+        ret = f_init(x, x_mask)
+        next_state, ctx0 = ret[0], ret[1]
+        next_w = np.array([-1] * batch_size, dtype='int64')     # bos indicator
+        next_state = np.tile(next_state[None, :, :], (self.O['n_decoder_layers'], 1, 1))
+        next_memory = np.zeros((self.O['n_decoder_layers'], next_state.shape[1], next_state.shape[2]), dtype=fX)
+
+        for ii in xrange(maxlen):
+            ctx = np.repeat(ctx0, lives_k, axis=1)
+            x_extend_masks = np.repeat(x_mask, lives_k, axis=1)
+            cursor_start, cursor_end = 0, lives_k[0]
+            for jj in xrange(batch_size):
+                if lives_k[jj] > 0:
+                    ctx[:, cursor_start: cursor_end, :] = np.repeat(ctx0[:, jj, :][:, None, :], lives_k[jj], axis=1)
+                    x_extend_masks[:, cursor_start: cursor_end] = np.repeat(x_mask[:, jj][:, None], lives_k[jj], axis=1)
+                if jj < batch_size - 1:
+                    cursor_start = cursor_end
+                    cursor_end += lives_k[jj + 1]
+
+            inps = [next_w, ctx, x_extend_masks, next_state]
+            if unit == 'lstm':
+                inps.append(next_memory)
+
+            ret = f_next(*inps)
+
+            if unit == 'lstm':
+                next_memory = ret[3]
+
+                if ret_memory:
+                    kw_ret['memory'].append(next_memory)
+
+            next_w_list = []
+            next_state_list = []
+            next_memory_list = []
+
+            next_p, next_state = ret[0], ret[2]
+            cursor_start, cursor_end = 0, lives_k[0]
+
+            for jj in xrange(batch_size):
+                if cursor_start == cursor_end:
+                    if jj < batch_size - 1:
+                        cursor_end += lives_k[jj + 1]
+                    continue
+                index_range = range(cursor_start, cursor_end)
+                cand_scores = batch_hyp_scores[jj][:, None] - np.log(next_p[index_range, :])
+                cand_flat = cand_scores.flatten()
+
+                ranks_flat = bottleneck.argpartsort(cand_flat, k - deads_k[jj])[:k - deads_k[jj]]
+
+                voc_size = next_p.shape[1]
+                trans_indices = ranks_flat / voc_size
+                word_indices = ranks_flat % voc_size
+                costs = cand_flat[ranks_flat]
+
+                new_hyp_samples = []
+                new_hyp_scores = np.zeros(k - deads_k[jj]).astype('float32')
+                new_hyp_states = []
+                new_hyp_memories = []
+
+                for idx, [ti, wi] in enumerate(zip(trans_indices, word_indices)):
+                    new_hyp_samples.append(batch_hyp_samples[jj][ti] + [wi])
+                    new_hyp_scores[idx] = copy.copy(costs[idx])
+                    new_hyp_states.append(copy.copy(next_state[:, cursor_start + ti, :]))
+                    new_hyp_memories.append(copy.copy(next_memory[:, cursor_start + ti, :]))
+
+                # check the finished samples
+                new_live_k = 0
+                batch_hyp_samples[jj] = []
+                hyp_scores = []
+                hyp_states = []
+                hyp_memories = []
+
+                for idx in xrange(len(new_hyp_samples)):
+                    if new_hyp_samples[idx][-1] == eos_id:
+                        sample[jj].append(new_hyp_samples[idx])
+                        sample_score[jj].append(new_hyp_scores[idx])
+                        deads_k[jj] += 1
+                    else:
+                        new_live_k += 1
+                        batch_hyp_samples[jj].append(new_hyp_samples[idx])
+                        hyp_scores.append(new_hyp_scores[idx])
+                        hyp_states.append(new_hyp_states[idx])
+                        hyp_memories.append(new_hyp_memories[idx])
+
+                batch_hyp_scores[jj] = np.array(hyp_scores)
+                lives_k[jj] = new_live_k
+
+                if jj < batch_size - 1:
+                    cursor_start = cursor_end
+                    cursor_end += lives_k[jj + 1]
+
+                if hyp_states:
+                    next_w_list += [w[-1] for w in batch_hyp_samples[jj]]
+                    next_state_list += [xx[:, None, :] for xx in hyp_states]
+                    next_memory_list += [xx[:, None, :] for xx in hyp_memories]
+
+            if np.array(lives_k).sum() > 0:
+                next_w = np.array(next_w_list)
+                next_state = np.concatenate(next_state_list[:], axis=1)
+                next_memory = np.concatenate(next_memory_list[:], axis=1)
+            else:
+                break
+
+        # dump every remaining one
+        for jj in xrange(batch_size):
+            if lives_k[jj] > 0:
+                for idx in xrange(lives_k[jj]):
+                    sample[jj].append(batch_hyp_samples[jj][idx])
+                    sample_score[jj].append(batch_hyp_scores[jj][idx])
 
         if have_kw_ret:
             return sample, sample_score, kw_ret
