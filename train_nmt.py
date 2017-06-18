@@ -81,6 +81,10 @@ def main():
                         help='Use zigzag in encoder, default is True, set to False')
     parser.add_argument('--dropout', action="store", metavar="dropout", dest="dropout", type=float, default=False,
                         help='Dropout rate, default is False (not use dropout)')
+    parser.add_argument('--unit_size', action='store', default=2, type=int, dest='unit_size',
+                        help='Number of unit size, default is %(default)s')
+    parser.add_argument('--cond_unit_size', action='store', default=2, type=int, dest='cond_unit_size',
+                        help='Number of cond unit size, default is %(default)s')
     parser.add_argument('--clip', action='store', metavar='clip', dest='clip', type=float, default=1.0,
                         help='Gradient clip rate, default is 1.0.')
     parser.add_argument('--manual', action='store_false', dest='auto', default=True,
@@ -134,6 +138,8 @@ def main():
         if args.n_decoder_layers <= 1:
             args.residual_dec = None
             args.attention_layer_id = 0
+
+        args.cond_unit_size = args.unit_size
 
     # If dataset is not 'en-fr', old value of dataset options like 'args.train1' will be omitted
     if args.dataset != 'en-fr':
@@ -222,6 +228,9 @@ def main():
         residual_dec=args.residual_dec,
         use_zigzag=args.use_zigzag,
         given_embedding=args.given_embedding,
+
+        unit_size=args.unit_size,
+        cond_unit_size=args.cond_unit_size,
 
         given_imm=True,
         dump_imm=True,

@@ -461,8 +461,11 @@ def save_options(options, iteration, saveto=None):
 def check_options(options):
     """Check conflict options."""
 
-    if options['lr_discount_freq'] > 0 and options['fine_tune_patience'] > 0:
-        raise Exception('Cannot enable lr discount and fine-tune at the same time')
+    assert options['lr_discount_freq'] <= 0 or options['fine_tune_patience'] <= 0, \
+        'Cannot enable lr discount and fine-tune at the same time'
+
+    if 'multi' in options['unit']:
+        assert options['unit_size'] > 0 and options['cond_unit_size'] > 0, 'Unit size must > 0'
 
 
 def search_start_uidx(reload_, preload):
@@ -516,7 +519,7 @@ def get_adadelta_imm_data(optimizer, given_imm, saveto):
             return pkl.load(fopen(given_imm_filename_backup, 'rb'))
         elif os.path.exists(given_imm_filename_backup2):
             message('Loading adadelta immediate data')
-            return pkl.load(fopen(given_imm_filename_backup, 'rb'))
+            return pkl.load(fopen(given_imm_filename_backup2, 'rb'))
     return None
 
 

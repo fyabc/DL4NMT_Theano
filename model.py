@@ -499,7 +499,7 @@ class NMTModel(object):
         # FIXME: stack list into a single tensor
         memory_out = None
         hiddens_without_dropout = T.stack(kw_ret['hiddens_without_dropout'])
-        if unit == 'lstm':
+        if 'lstm' in unit:
             memory_out = T.stack(kw_ret['memory_outputs'])
 
         logit_lstm = self.feed_forward(hidden_decoder, prefix='ff_logit_lstm', activation=linear)
@@ -523,7 +523,7 @@ class NMTModel(object):
         if batch_mode:
             inps.insert(2, x_mask)
         outs = [next_probs, next_sample, hiddens_without_dropout]
-        if unit == 'lstm':
+        if 'lstm' in unit:
             inps.append(init_memory)
             outs.append(memory_out)
         f_next = theano.function(inps, outs, name='f_next', profile=profile)
@@ -573,12 +573,12 @@ class NMTModel(object):
         for ii in xrange(maxlen):
             ctx = np.tile(ctx0, [live_k, 1])
             inps = [next_w, ctx, next_state]
-            if unit == 'lstm':
+            if 'lstm' in unit:
                 inps.append(next_memory)
 
             ret = f_next(*inps)
             next_p, next_w, next_state = ret[0], ret[1], ret[2]
-            if unit == 'lstm':
+            if 'lstm' in unit:
                 next_memory = ret[3]
 
                 if ret_memory:
@@ -700,12 +700,12 @@ class NMTModel(object):
                     cursor_end += lives_k[jj + 1]
 
             inps = [next_w, ctx, x_extend_masks, next_state]
-            if unit == 'lstm':
+            if 'lstm' in unit:
                 inps.append(next_memory)
 
             ret = f_next(*inps)
 
-            if unit == 'lstm':
+            if 'lstm' in unit:
                 next_memory = ret[3]
 
                 if ret_memory:
@@ -1048,7 +1048,7 @@ class NMTModel(object):
                 context_decoder_list.append(context_decoder)
 
                 hiddens_without_dropout.append(kw_ret_att['hidden_without_dropout'])
-                if unit == 'lstm':
+                if 'lstm' in unit:
                     memory_outputs.append(kw_ret_att['memory_output'])
 
                 outputs.append(hidden_decoder)
@@ -1085,7 +1085,7 @@ class NMTModel(object):
                 )
 
                 hiddens_without_dropout.append(layer_out[-1]['hidden_without_dropout'])
-                if unit == 'lstm':
+                if 'lstm' in unit:
                     memory_outputs.append(layer_out[1])
 
                 outputs.append(layer_out[0])
@@ -1112,7 +1112,7 @@ class NMTModel(object):
             )
 
             hiddens_without_dropout.append(kw_ret_att['hidden_without_dropout'])
-            if unit == 'lstm':
+            if 'lstm' in unit:
                 memory_outputs.append(kw_ret_att['memory_output'])
 
             outputs.append(hidden_decoder)
@@ -1138,7 +1138,7 @@ class NMTModel(object):
                 )
 
                 hiddens_without_dropout.append(layer_out[-1]['hidden_without_dropout'])
-                if unit == 'lstm':
+                if 'lstm' in unit:
                     memory_outputs.append(layer_out[1])
 
                 outputs.append(layer_out[0])
