@@ -440,11 +440,11 @@ class NMTModel(object):
         """Build a sampler."""
 
         batch_mode = kwargs.pop('batch_mode', False)
-
-        unit = self.O['unit']
-
         trng = kwargs.pop('trng', RandomStreams(1234))
         use_noise = kwargs.pop('use_noise', theano.shared(np.float32(0.)))
+        get_gates = kwargs.pop('get_gates', False)
+
+        unit = self.O['unit']
 
         x = T.matrix('x', dtype='int64')
         xr = x[::-1]
@@ -493,6 +493,7 @@ class NMTModel(object):
             emb, y_mask=None, init_state=init_state, context=ctx,
             x_mask=x_mask if batch_mode else None,
             dropout_params=None, one_step=True, init_memory=init_memory,
+            get_gates=get_gates,
         )
 
         # Get memory_out and hiddens_without_dropout
@@ -526,6 +527,15 @@ class NMTModel(object):
         if 'lstm' in unit:
             inps.append(init_memory)
             outs.append(memory_out)
+        if get_gates:
+            outs.extend([
+                kw_ret['input_gates'],
+                kw_ret['forget_gates'],
+                kw_ret['output_gates'],
+                kw_ret['input_gates_att'],
+                kw_ret['forget_gates_att'],
+                kw_ret['output_gates_att'],
+            ])
         f_next = theano.function(inps, outs, name='f_next', profile=profile)
         print('Done')
 
@@ -544,6 +554,15 @@ class NMTModel(object):
         ret_memory = kwargs.pop('ret_memory', False)
         if ret_memory:
             kw_ret['memory'] = []
+
+        get_gates = kwargs.pop('get_gates', False)
+        if get_gates:
+            kw_ret['input_gates_list'] = []
+            kw_ret['forget_gates_list'] = []
+            kw_ret['output_gates_list'] = []
+            kw_ret['input_gates_att_list'] = []
+            kw_ret['forget_gates_att_list'] = []
+            kw_ret['output_gates_att_list'] = []
 
         unit = self.O['unit']
 
@@ -583,6 +602,14 @@ class NMTModel(object):
 
                 if ret_memory:
                     kw_ret['memory'].append(next_memory)
+
+            if get_gates:
+                kw_ret['input_gates_list'].append(ret[-6])
+                kw_ret['forget_gates_list'].append(ret[-5])
+                kw_ret['output_gates_list'].append(ret[-4])
+                kw_ret['input_gates_att_list'].append(ret[-3])
+                kw_ret['forget_gates_att_list'].append(ret[-2])
+                kw_ret['output_gates_att_list'].append(ret[-1])
 
             if stochastic:
                 if argmax:
@@ -982,7 +1009,7 @@ class NMTModel(object):
         return context
 
     def decoder(self, tgt_embedding, y_mask, init_state, context, x_mask,
-                dropout_params=None, one_step=False, init_memory=None):
+                dropout_params=None, one_step=False, init_memory=None, **kwargs):
         """Multi-layer GRU decoder.
 
         :return Decoder context vector and hidden states and others (kw_ret)
@@ -994,6 +1021,8 @@ class NMTModel(object):
         residual = self.O['residual_dec']
         all_att = self.O['decoder_all_attention']
         avg_ctx = self.O['average_context']
+        # FIXME: Add get_gates for only common mode (one attention) here.
+        get_gates = kwargs.pop('get_gates', False)
 
         # List of inputs and outputs of each layer (for residual)
         inputs = []
@@ -1006,6 +1035,11 @@ class NMTModel(object):
             'hiddens_without_dropout': hiddens_without_dropout,
             'memory_outputs': memory_outputs,
         }
+
+        if get_gates:
+            kw_ret['input_gates'] = []
+            kw_ret['forget_gates'] = []
+            kw_ret['output_gates'] = []
 
         # FIXME: init_state and init_memory
         # In training mode (one_step is False), init_state and init_memory are single state (and often None),
@@ -1083,10 +1117,15 @@ class NMTModel(object):
                     dropout_params=dropout_params, one_step=one_step, init_state=init_state[layer_id], context=None,
                     init_memory=init_memory[layer_id],
                 )
+                kw_ret_layer = layer_out[-1]
 
-                hiddens_without_dropout.append(layer_out[-1]['hidden_without_dropout'])
+                hiddens_without_dropout.append(kw_ret_layer['hidden_without_dropout'])
                 if 'lstm' in unit:
                     memory_outputs.append(layer_out[1])
+                if get_gates:
+                    kw_ret['input_gates'].append(kw_ret_layer['input_gates'])
+                    kw_ret['forget_gates'].append(kw_ret_layer['forget_gates'])
+                    kw_ret['output_gates'].append(kw_ret_layer['output_gates'])
 
                 outputs.append(layer_out[0])
 
@@ -1114,6 +1153,13 @@ class NMTModel(object):
             hiddens_without_dropout.append(kw_ret_att['hidden_without_dropout'])
             if 'lstm' in unit:
                 memory_outputs.append(kw_ret_att['memory_output'])
+            if get_gates:
+                kw_ret['input_gates'].append(kw_ret_att['input_gates'])
+                kw_ret['forget_gates'].append(kw_ret_att['forget_gates'])
+                kw_ret['output_gates'].append(kw_ret_att['output_gates'])
+                kw_ret['input_gates_att'] = kw_ret_att['input_gates_att']
+                kw_ret['forget_gates_att'] = kw_ret_att['forget_gates_att']
+                kw_ret['output_gates_att'] = kw_ret_att['output_gates_att']
 
             outputs.append(hidden_decoder)
 
@@ -1136,10 +1182,15 @@ class NMTModel(object):
                     dropout_params=dropout_params, context=context_decoder, init_state=init_state[layer_id],
                     one_step=one_step, init_memory=init_memory[layer_id],
                 )
+                kw_ret_layer = layer_out[-1]
 
-                hiddens_without_dropout.append(layer_out[-1]['hidden_without_dropout'])
+                hiddens_without_dropout.append(kw_ret_layer['hidden_without_dropout'])
                 if 'lstm' in unit:
                     memory_outputs.append(layer_out[1])
+                if get_gates:
+                    kw_ret['input_gates'].append(kw_ret_layer['input_gates'])
+                    kw_ret['forget_gates'].append(kw_ret_layer['forget_gates'])
+                    kw_ret['output_gates'].append(kw_ret_layer['output_gates'])
 
                 outputs.append(layer_out[0])
 

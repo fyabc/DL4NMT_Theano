@@ -335,39 +335,6 @@ def gru_layer(P, state_below, O, prefix='gru', mask=None, **kwargs):
     return outputs, kw_ret
 
 
-def _multi_gru_step_slice_2(
-        mask, x_0, x_1, xx_0, xx_1,
-        ht_1,
-        U_0, U_1, Ux_0, Ux_1,
-):
-    _dim = Ux_0.shape[1]
-
-    h = ht_1
-
-    x_list = x_0, x_1
-    xx_list = xx_0, xx_1
-    U_list = U_0, U_1
-    Ux_list = Ux_0, Ux_1
-
-    for i in range(2):
-        x_, xx_, U, Ux = x_list[i], xx_list[i], U_list[i], Ux_list[i]
-
-        preact = T.dot(h, U) + x_
-
-        # reset and update gates
-        r = T.nnet.sigmoid(_slice(preact, 0, _dim))
-        u = T.nnet.sigmoid(_slice(preact, 1, _dim))
-
-        # hidden state proposal
-        ht_tilde = T.tanh(T.dot(h, Ux) * r + xx_)
-
-        # leaky integrate and obtain next hidden state
-        ht = u * h + (1. - u) * ht_tilde
-        h = mask[:, None] * ht + (1. - mask)[:, None] * h
-
-    return h
-
-
 def param_init_gru_cond(O, params, prefix='gru_cond', nin=None, dim=None, dimctx=None, nin_nonlin=None,
                         dim_nonlin=None, **kwargs):
     if nin is None:
@@ -1112,9 +1079,9 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
         kw_ret['input_gates'] = result[4]
         kw_ret['forget_gates'] = result[5]
         kw_ret['output_gates'] = result[6]
-        kw_ret['input_gates2'] = result[7]
-        kw_ret['forget_gates2'] = result[8]
-        kw_ret['output_gates2'] = result[9]
+        kw_ret['input_gates_att'] = result[7]
+        kw_ret['forget_gates_att'] = result[8]
+        kw_ret['output_gates_att'] = result[9]
 
     result = list(result)
 

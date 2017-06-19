@@ -11,12 +11,13 @@ import argparse
 
 import theano
 import numpy as np
+from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from config import DefaultOptions
-from model import NMTModel
-from utils import load_params
+from model import build_and_init_model
+from utils_fine_tune import load_translate_data
 from constants import Datasets
 
 __author__ = 'fyabc'
@@ -33,25 +34,6 @@ def seq2words(tgt_seq, tgt_dict):
     return ' '.join(words)
 
 
-def build_model(model_name, options):
-    from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
-    trng = RandomStreams(1234)
-    use_noise = theano.shared(np.float32(0.))
-
-    model = NMTModel(options)
-
-    # allocate model parameters
-    params = model.initializer.init_params()
-    # load model parameters and set theano shared variables
-    params = load_params(model_name, params)
-    model.init_tparams(params)
-
-    # word index
-    f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise)
-
-    return model, f_init, f_next, trng
-
-
 def translate_sentence(src_seq, build_result, k, normalize):
     model, f_init, f_next, trng = build_result
 
@@ -61,7 +43,7 @@ def translate_sentence(src_seq, build_result, k, normalize):
         np.array(src_seq).reshape([len(src_seq), 1]),
         trng=trng, k=k, maxlen=200,
         stochastic=False, argmax=False,
-        ret_memory=True,
+        ret_memory=True, get_gates=True,
     )
 
     # normalize scores according to sequence lengths
@@ -83,27 +65,10 @@ def main(model_name, dictionary, dictionary_target, source_file, args,
         print 'Options:'
         pprint(options)
 
-    # load source dictionary and invert
-    print 'Load and invert source dictionary...',
-    with open(dictionary, 'rb') as f:
-        word_dict = pkl.load(f)
-    word_idict = dict()
-    for kk, vv in word_dict.iteritems():
-        word_idict[vv] = kk
-    word_idict[0] = '<eos>'
-    word_idict[1] = 'UNK'
-    print 'Done'
-
-    # load target dictionary and invert
-    print 'Load and invert target dictionary...',
-    with open(dictionary_target, 'rb') as f:
-        word_dict_trg = pkl.load(f)
-    word_idict_trg = dict()
-    for kk, vv in word_dict_trg.iteritems():
-        word_idict_trg[vv] = kk
-    word_idict_trg[0] = '<eos>'
-    word_idict_trg[1] = 'UNK'
-    print 'Done'
+    word_dict, word_idict, word_idict_trg = load_translate_data(
+        dictionary, dictionary_target, source_file,
+        batch_mode=False, chr_level=chr_level, load_input=False
+    )
 
     inputs = []
     lines = []
@@ -128,7 +93,15 @@ def main(model_name, dictionary, dictionary_target, source_file, args,
     print 'Done'
 
     print 'Building model...',
-    build_result = build_model(model_name, options)
+    trng = RandomStreams(1234)
+    use_noise = theano.shared(np.float32(0.))
+
+    model, _ = build_and_init_model(model_name, options, build=False)
+
+    f_init, f_next = model.build_sampler(
+        trng=trng, use_noise=use_noise, batch_mode=False, get_gates=True,
+    )
+    build_result = model, f_init, f_next, trng
     print 'Done'
 
     print '=============================='
@@ -142,9 +115,9 @@ def main(model_name, dictionary, dictionary_target, source_file, args,
         print 'Output sentence:', seq2words(tgt_seq, word_idict_trg)
         print 'Visualize LSTM memory:'
 
-        for memory in kw_ret['memory']:
-            # Memory shape: (1, 1 ~ beam size, dim)
-            print 'tanh:', np.tanh(np.mean(memory))
+        for input_gates in kw_ret['input_gates_list']:
+            for layer_id, input_gate in enumerate(input_gates):
+                print('layer {}: shape = {}'.format(layer_id, input_gate.shape))
 
         print
 
