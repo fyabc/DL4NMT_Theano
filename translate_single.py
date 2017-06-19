@@ -9,9 +9,8 @@ import numpy as np
 import theano
 
 from config import DefaultOptions
-from utils import load_params
-from model import NMTModel
-
+from utils_fine_tune import load_translate_data, seqs2words, translate, translate_block
+from model import build_and_init_model
 
 __author__ = 'fyabc'
 
@@ -21,45 +20,18 @@ def translate_model_single(input_, model_name, options, k, normalize):
     trng = RandomStreams(1234)
     use_noise = theano.shared(np.float32(0.))
 
-    model = NMTModel(options)
-
-    # allocate model parameters
-    params = model.initializer.init_params()
-    # load model parameters and set theano shared variables
-    params = load_params(model_name, params)
-    model.init_tparams(params)
+    model, _ = build_and_init_model(model_name, options=options, build=False)
 
     # word index
     f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise)
 
-    def _translate(seq):
-        # sample given an input sequence and obtain scores
-        sample, score = model.gen_sample(
-            f_init, f_next,
-            np.array(seq).reshape([len(seq), 1]),
-            trng=trng, k=k, maxlen=200,
-            stochastic=False, argmax=False,
-        )
-
-        # normalize scores according to sequence lengths
-        if normalize:
-            lengths = np.array([len(s) for s in sample])
-            score = score / lengths
-        sidx = np.argmin(score)
-        return sample[sidx]
-
-    output = []
-
-    for idx, x in enumerate(input_):
-        print idx
-
-        output.append(_translate(x))
-
-    return output
+    return translate(input_, model, f_init, f_next, trng, k, normalize)
 
 
 def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
-         normalize=False, chr_level=False):
+         normalize=False, chr_level=False, batch_size=-1):
+    batch_mode = batch_size > 0
+
     # load model model_options
     with open('%s.pkl' % model, 'rb') as f:
         options = DefaultOptions.copy()
@@ -68,59 +40,39 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
         print 'Options:'
         pprint(options)
 
-    # load source dictionary and invert
-    print 'Load and invert source dictionary...',
-    with open(dictionary, 'rb') as f:
-        word_dict = pkl.load(f)
-    word_idict = dict()
-    for kk, vv in word_dict.iteritems():
-        word_idict[vv] = kk
-    word_idict[0] = '<eos>'
-    word_idict[1] = 'UNK'
-    print 'Done'
+    from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
+    trng = RandomStreams(1234)
+    use_noise = theano.shared(np.float32(0.))
 
-    # load target dictionary and invert
-    print 'Load and invert target dictionary...',
-    with open(dictionary_target, 'rb') as f:
-        word_dict_trg = pkl.load(f)
-    word_idict_trg = dict()
-    for kk, vv in word_dict_trg.iteritems():
-        word_idict_trg[vv] = kk
-    word_idict_trg[0] = '<eos>'
-    word_idict_trg[1] = 'UNK'
-    print 'Done'
+    model, _ = build_and_init_model(model, options=options, build=False)
 
-    input_ = []
+    f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise, batch_mode=batch_mode)
 
-    print 'Loading input...',
-    with open(source_file, 'r') as f:
-        for idx, line in enumerate(f):
-            if chr_level:
-                words = list(line.decode('utf-8').strip())
-            else:
-                words = line.strip().split()
+    if not batch_mode:
+        word_dict, word_idict, word_idict_trg, input_ = load_translate_data(
+            dictionary, dictionary_target, source_file,
+            batch_mode=False, chr_level=chr_level, options=options,
+        )
 
-            x = [word_dict[w] if w in word_dict else 1 for w in words]
-            x = [ii if ii < options['n_words_src'] else 1 for ii in x]
-            x.append(0)
+        print 'Translating ', source_file, '...'
+        trans = seqs2words(
+            translate(input_, model, f_init, f_next, trng, k, normalize),
+            word_idict_trg,
+        )
+    else:
+        word_dict, word_idict, word_idict_trg, all_src_blocks, m_block = load_translate_data(
+            dictionary, dictionary_target, source_file,
+            batch_mode=True, chr_level=chr_level, n_words_src=options['n_words_src'],
+        )
 
-            input_.append(x)
-    print 'Done'
+        print 'Translating ', source_file, '...'
+        all_sample = []
+        for bidx, seqs in enumerate(all_src_blocks):
+            all_sample.extend(translate_block(seqs, model, f_init, f_next, trng, k))
+            print bidx, '/', m_block, 'Done'
 
-    # utility function
-    def _seqs2words(caps):
-        capsw = []
-        for cc in caps:
-            ww = []
-            for w in cc:
-                if w == 0:
-                    break
-                ww.append(word_idict_trg[w])
-            capsw.append(' '.join(ww))
-        return capsw
+        trans = seqs2words(all_sample, word_idict_trg)
 
-    print 'Translating ', source_file, '...'
-    trans = _seqs2words(translate_model_single(input_, model, options, k, normalize))
     with open(saveto, 'w') as f:
         print >> f, '\n'.join(trans)
     print 'Done'
@@ -137,6 +89,8 @@ if __name__ == "__main__":
                         help='Use normalize, default to False, set to True')
     parser.add_argument('-c', action="store_true", default=False,
                         help='Char level model, default to False, set to True')
+    parser.add_argument('-b', type=int, default=-1,
+                        help='Batch size, default to -1, means not to use batch mode')
     parser.add_argument('model', type=str, help='The model path')
     parser.add_argument('dictionary_source', type=str, help='The source dict path')
     parser.add_argument('dictionary_target', type=str, help='The target dict path')
@@ -147,4 +101,4 @@ if __name__ == "__main__":
 
     main(args.model, args.dictionary_source, args.dictionary_target, args.source,
          args.saveto, k=args.k, normalize=args.n,
-         chr_level=args.c)
+         chr_level=args.c, batch_size=args.b)

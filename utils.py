@@ -269,15 +269,17 @@ def average(l):
     return sum(l) / len(l)
 
 
-def apply_gradient_clipping(clip_c, grads):
+def apply_gradient_clipping(clip_c, grads, clip_shared=None):
     g2 = 0.
     if clip_c > 0.:
+        clip_shared = theano.shared(np.array(clip_c, dtype=fX), name='clip_shared') if clip_shared is None else clip_shared
+
         for g in grads:
             g2 += (g ** 2).sum()
         new_grads = []
         for g in grads:
-            new_grads.append(tensor.switch(g2 > (clip_c ** 2),
-                                           g / tensor.sqrt(g2) * clip_c,
+            new_grads.append(tensor.switch(g2 > (clip_shared ** 2),
+                                           g / tensor.sqrt(g2) * clip_shared,
                                            g))
         grads = new_grads
     return grads, g2
@@ -346,6 +348,52 @@ def prepare_data(seqs_x, seqs_y, maxlen=None):
         y_mask[:lengths_y[idx] + 1, idx] = 1.
 
     return x, x_mask, y, y_mask
+
+
+def prepare_data_x(seqs_x, maxlen=None, pad_eos=True, pad_sos=False, n_word=30000):
+    # x: a list of sentences
+    lengths_x = [len(s) for s in seqs_x]
+
+    if maxlen is not None:
+        new_seqs_x = []
+        new_lengths_x = []
+        for l_x, s_x in zip(lengths_x, seqs_x):
+            if l_x < maxlen:
+                new_seqs_x.append(s_x)
+                new_lengths_x.append(l_x)
+
+        lengths_x = new_lengths_x
+        seqs_x = new_seqs_x
+
+        if len(lengths_x) < 1:
+            return None, None,
+
+    n_samples = len(seqs_x)
+    if pad_eos:
+        maxlen_x = np.max(lengths_x) + 1
+    else:
+        maxlen_x = np.max(lengths_x)
+
+    x = np.zeros((maxlen_x, n_samples)).astype('int64')
+
+    x_mask = np.zeros((maxlen_x, n_samples)).astype('float32')
+
+    for idx, s_x in enumerate(seqs_x):
+        x[:lengths_x[idx], idx] = s_x
+        if pad_eos:
+            x_mask[:lengths_x[idx]+1, idx] = 1.
+        else:
+            x_mask[:lengths_x[idx], idx] = 1.
+
+    if pad_sos:
+        x = np.concatenate((
+            np.full([1, n_samples], n_word - 1, dtype='int64'), x
+        ), axis=0)
+        x_mask = np.concatenate((
+            np.full([1, n_samples], 1., dtype='float32'), x_mask
+        ), axis=0)
+
+    return x, x_mask
 
 
 def get_minibatches_idx(n, minibatch_size, shuffle=False):
@@ -421,6 +469,16 @@ def save_options(options, iteration, saveto=None):
         pkl.dump(options, f)
 
 
+def check_options(options):
+    """Check conflict options."""
+
+    assert options['lr_discount_freq'] <= 0 or options['fine_tune_patience'] <= 0, \
+        'Cannot enable lr discount and fine-tune at the same time'
+
+    if 'multi' in options['unit']:
+        assert options['unit_size'] > 0 and options['cond_unit_size'] > 0, 'Unit size must > 0'
+
+
 def search_start_uidx(reload_, preload):
     if not reload_:
         return 0
@@ -449,16 +507,37 @@ def get_adadelta_imm_data(optimizer, given_imm, saveto):
 
         # For back compatibility
         given_imm_filename_backup = ImmediateFilenameBackup.format(os.path.splitext(saveto)[0])
+        given_imm_filename_backup2 = ImmediateFilenameBackup2.format(os.path.splitext(saveto)[0])
         if os.path.exists(given_imm_filename):
             message('Loading adadelta immediate data')
-            return pkl.load(fopen(given_imm_filename, 'rb'))
+            with np.load(given_imm_filename) as data:
+                data_size = len(data.files)
+                if optimizer == 'adadelta':
+                    return [
+                        [data['arr_{}'.format(i)] for i in range(0, data_size // 2)],
+                        [data['arr_{}'.format(i)] for i in range(data_size // 2, data_size)],
+                    ]
+                elif optimizer == 'adam':
+                    return [
+                        data['arr_0'],
+                        [data['arr_{}'.format(i)] for i in range(1, data_size // 2 + 1)],
+                        [data['arr_{}'.format(i)] for i in range(data_size // 2 + 1, data_size)],
+                    ]
+                else:
+                    pass
         elif os.path.exists(given_imm_filename_backup):
             message('Loading adadelta immediate data')
             return pkl.load(fopen(given_imm_filename_backup, 'rb'))
+        elif os.path.exists(given_imm_filename_backup2):
+            message('Loading adadelta immediate data')
+            return pkl.load(fopen(given_imm_filename_backup2, 'rb'))
     return None
 
 
 def dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto):
+    if optimizer == 'sgd':
+        return
+
     if imm_shared is None or dump_imm is None:
         return
 
@@ -466,27 +545,31 @@ def dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto):
     imm_filename = ImmediateFilename.format(os.path.splitext(saveto)[0])
 
     # Dump to temp file
-    with gzip.open(tmp_filename, 'wb') as f:
-        message('Dumping adadelta immediate data to temp file...', end='')
-        if optimizer == 'adadelta':
-            pkl.dump([
-                [g.get_value() for g in imm_shared[0]],
-                [g.get_value() for g in imm_shared[1]],
-            ], f)
-        elif optimizer == 'adam':
-            pkl.dump([
-                imm_shared[0].get_value(),
-                [g.get_value() for g in imm_shared[1]],
-                [g.get_value() for g in imm_shared[2]],
-            ], f)
-        else:
-            pass
-        message('Done')
+    message('Dumping adadelta immediate data to temp file...', end='')
+    if optimizer == 'adadelta':
+        np.savez(tmp_filename,
+                 [g.get_value() for g in imm_shared[0]] +
+                 [g.get_value() for g in imm_shared[1]])
+    elif optimizer == 'adam':
+        np.savez(tmp_filename,
+                 [imm_shared[0].get_value()] +
+                 [g.get_value() for g in imm_shared[1]] +
+                 [g.get_value() for g in imm_shared[2]])
+    else:
+        pass
+    message('Done')
 
     # Move temp file to immediate file
     message('Moving temp file to immediate file...', end='')
     try:
         os.remove(ImmediateFilenameBackup.format(os.path.splitext(saveto)[0]))
+    except OSError as e:
+        if e.errno == errno.ENOENT:
+            pass
+        else:
+            raise
+    try:
+        os.remove(ImmediateFilenameBackup2.format(os.path.splitext(saveto)[0]))
     except OSError as e:
         if e.errno == errno.ENOENT:
             pass
@@ -574,10 +657,12 @@ __all__ = [
     'l2_regularization',
     'regularize_alpha_weights',
     'prepare_data',
+    'prepare_data_x',
     'get_minibatches_idx',
     'print_params',
     'load_options',
     'save_options',
+    'check_options',
     'search_start_uidx',
     'make_f_train',
     'get_adadelta_imm_data',

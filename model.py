@@ -8,6 +8,7 @@ import sys
 import os
 import copy
 
+import bottleneck
 import theano
 import theano.tensor as T
 import numpy as np
@@ -15,6 +16,7 @@ import cPickle as pkl
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
 from constants import fX, profile
+from config import DefaultOptions
 from utils import *
 from layers import *
 
@@ -375,7 +377,7 @@ class NMTModel(object):
     def sync_tparams(self):
         sync_tparams(self.P, self.dupP)
 
-    def build_model(self):
+    def build_model(self, set_instance_variables=False):
         """Build a training model."""
 
         dropout_rate = self.O['use_dropout']
@@ -428,35 +430,52 @@ class NMTModel(object):
             )
             print('Done')
 
+        if set_instance_variables:
+            # Unused now
+            self.x, self.x_mask, self.y, self.y_mask = x, x_mask, y, y_mask
+
         return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost, context_mean
 
     def build_sampler(self, **kwargs):
         """Build a sampler."""
 
-        unit = self.O['unit']
-
+        batch_mode = kwargs.pop('batch_mode', False)
         trng = kwargs.pop('trng', RandomStreams(1234))
         use_noise = kwargs.pop('use_noise', theano.shared(np.float32(0.)))
+        get_gates = kwargs.pop('get_gates', False)
+
+        unit = self.O['unit']
 
         x = T.matrix('x', dtype='int64')
         xr = x[::-1]
         n_timestep = x.shape[0]
         n_samples = x.shape[1]
 
+        if batch_mode:
+            x_mask = T.matrix('x_mask', dtype=fX)
+            xr_mask = x_mask[::-1]
+
         # Word embedding for forward rnn and backward rnn (source)
         src_embedding = self.embedding(x, n_timestep, n_samples)
         src_embedding_r = self.embedding(xr, n_timestep, n_samples)
 
         # Encoder
-        ctx = self.encoder(src_embedding, src_embedding_r, None, None, dropout_params=None)
+        ctx = self.encoder(
+            src_embedding, src_embedding_r,
+            x_mask if batch_mode else None, xr_mask if batch_mode else None,
+            dropout_params=None,
+        )
 
         # Get the input for decoder rnn initializer mlp
         ctx_mean = ctx.mean(0)
         init_state = self.feed_forward(ctx_mean, prefix='ff_state', activation=tanh)
 
         print('Building f_init...', end='')
+        inps = [x]
+        if batch_mode:
+            inps.append(x_mask)
         outs = [init_state, ctx]
-        f_init = theano.function([x], outs, name='f_init', profile=profile)
+        f_init = theano.function(inps, outs, name='f_init', profile=profile)
         print('Done')
 
         # x: 1 x 1
@@ -471,15 +490,17 @@ class NMTModel(object):
 
         # Apply one step of conditional gru with attention
         hidden_decoder, context_decoder, _, kw_ret = self.decoder(
-            emb, y_mask=None, init_state=init_state, context=ctx, x_mask=None,
+            emb, y_mask=None, init_state=init_state, context=ctx,
+            x_mask=x_mask if batch_mode else None,
             dropout_params=None, one_step=True, init_memory=init_memory,
+            get_gates=get_gates,
         )
 
         # Get memory_out and hiddens_without_dropout
         # FIXME: stack list into a single tensor
         memory_out = None
         hiddens_without_dropout = T.stack(kw_ret['hiddens_without_dropout'])
-        if unit == 'lstm':
+        if 'lstm' in unit:
             memory_out = T.stack(kw_ret['memory_outputs'])
 
         logit_lstm = self.feed_forward(hidden_decoder, prefix='ff_logit_lstm', activation=linear)
@@ -500,10 +521,21 @@ class NMTModel(object):
         # sampled word for the next target, next hidden state to be used
         print('Building f_next..', end='')
         inps = [y, ctx, init_state]
+        if batch_mode:
+            inps.insert(2, x_mask)
         outs = [next_probs, next_sample, hiddens_without_dropout]
-        if unit == 'lstm':
+        if 'lstm' in unit:
             inps.append(init_memory)
             outs.append(memory_out)
+        if get_gates:
+            outs.extend([
+                T.stack(kw_ret['input_gates']),
+                T.stack(kw_ret['forget_gates']),
+                T.stack(kw_ret['output_gates']),
+                kw_ret['input_gates_att'],
+                kw_ret['forget_gates_att'],
+                kw_ret['output_gates_att'],
+            ])
         f_next = theano.function(inps, outs, name='f_next', profile=profile)
         print('Done')
 
@@ -522,6 +554,15 @@ class NMTModel(object):
         ret_memory = kwargs.pop('ret_memory', False)
         if ret_memory:
             kw_ret['memory'] = []
+
+        get_gates = kwargs.pop('get_gates', False)
+        if get_gates:
+            kw_ret['input_gates_list'] = []
+            kw_ret['forget_gates_list'] = []
+            kw_ret['output_gates_list'] = []
+            kw_ret['input_gates_att_list'] = []
+            kw_ret['forget_gates_att_list'] = []
+            kw_ret['output_gates_att_list'] = []
 
         unit = self.O['unit']
 
@@ -551,16 +592,24 @@ class NMTModel(object):
         for ii in xrange(maxlen):
             ctx = np.tile(ctx0, [live_k, 1])
             inps = [next_w, ctx, next_state]
-            if unit == 'lstm':
+            if 'lstm' in unit:
                 inps.append(next_memory)
 
             ret = f_next(*inps)
             next_p, next_w, next_state = ret[0], ret[1], ret[2]
-            if unit == 'lstm':
+            if 'lstm' in unit:
                 next_memory = ret[3]
 
                 if ret_memory:
                     kw_ret['memory'].append(next_memory)
+
+            if get_gates:
+                kw_ret['input_gates_list'].append(ret[-6])
+                kw_ret['forget_gates_list'].append(ret[-5])
+                kw_ret['output_gates_list'].append(ret[-4])
+                kw_ret['input_gates_att_list'].append(ret[-3])
+                kw_ret['forget_gates_att_list'].append(ret[-2])
+                kw_ret['output_gates_att_list'].append(ret[-1])
 
             if stochastic:
                 if argmax:
@@ -628,6 +677,145 @@ class NMTModel(object):
                 for idx in xrange(live_k):
                     sample.append(hyp_samples[idx])
                     sample_score.append(hyp_scores[idx])
+
+        if have_kw_ret:
+            return sample, sample_score, kw_ret
+        return sample, sample_score
+
+    def gen_batch_sample(self, f_init, f_next, x, x_mask, trng=None, k=1, maxlen=30, eos_id=0, **kwargs):
+        """
+        Only used for Batch Beam Search;
+        Do not Support Stochastic Sampling
+        """
+
+        kw_ret = {}
+        have_kw_ret = bool(kwargs)
+
+        ret_memory = kwargs.pop('ret_memory', False)
+        if ret_memory:
+            kw_ret['memory'] = []
+
+        unit = self.O['unit']
+
+        batch_size = x.shape[1]
+        sample = [[] for _ in xrange(batch_size)]
+        sample_score = [[] for _ in xrange(batch_size)]
+
+        lives_k = [1] * batch_size
+        deads_k = [0] * batch_size
+
+        batch_hyp_samples = [[[]] for _ in xrange(batch_size)]
+        batch_hyp_scores = [np.zeros(ii, dtype=fX) for ii in lives_k]
+
+        # get initial state of decoder rnn and encoder context
+        ret = f_init(x, x_mask)
+        next_state, ctx0 = ret[0], ret[1]
+        next_w = np.array([-1] * batch_size, dtype='int64')     # bos indicator
+        next_state = np.tile(next_state[None, :, :], (self.O['n_decoder_layers'], 1, 1))
+        next_memory = np.zeros((self.O['n_decoder_layers'], next_state.shape[1], next_state.shape[2]), dtype=fX)
+
+        for ii in xrange(maxlen):
+            ctx = np.repeat(ctx0, lives_k, axis=1)
+            x_extend_masks = np.repeat(x_mask, lives_k, axis=1)
+            cursor_start, cursor_end = 0, lives_k[0]
+            for jj in xrange(batch_size):
+                if lives_k[jj] > 0:
+                    ctx[:, cursor_start: cursor_end, :] = np.repeat(ctx0[:, jj, :][:, None, :], lives_k[jj], axis=1)
+                    x_extend_masks[:, cursor_start: cursor_end] = np.repeat(x_mask[:, jj][:, None], lives_k[jj], axis=1)
+                if jj < batch_size - 1:
+                    cursor_start = cursor_end
+                    cursor_end += lives_k[jj + 1]
+
+            inps = [next_w, ctx, x_extend_masks, next_state]
+            if 'lstm' in unit:
+                inps.append(next_memory)
+
+            ret = f_next(*inps)
+
+            if 'lstm' in unit:
+                next_memory = ret[3]
+
+                if ret_memory:
+                    kw_ret['memory'].append(next_memory)
+
+            next_w_list = []
+            next_state_list = []
+            next_memory_list = []
+
+            next_p, next_state = ret[0], ret[2]
+            cursor_start, cursor_end = 0, lives_k[0]
+
+            for jj in xrange(batch_size):
+                if cursor_start == cursor_end:
+                    if jj < batch_size - 1:
+                        cursor_end += lives_k[jj + 1]
+                    continue
+                index_range = range(cursor_start, cursor_end)
+                cand_scores = batch_hyp_scores[jj][:, None] - np.log(next_p[index_range, :])
+                cand_flat = cand_scores.flatten()
+
+                ranks_flat = bottleneck.argpartsort(cand_flat, k - deads_k[jj])[:k - deads_k[jj]]
+
+                voc_size = next_p.shape[1]
+                trans_indices = ranks_flat / voc_size
+                word_indices = ranks_flat % voc_size
+                costs = cand_flat[ranks_flat]
+
+                new_hyp_samples = []
+                new_hyp_scores = np.zeros(k - deads_k[jj]).astype('float32')
+                new_hyp_states = []
+                new_hyp_memories = []
+
+                for idx, [ti, wi] in enumerate(zip(trans_indices, word_indices)):
+                    new_hyp_samples.append(batch_hyp_samples[jj][ti] + [wi])
+                    new_hyp_scores[idx] = copy.copy(costs[idx])
+                    new_hyp_states.append(copy.copy(next_state[:, cursor_start + ti, :]))
+                    new_hyp_memories.append(copy.copy(next_memory[:, cursor_start + ti, :]))
+
+                # check the finished samples
+                new_live_k = 0
+                batch_hyp_samples[jj] = []
+                hyp_scores = []
+                hyp_states = []
+                hyp_memories = []
+
+                for idx in xrange(len(new_hyp_samples)):
+                    if new_hyp_samples[idx][-1] == eos_id:
+                        sample[jj].append(new_hyp_samples[idx])
+                        sample_score[jj].append(new_hyp_scores[idx])
+                        deads_k[jj] += 1
+                    else:
+                        new_live_k += 1
+                        batch_hyp_samples[jj].append(new_hyp_samples[idx])
+                        hyp_scores.append(new_hyp_scores[idx])
+                        hyp_states.append(new_hyp_states[idx])
+                        hyp_memories.append(new_hyp_memories[idx])
+
+                batch_hyp_scores[jj] = np.array(hyp_scores)
+                lives_k[jj] = new_live_k
+
+                if jj < batch_size - 1:
+                    cursor_start = cursor_end
+                    cursor_end += lives_k[jj + 1]
+
+                if hyp_states:
+                    next_w_list += [w[-1] for w in batch_hyp_samples[jj]]
+                    next_state_list += [xx[:, None, :] for xx in hyp_states]
+                    next_memory_list += [xx[:, None, :] for xx in hyp_memories]
+
+            if np.array(lives_k).sum() > 0:
+                next_w = np.array(next_w_list)
+                next_state = np.concatenate(next_state_list[:], axis=1)
+                next_memory = np.concatenate(next_memory_list[:], axis=1)
+            else:
+                break
+
+        # dump every remaining one
+        for jj in xrange(batch_size):
+            if lives_k[jj] > 0:
+                for idx in xrange(lives_k[jj]):
+                    sample[jj].append(batch_hyp_samples[jj][idx])
+                    sample_score[jj].append(batch_hyp_scores[jj][idx])
 
         if have_kw_ret:
             return sample, sample_score, kw_ret
@@ -821,7 +1009,7 @@ class NMTModel(object):
         return context
 
     def decoder(self, tgt_embedding, y_mask, init_state, context, x_mask,
-                dropout_params=None, one_step=False, init_memory=None):
+                dropout_params=None, one_step=False, init_memory=None, **kwargs):
         """Multi-layer GRU decoder.
 
         :return Decoder context vector and hidden states and others (kw_ret)
@@ -833,6 +1021,8 @@ class NMTModel(object):
         residual = self.O['residual_dec']
         all_att = self.O['decoder_all_attention']
         avg_ctx = self.O['average_context']
+        # FIXME: Add get_gates for only common mode (one attention) here.
+        get_gates = kwargs.pop('get_gates', False)
 
         # List of inputs and outputs of each layer (for residual)
         inputs = []
@@ -845,6 +1035,11 @@ class NMTModel(object):
             'hiddens_without_dropout': hiddens_without_dropout,
             'memory_outputs': memory_outputs,
         }
+
+        if get_gates:
+            kw_ret['input_gates'] = []
+            kw_ret['forget_gates'] = []
+            kw_ret['output_gates'] = []
 
         # FIXME: init_state and init_memory
         # In training mode (one_step is False), init_state and init_memory are single state (and often None),
@@ -887,7 +1082,7 @@ class NMTModel(object):
                 context_decoder_list.append(context_decoder)
 
                 hiddens_without_dropout.append(kw_ret_att['hidden_without_dropout'])
-                if unit == 'lstm':
+                if 'lstm' in unit:
                     memory_outputs.append(kw_ret_att['memory_output'])
 
                 outputs.append(hidden_decoder)
@@ -920,12 +1115,17 @@ class NMTModel(object):
                 layer_out = get_build(unit)(
                     self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
                     dropout_params=dropout_params, one_step=one_step, init_state=init_state[layer_id], context=None,
-                    init_memory=init_memory[layer_id],
+                    init_memory=init_memory[layer_id], get_gates=get_gates,
                 )
+                kw_ret_layer = layer_out[-1]
 
-                hiddens_without_dropout.append(layer_out[-1]['hidden_without_dropout'])
-                if unit == 'lstm':
+                hiddens_without_dropout.append(kw_ret_layer['hidden_without_dropout'])
+                if 'lstm' in unit:
                     memory_outputs.append(layer_out[1])
+                if get_gates:
+                    kw_ret['input_gates'].append(kw_ret_layer['input_gates'])
+                    kw_ret['forget_gates'].append(kw_ret_layer['forget_gates'])
+                    kw_ret['output_gates'].append(kw_ret_layer['output_gates'])
 
                 outputs.append(layer_out[0])
 
@@ -948,11 +1148,19 @@ class NMTModel(object):
                 self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, context=context,
                 context_mask=x_mask, one_step=one_step, init_state=init_state[attention_layer_id],
                 dropout_params=dropout_params, layer_id=attention_layer_id, init_memory=init_memory[attention_layer_id],
+                get_gates=get_gates,
             )
 
             hiddens_without_dropout.append(kw_ret_att['hidden_without_dropout'])
-            if unit == 'lstm':
+            if 'lstm' in unit:
                 memory_outputs.append(kw_ret_att['memory_output'])
+            if get_gates:
+                kw_ret['input_gates'].append(kw_ret_att['input_gates'])
+                kw_ret['forget_gates'].append(kw_ret_att['forget_gates'])
+                kw_ret['output_gates'].append(kw_ret_att['output_gates'])
+                kw_ret['input_gates_att'] = kw_ret_att['input_gates_att']
+                kw_ret['forget_gates_att'] = kw_ret_att['forget_gates_att']
+                kw_ret['output_gates_att'] = kw_ret_att['output_gates_att']
 
             outputs.append(hidden_decoder)
 
@@ -973,12 +1181,17 @@ class NMTModel(object):
                 layer_out = get_build(unit)(
                     self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
                     dropout_params=dropout_params, context=context_decoder, init_state=init_state[layer_id],
-                    one_step=one_step, init_memory=init_memory[layer_id],
+                    one_step=one_step, init_memory=init_memory[layer_id], get_gates=get_gates,
                 )
+                kw_ret_layer = layer_out[-1]
 
-                hiddens_without_dropout.append(layer_out[-1]['hidden_without_dropout'])
-                if unit == 'lstm':
+                hiddens_without_dropout.append(kw_ret_layer['hidden_without_dropout'])
+                if 'lstm' in unit:
                     memory_outputs.append(layer_out[1])
+                if get_gates:
+                    kw_ret['input_gates'].append(kw_ret_layer['input_gates'])
+                    kw_ret['forget_gates'].append(kw_ret_layer['forget_gates'])
+                    kw_ret['output_gates'].append(kw_ret_layer['output_gates'])
 
                 outputs.append(layer_out[0])
 
@@ -1050,3 +1263,23 @@ class NMTModel(object):
         for k, v in np.load(load_filename).iteritems():
             if k in self.P:
                 self.P[k].set_value(v)
+
+
+def build_and_init_model(model_name, options=None, build=True):
+    if options is None:
+        with open('{}.pkl'.format(model_name), 'rb') as f:
+            options = DefaultOptions.copy()
+            options.update(pkl.load(f))
+
+    model = NMTModel(options)
+
+    # allocate model parameters
+    params = model.initializer.init_params()
+    # load model parameters and set theano shared variables
+    params = load_params(model_name, params)
+    model.init_tparams(params)
+
+    if build:
+        ret = model.build_model()
+        return model, options, ret
+    return model, options

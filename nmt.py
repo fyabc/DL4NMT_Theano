@@ -18,7 +18,9 @@ from data_iterator import TextIterator
 from optimizers import Optimizers
 from utils import *
 
+from utils_fine_tune import *
 from model import NMTModel
+
 
 def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True, normalize=False):
     """Calculate the log probablities on a given corpus using translation model"""
@@ -116,7 +118,7 @@ def train(dim_word=100,  # word vector dimensionality
           initializer='orthogonal',
           given_embedding=None,
 
-          dist_type =None,
+          dist_type=None,
           sync_batch=0,
           dist_recover_lr_iter=False,
           sync_models=False,
@@ -130,8 +132,9 @@ def train(dim_word=100,  # word vector dimensionality
 
           decoder_all_attention=False,
           average_context=False,
-          task = 'en-fr',
+          task='en-fr',
 
+          fine_tune_patience=8,
           ):
     model_options = locals().copy()
 
@@ -175,6 +178,7 @@ Start Time = {}
     sys.stdout.flush()
 
     load_options(model_options, reload_, preload)
+    check_options(model_options)
 
     print 'Loading data'
     log('\n\n\nStart to prepare data\n@Current Time = {}'.format(time.time()))
@@ -237,7 +241,8 @@ Start Time = {}
     inps = [x, x_mask, y, y_mask]
 
     print 'Building sampler'
-    f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise)
+    # f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise)
+    f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise, batch_mode=True)
 
     # before any regularizer
     print 'Building f_log_probs...',
@@ -266,9 +271,9 @@ Start Time = {}
 
     print 'Computing gradient...',
     grads = tensor.grad(cost, wrt=itemlist(model.P))
-    grads, g2 = apply_gradient_clipping(clip_c, grads)
-    print 'Done'
-    sys.stdout.flush()
+
+    clip_shared = theano.shared(np.array(clip_c, dtype=fX), name='clip_shared')
+    grads, g2 = apply_gradient_clipping(clip_c, grads, clip_shared)
 
     # compile the optimizer, the actual computational graph is compiled here
     lr = tensor.scalar(name='lr')
@@ -296,14 +301,14 @@ Start Time = {}
         else:
             rec_grads = [np.zeros_like(p.get_value()) for p in model.P.itervalues()]
 
+    estop = False
+    history_errs = []
+    best_bleu = -1.0
     best_p = None
     bad_counter = 0
     uidx = search_start_uidx(reload_, preload)
     print 'uidx', uidx, 'l_rate', lrate
     start_uidx = uidx
-
-    estop = False
-    history_errs = []
 
     if dump_before_train:
         print 'Dumping before train...',
@@ -352,6 +357,7 @@ Start Time = {}
             if dist_type == 'mpi_reduce' and uidx % sync_batch == 0:
                 reduce_start = time.time()
                 commu_time = 0
+
                 gpucpu_cp_time = 0
                 if sync_models: #sync model parameters
                     commu_time_delta, cp_time_delta = all_reduce_params(model.P.itervalues(), rec_models, workers_cnt)
@@ -372,6 +378,7 @@ Start Time = {}
                 print '@Worker = {}, Reduce time = {:.5f}, Commu time = {:.5f}, GPUCPU time = {:.5f}'.format(
                     worker_id, reduce_time_sum / effective_uidx, commu_time_sum / effective_uidx, cp_time_sum /effective_uidx)
 
+
             # do the update on parameters
 
             curr_lr = lrate if not dist_type or dist_recover_lr_iter < effective_uidx else lrate * 0.05 + effective_uidx * lrate / dist_recover_lr_iter * 0.95
@@ -390,8 +397,10 @@ Start Time = {}
                 return 1., 1., 1.
 
             # discount reward
+            # FIXME: Do NOT enable this and fine-tune at the same time
             if lr_discount_freq > 0 and np.mod(uidx, lr_discount_freq) == 0:
                 lrate *= 0.5
+                clip_shared.set_value(clip_shared.get_value() * 0.5)
                 message('Discount learning rate to {} at iteration {}'.format(lrate, uidx))
 
             # sync batch
@@ -427,6 +436,24 @@ Start Time = {}
                 small_train_cost = validation(small_train_iterator, f_cost, maxlen=maxlen)
                 message('Valid cost {:.5f} Small train cost {:.5f}'.format(valid_cost, small_train_cost))
                 sys.stdout.flush()
+
+                # Fine-tune based on dev BLEU
+                if fine_tune_patience > 0:
+                    new_bleu = translate_dev_get_bleu(model, f_init, f_next, trng, use_noise)
+
+                    print 'BLEU = {:.2f} at iteration {}'.format(new_bleu, uidx)
+
+                    if new_bleu > best_bleu:
+                        bad_counter = 0
+                        best_bleu = new_bleu
+                    else:
+                        bad_counter += 1
+                        if bad_counter >= fine_tune_patience:
+                            print 'Fine tune:',
+                            lrate *= 0.5
+                            clip_shared.set_value(clip_shared.get_value() * 0.5)
+                            message('Discount learning rate to {} at iteration {}'.format(lrate, uidx))
+                            bad_counter = 0
 
             # finish after this many updates
             if uidx >= finish_after:

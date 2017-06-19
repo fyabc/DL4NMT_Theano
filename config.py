@@ -131,4 +131,12 @@ DefaultOptions = dict(
 
     #The file storing physical_gpu_id -> theano_id information. Per gpu infor, per line
     gpu_map_file = None,
+    task='en-fr',
+
+    # MPI options
+    dist_recover_lr_iter=False,
+    sync_grads=True,
+
+    # Fine-tune options
+    fine_tune_patience=8,
 )
