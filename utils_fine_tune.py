@@ -179,13 +179,13 @@ def _translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target,
         word_dict, word_idict, word_idict_trg, all_src_blocks, m_block = load_translate_data(
             dictionary, dictionary_target, source_file,
             batch_mode=batch_mode, chr_level=chr_level, n_words_src=n_words_src,
-            echo=False,
+            echo=False, batch_size=30,
         )
 
         all_sample = []
         for bidx, seqs in enumerate(all_src_blocks):
             all_sample.extend(translate_block(seqs, model, f_init, f_next, trng, k))
-            # print(bidx, '/', m_block, 'Done')
+            print(bidx, '/', m_block, 'Done')
 
         trans = seqs2words(all_sample, word_idict_trg)
 
@@ -229,7 +229,7 @@ def de_bpe(input_str):
     return re.sub(r'(@@ )|(@@ ?$)', '', input_str)
 
 
-def translate_dev_get_bleu(model, f_init, f_next, trng, **kwargs):
+def translate_dev_get_bleu(model, f_init, f_next, trng, use_noise, **kwargs):
     dataset = kwargs.pop('dataset', model.O['task'])
 
     # [NOTE]: Filenames here are with path prefix.
@@ -238,11 +238,15 @@ def translate_dev_get_bleu(model, f_init, f_next, trng, **kwargs):
     dic1 = kwargs.pop('dic1', model.O['vocab_filenames'][0])
     dic2 = kwargs.pop('dic2', model.O['vocab_filenames'][1])
 
+    use_noise.set_value(0.)
+
     translated_string = _translate_whole(
         model, f_init, f_next, trng,
         dic1, dic2, dev1,
         k=2, batch_mode=True,
     )
+
+    use_noise.set_value(1.)
 
     # first de-truecase, then de-bpe
     if 'tc' in dataset:
