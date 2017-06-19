@@ -135,7 +135,6 @@ DefaultOptions = dict(
 
     # MPI options
     dist_recover_lr_iter=False,
-    sync_grads=True,
 
     # Fine-tune options
     fine_tune_patience=8,
