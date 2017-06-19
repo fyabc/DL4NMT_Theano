@@ -419,7 +419,7 @@ Start Time = {}
 
                 # Fine-tune based on dev BLEU
                 if fine_tune_patience > 0:
-                    new_bleu = translate_dev_get_bleu(model, f_init, f_next, trng)
+                    new_bleu = translate_dev_get_bleu(model, f_init, f_next, trng, use_noise)
 
                     print 'BLEU = {:.2f} at iteration {}'.format(new_bleu, uidx)
 
