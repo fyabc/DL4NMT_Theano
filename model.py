@@ -529,9 +529,9 @@ class NMTModel(object):
             outs.append(memory_out)
         if get_gates:
             outs.extend([
-                kw_ret['input_gates'],
-                kw_ret['forget_gates'],
-                kw_ret['output_gates'],
+                T.stack(kw_ret['input_gates']),
+                T.stack(kw_ret['forget_gates']),
+                T.stack(kw_ret['output_gates']),
                 kw_ret['input_gates_att'],
                 kw_ret['forget_gates_att'],
                 kw_ret['output_gates_att'],
@@ -1115,7 +1115,7 @@ class NMTModel(object):
                 layer_out = get_build(unit)(
                     self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
                     dropout_params=dropout_params, one_step=one_step, init_state=init_state[layer_id], context=None,
-                    init_memory=init_memory[layer_id],
+                    init_memory=init_memory[layer_id], get_gates=get_gates,
                 )
                 kw_ret_layer = layer_out[-1]
 
@@ -1148,6 +1148,7 @@ class NMTModel(object):
                 self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, context=context,
                 context_mask=x_mask, one_step=one_step, init_state=init_state[attention_layer_id],
                 dropout_params=dropout_params, layer_id=attention_layer_id, init_memory=init_memory[attention_layer_id],
+                get_gates=get_gates,
             )
 
             hiddens_without_dropout.append(kw_ret_att['hidden_without_dropout'])
@@ -1180,7 +1181,7 @@ class NMTModel(object):
                 layer_out = get_build(unit)(
                     self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
                     dropout_params=dropout_params, context=context_decoder, init_state=init_state[layer_id],
-                    one_step=one_step, init_memory=init_memory[layer_id],
+                    one_step=one_step, init_memory=init_memory[layer_id], get_gates=get_gates,
                 )
                 kw_ret_layer = layer_out[-1]
 

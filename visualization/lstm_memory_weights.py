@@ -46,17 +46,43 @@ def translate_sentence(src_seq, build_result, k, normalize):
         ret_memory=True, get_gates=True,
     )
 
+    lengths = [len(s) for s in sample]
+
     # normalize scores according to sequence lengths
     if normalize:
-        lengths = np.array([len(s) for s in sample])
+        lengths = np.array(lengths)
         score = score / lengths
     sidx = np.argmin(score)
+
+    # FIXME: Code here suppose that the order of lived samples will not change during sampling.
+
+    real_sidx = [0]     # Always only one init weights
+    for i in xrange(1, max(lengths)):
+        real_sidx_i = -1
+        for j in xrange(sidx + 1):
+            if lengths[j] > i:
+                real_sidx_i += 1
+        if real_sidx_i >= 0:
+            real_sidx.append(real_sidx_i)
+        else:
+            break
+
+    # Get gates of best sample
+    for key in 'input_gates_list', 'forget_gates_list', 'output_gates_list':
+        del kw_ret[key][len(real_sidx):]
+        for step, weights in enumerate(kw_ret[key]):
+            kw_ret[key][step] = weights[:, real_sidx[step], :]
+    for key in 'input_gates_att_list', 'forget_gates_att_list', 'output_gates_att_list':
+        # FIXME: need test
+        del kw_ret[key][len(real_sidx):]
+        for step, weight in enumerate(kw_ret[key]):
+            kw_ret[key][step] = weight[real_sidx[step], :]
 
     return sample[sidx], kw_ret
 
 
-def main(model_name, dictionary, dictionary_target, source_file, args,
-         k=5, normalize=False, chr_level=False):
+def get_gate_weights(model_name, dictionary, dictionary_target, source_file, args,
+                     k=5, normalize=False, chr_level=False):
     # load model model_options
     with open('%s.pkl' % model_name, 'rb') as f:
         options = DefaultOptions.copy()
@@ -104,32 +130,60 @@ def main(model_name, dictionary, dictionary_target, source_file, args,
     build_result = model, f_init, f_next, trng
     print 'Done'
 
-    print '=============================='
+    results = []
 
     for i, src_seq in enumerate(inputs):
-        print 'Translating sentence {}:'.format(i)
-        print 'Input sentence:', lines[i],
+        results.append({
+            'index': i,
+            'input': lines[i],
+        })
 
         tgt_seq, kw_ret = translate_sentence(src_seq, build_result, k, normalize)
 
-        print 'Output sentence:', seq2words(tgt_seq, word_idict_trg)
-        print 'Visualize LSTM memory:'
+        results[-1]['output'] = seq2words(tgt_seq, word_idict_trg)
+        results[-1]['kw_ret'] = kw_ret
 
-        for input_gates in kw_ret['input_gates_list']:
+    return results
+
+
+def print_results(results, args):
+    print '=============================='
+
+    for result in results:
+        print 'Translating sentence {}:'.format(result['index'])
+        print 'Input sentence:', result['input'],
+
+        print 'Output sentence:', result['output']
+
+        kw_ret = result['kw_ret']
+        print 'Visualize LSTM memory and gates:'
+        for step, input_gates in enumerate(kw_ret['input_gates_list']):
             for layer_id, input_gate in enumerate(input_gates):
-                print('layer {}: shape = {}'.format(layer_id, input_gate.shape))
+                print('step {}, layer {}: shape = {}'.format(step, layer_id, input_gate.shape))
 
         print
 
 
-if __name__ == '__main__':
+def plot_results(results, args):
+    pass
+
+
+def real_main(model_name, dictionary, dictionary_target, source_file, args, k=5, normalize=False, chr_level=False):
+    results = get_gate_weights(model_name, dictionary, dictionary_target, source_file, args,
+                               k=k, normalize=normalize, chr_level=chr_level)
+
+    if args.out_mode == 'print':
+        print_results(results, args)
+    elif args.out_mode == 'plot':
+        plot_results(results, args)
+
+
+def main():
     parser = argparse.ArgumentParser(
         description='Visualize LSTM memory weights when translating')
     parser.add_argument('model', type=str, help='The model path')
     parser.add_argument('-k', type=int, default=4,
                         help='Beam size (?), default is %(default)s, can also use 12')
-    parser.add_argument('-p', type=int, default=5,
-                        help='Number of parallel processes, default is %(default)s')
     parser.add_argument('-n', action="store_true", default=False,
                         help='Use normalize, default to False, set to True')
     parser.add_argument('-c', action="store_true", default=False,
@@ -144,6 +198,8 @@ if __name__ == '__main__':
                         help='Number of test sentences, default is %(default)s')
     parser.add_argument('-D', '--dataset', type=str, default=None, dest='dataset',
                         help='Set some default datasets (dict and test file)')
+    parser.add_argument('-o', '--out_mode', action='store', type=str, default='print', dest='out_mode',
+                        help='Output mode, default is "%(default)s", candidates are "print", "plot"')
 
     args = parser.parse_args()
 
@@ -154,5 +210,9 @@ if __name__ == '__main__':
         args.dictionary_target = os.path.join('data', 'dic', dataset[9])
         args.source = os.path.join('data', 'test', dataset[6])
 
-    main(args.model, args.dictionary_source, args.dictionary_target, args.source, args,
-         k=args.k, normalize=args.n, chr_level=args.c)
+    real_main(args.model, args.dictionary_source, args.dictionary_target, args.source, args,
+              k=args.k, normalize=args.n, chr_level=args.c)
+
+
+if __name__ == '__main__':
+    main()
