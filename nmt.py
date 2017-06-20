@@ -273,7 +273,7 @@ Start Time = {}
     grads = tensor.grad(cost, wrt=itemlist(model.P))
 
     clip_shared = theano.shared(np.array(clip_c, dtype=fX), name='clip_shared')
-    grads, g2 = apply_gradient_clipping(clip_c, grads, clip_shared)
+    grads, g2 = clip_grad_remove_nan(grads, clip_shared, model.P)
 
     # compile the optimizer, the actual computational graph is compiled here
     lr = tensor.scalar(name='lr')
@@ -377,7 +377,6 @@ Start Time = {}
 
                 print '@Worker = {}, Reduce time = {:.5f}, Commu time = {:.5f}, GPUCPU time = {:.5f}'.format(
                     worker_id, reduce_time_sum / effective_uidx, commu_time_sum / effective_uidx, cp_time_sum /effective_uidx)
-
 
             # do the update on parameters
 
