@@ -27,9 +27,13 @@ __author__ = 'fyabc'
 
 Gates = ['input_gates_list', 'forget_gates_list', 'output_gates_list', 'state_list', 'memory_list']
 GatesAtt = ['input_gates_att_list', 'forget_gates_att_list', 'output_gates_att_list']
+InnerGates = Gates[:3]  # Inner gates, after sigmoid, (0.0, 1.0)
+OuterGates = Gates[3:]  # Outer gates, after tanh, (-1.0, 1.0)
 
 FontSize = 20
 TextFontSize = 14
+InnerColorMap = cm.bwr
+OuterColorMap = cm.gray
 
 
 def seq2words(tgt_seq, tgt_dict):
@@ -182,7 +186,7 @@ def print_results(results, args):
 
 
 def plot_values(results, args):
-    result = results[6]
+    result = results[args.index]
 
     kw_ret = result['kw_ret']
     n_layers = result['n_layers']
@@ -195,7 +199,7 @@ def plot_values(results, args):
     n_out = len(words_out)
     dim = result.get('dim', len(kw_ret['input_gates_list'][0][0]))
 
-    n_gates = len(Gates)     # Gates each layer
+    n_gates, n_inner_gates, n_outer_gates = len(Gates), len(InnerGates), len(OuterGates)
 
     # Background & Text
     plt.text(-1.0, 0.0, '$Source:$',
@@ -224,24 +228,34 @@ def plot_values(results, args):
         value_idx = int(args.get_value)
 
     # Prepare data
-    value_arrays = [np.empty((n_gates, n_out + 1)) for _ in xrange(n_layers)]
+    inner_value_arrays = [np.empty((n_inner_gates, n_out + 1)) for _ in xrange(n_layers)]
+    outer_value_arrays = [np.empty((n_outer_gates, n_out + 1)) for _ in xrange(n_layers)]
 
-    for i, gate_name in enumerate(Gates):
-        print gate_name
-        for step, gate_layers in enumerate(kw_ret[gate_name]):
-            for layer_id, gate in enumerate(gate_layers):
-                if args.get_value == 'mean':
-                    value = gate.mean()
-                else:
-                    value = gate[value_idx]
-                print format(value, '.2f'), ',',
-                value_arrays[layer_id][i][step] = value
-        print
+    def _fill_value(value_arrays, gate_names):
+        for i, gate_name in enumerate(gate_names):
+            print gate_name
+            for step, gate_layers in enumerate(kw_ret[gate_name]):
+                for layer_id, gate in enumerate(gate_layers):
+                    if args.get_value == 'mean':
+                        value = gate.mean()
+                    else:
+                        value = gate[value_idx]
+                    print format(value, '.2f'), ',',
+                    value_arrays[layer_id][i][step] = value
+            print
+
+    _fill_value(inner_value_arrays, InnerGates)
+    _fill_value(outer_value_arrays, OuterGates)
 
     # Image
-    for layer_id, value_array in enumerate(value_arrays):
-        plt.imshow((value_array + 1) / 2, cmap=cm.jet, interpolation='none',
-                   extent=(-0.5, n_out + 0.5, n_gates * layer_id + 1.5, n_gates * (layer_id + 1) + 1.5))
+    for layer_id, value_array in enumerate(inner_value_arrays):
+        plt.imshow(value_array, cmap=InnerColorMap, interpolation='none', vmin=0.0, vmax=1.0,
+                   extent=(-0.5, n_out + 0.5,
+                           n_gates * (layer_id + 1) + 1.5 - len(InnerGates), n_gates * (layer_id + 1) + 1.5))
+    for layer_id, value_array in enumerate(outer_value_arrays):
+        plt.imshow(value_array, cmap=OuterColorMap, interpolation='none',
+                   extent=(-0.5, n_out + 0.5,
+                           n_gates * layer_id + 1.5, n_gates * (layer_id + 1) + 1.5 - len(InnerGates)))
 
     # Set figure style
     xmin, xmax = -2, n_out
@@ -259,7 +273,51 @@ def plot_values(results, args):
 
 
 def plot_count(results, args):
-    pass
+    result = results[args.index]
+
+    kw_ret = result['kw_ret']
+    n_layers = result['n_layers']
+
+    print result['output']
+
+    words_in = result['input'].split()
+    words_out = result['output'].split()
+    n_in = len(words_in)
+    n_out = len(words_out)
+    dim = result.get('dim', len(kw_ret['input_gates_list'][0][0]))
+
+    n_gates, n_inner_gates = len(Gates), len(InnerGates)
+
+    def _saturation_plot(gate_name):
+        left_count = [[0 for _ in xrange(dim)] for _ in xrange(n_layers)]
+        right_count = [[0 for _ in xrange(dim)] for _ in xrange(n_layers)]
+        for step, gate_layers in enumerate(kw_ret[gate_name]):
+            for layer_id, gate in enumerate(gate_layers):
+                for i, value in enumerate(gate):
+                    if value <= 0.1:
+                        left_count[layer_id][i] += 1
+                    elif value >= 0.9:
+                        right_count[layer_id][i] += 1
+
+        for layer_id in xrange(n_layers):
+            # FIXME: add small perturbation for clearer plot of points at the same location.
+            xs = [r * 1.0 / n_out + np.random.uniform(-0.01, 0.01) for r in right_count[layer_id]]
+            ys = [l * 1.0 / n_out + np.random.uniform(-0.01, 0.01) for l in left_count[layer_id]]
+            plt.scatter(xs, ys, label='Layer {}'.format(layer_id))
+
+        plt.title(gate_name)
+        plt.plot([0.0, 1.0], [1.0, 0.0], color='k')
+        plt.xlim(xmin=0.0, xmax=1.0)
+        plt.ylim(ymin=0.0, ymax=1.0)
+        plt.xlabel('fraction right saturated')
+        plt.ylabel('fraction left saturated')
+        plt.legend()
+
+    for i, gate_name in enumerate(InnerGates):
+        plt.subplot('1{}{}'.format(n_inner_gates, i + 1))
+        _saturation_plot(gate_name)
+
+    plt.show()
 
 
 def real_main(model_name, dictionary, dictionary_target, source_file, args, k=5, normalize=False, chr_level=False):
@@ -304,6 +362,8 @@ def main():
                         help='The source input path')
     parser.add_argument('-N', '--number', type=int, default=1, dest='test_number',
                         help='Number of test sentences, default is %(default)s')
+    parser.add_argument('-i', '--index', type=int, default=6, dest='index',
+                        help='Index of plot sentences, default is %(default)s')
     parser.add_argument('-D', '--dataset', type=str, default=None, dest='dataset',
                         help='Set some default datasets (dict and test file)')
     parser.add_argument('-o', '--out_mode', action='store', type=str, default=None, dest='out_mode',
