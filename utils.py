@@ -164,6 +164,14 @@ def all_reduce_params(sent_shared_params, rec_buffers, average_cnt = 1):
         gpu2cpu_cp_time += time.time() - cp_start
     return commu_time,  gpu2cpu_cp_time
 
+def all_reduce_params_nccl(nccl_commu, sent_shared_params):
+    commu_time = 0.0
+    for sent_model in sent_shared_params:
+        commu_start = time.time()
+        nccl_commu.all_reduce(src = sent_model, op= '+', dest= sent_model)
+        commu_time += time.time() - commu_start
+    return commu_time
+
 def load_params(path, params):
     """Load parameters
 
@@ -284,6 +292,21 @@ def apply_gradient_clipping(clip_c, grads, clip_shared=None):
         grads = new_grads
     return grads, g2
 
+def clip_grad_remove_nan(grads, clip_c_shared, mt_tparams):
+    g2 = 0.
+    for g in grads:
+        g2 += (g*g).sum()
+    not_finite = tensor.or_(tensor.isnan(g2), tensor.isinf(g2))
+    if clip_c_shared.get_value() > 0.:
+        new_grads = []
+        for g, p in zip(grads, itemlist(mt_tparams)):
+            tmpg = tensor.switch(g2 > (clip_c_shared*clip_c_shared),
+                                 g / tensor.sqrt(g2) * clip_c_shared,
+                                 g)
+            new_grads.append(tensor.switch(not_finite, np.float32(.1)*p, tmpg))
+        return new_grads, tensor.sqrt(g2)
+    else:
+        return grads, tensor.sqrt(g2)
 
 def l2_regularization(cost, tparams, decay_c):
     """Apply L2 regularization on weights."""
@@ -646,6 +669,7 @@ __all__ = [
     'init_tparams',
     'sync_tparams',
     'all_reduce_params',
+    'all_reduce_params_nccl',
     'load_params',
     'load_embedding',
     'orthogonal_weight',
@@ -654,6 +678,7 @@ __all__ = [
     'concatenate',
     'average',
     'apply_gradient_clipping',
+    'clip_grad_remove_nan',
     'l2_regularization',
     'regularize_alpha_weights',
     'prepare_data',

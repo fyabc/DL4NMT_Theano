@@ -96,6 +96,8 @@ def main():
 
     parser.add_argument('--distribute', action = 'store', metavar ='type', dest = 'dist_type', type = str, default= None,
                         help = 'The distribution version, default is None (singe GPU mode), candiates are "mv", "mpi_reduce"')
+    parser.add_argument('-nccl', action="store_true", default=False, dest='reload',
+                        help='Use NCCL in distributed mode, default to False, set to True')
     parser.add_argument('--syncbatch', action='store', metavar='batch', dest='sync_batch', type=int, default=1,
                         help='Sync batch frequency, default is 1')
     parser.add_argument('--recover_lr_iter', action='store', dest='dist_recover_lr', type = int, default=10000,
@@ -244,6 +246,7 @@ def main():
         sync_models = args.sync_models,
 
         fine_tune_patience=args.fine_tune_patience,
+        nccl= args.nccl
     )
 
 

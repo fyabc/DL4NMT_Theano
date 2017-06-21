@@ -135,6 +135,7 @@ def train(dim_word=100,  # word vector dimensionality
           task='en-fr',
 
           fine_tune_patience=8,
+          nccl = False
           ):
     model_options = locals().copy()
 
@@ -152,6 +153,19 @@ def train(dim_word=100,  # word vector dimensionality
         mpi_communicator = MPI.COMM_WORLD
         worker_id = mpi_communicator.Get_rank()
         workers_cnt = mpi_communicator.Get_size()
+
+        if nccl:
+            from pygpu import collectives as gpucoll
+            from theano import gpuarray as theanoga
+
+            gpuctx = theanoga.get_context(None)
+            _local_id = gpucoll.GpuCommCliqueId(gpuctx)
+            _local_id.comm_id = bytearray(str(worker_id).encode('utf-8'))
+
+            _local_size = workers_cnt
+            _local_rank = worker_id
+            _local_comm = gpucoll.GpuComm(_local_id, _local_size, _local_rank)
+
     if dist_type and not sync_models:
         sync_batch = 1 #force sync gradient in every mini-batch
 
@@ -273,7 +287,7 @@ Start Time = {}
     grads = tensor.grad(cost, wrt=itemlist(model.P))
 
     clip_shared = theano.shared(np.array(clip_c, dtype=fX), name='clip_shared')
-    grads, g2 = apply_gradient_clipping(clip_c, grads, clip_shared)
+    grads, g2 = clip_grad_remove_nan(grads, clip_shared, model.P)
 
     # compile the optimizer, the actual computational graph is compiled here
     lr = tensor.scalar(name='lr')
@@ -368,7 +382,10 @@ Start Time = {}
                         commu_time += commu_time_delta
                         gpucpu_cp_time += cp_time_delta
                 else: #sync gradients
-                    commu_time, gpucpu_cp_time = all_reduce_params(grads_shared, rec_grads)
+                    if not nccl:
+                        commu_time, gpucpu_cp_time = all_reduce_params(grads_shared, rec_grads)
+                    else:
+                        commu_time = all_reduce_params_nccl(_local_comm, grads_shared)
 
                 reduce_time = time.time() - reduce_start
                 commu_time_sum += commu_time
