@@ -166,11 +166,41 @@ def all_reduce_params(sent_shared_params, rec_buffers, average_cnt = 1):
 
 def all_reduce_params_nccl(nccl_commu, sent_shared_params):
     commu_time = 0.0
+    gpu2gpu_cp_time = 0.0
+
     for sent_model in sent_shared_params:
+        cp_start = time.time()
+        model_val = sent_model.get_value(borrow = True, return_internal_type=True)
+        gpu2gpu_cp_time += time.time() - cp_start
+
         commu_start = time.time()
-        nccl_commu.all_reduce(src = sent_model, op= '+', dest= sent_model)
+        get_value = nccl_commu.all_reduce(model_val, op= "sum")
         commu_time += time.time() - commu_start
-    return commu_time
+
+        cp_start = time.time()
+        sent_model.set_value(get_value)
+        gpu2gpu_cp_time += time.time() - cp_start
+
+    return commu_time, gpu2gpu_cp_time
+
+def init_nccl_env(mpi_comm):
+    from pygpu import collectives as gpucoll
+    from theano import gpuarray as theanoga
+
+    gpu_name = None
+    gpu_ctx = theanoga.get_context(gpu_name)
+    commid = gpucoll.GpuCommCliqueId(gpu_ctx)
+    mpi_rank = mpi_comm.Get_rank()
+    mpi_size = mpi_comm.Get_size()
+
+    data = commid.comm_id if mpi_rank == 0 else None
+    data = mpi_comm.bcast(data, root = 0)
+    commid.comm_id = data
+
+    comm = gpucoll.GpuComm(commid, mpi_size, mpi_rank)
+    print('Init pygpu OK, rank %d' % mpi_rank)
+    sys.stdout.flush()
+    return comm
 
 def load_params(path, params):
     """Load parameters
@@ -668,6 +698,7 @@ __all__ = [
     '_p',
     'init_tparams',
     'sync_tparams',
+    'init_nccl_env',
     'all_reduce_params',
     'all_reduce_params_nccl',
     'load_params',

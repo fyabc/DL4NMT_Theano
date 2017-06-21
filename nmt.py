@@ -155,16 +155,7 @@ def train(dim_word=100,  # word vector dimensionality
         workers_cnt = mpi_communicator.Get_size()
 
         if nccl:
-            from pygpu import collectives as gpucoll
-            from theano import gpuarray as theanoga
-
-            gpuctx = theanoga.get_context(None)
-            _local_id = gpucoll.GpuCommCliqueId(gpuctx)
-            _local_id.comm_id = bytearray(str(worker_id).encode('utf-8'))
-
-            _local_size = workers_cnt
-            _local_rank = worker_id
-            _local_comm = gpucoll.GpuComm(_local_id, _local_size, _local_rank)
+            nccl_comm = init_nccl_env(mpi_communicator)
 
     if dist_type and not sync_models:
         sync_batch = 1 #force sync gradient in every mini-batch
@@ -385,14 +376,14 @@ Start Time = {}
                     if not nccl:
                         commu_time, gpucpu_cp_time = all_reduce_params(grads_shared, rec_grads)
                     else:
-                        commu_time = all_reduce_params_nccl(_local_comm, grads_shared)
+                        commu_time, gpucpu_cp_time = all_reduce_params_nccl(nccl_comm, grads_shared)
 
                 reduce_time = time.time() - reduce_start
                 commu_time_sum += commu_time
                 reduce_time_sum += reduce_time
                 cp_time_sum += gpucpu_cp_time
 
-                print '@Worker = {}, Reduce time = {:.5f}, Commu time = {:.5f}, GPUCPU time = {:.5f}'.format(
+                print '@Worker = {}, Reduce time = {:.5f}, Commu time = {:.5f}, Copy time = {:.5f}'.format(
                     worker_id, reduce_time_sum / effective_uidx, commu_time_sum / effective_uidx, cp_time_sum /effective_uidx)
 
 
