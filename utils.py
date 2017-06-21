@@ -14,7 +14,12 @@ import random
 import gzip
 import sys
 import time
-from mpi4py import MPI
+
+# For debug:
+try:
+    from mpi4py import MPI
+except:
+    pass
 
 import theano
 import theano.tensor as tensor
