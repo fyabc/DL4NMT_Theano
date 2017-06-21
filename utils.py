@@ -14,7 +14,6 @@ import random
 import gzip
 import sys
 import time
-from mpi4py import MPI
 
 import theano
 import theano.tensor as tensor
@@ -145,6 +144,7 @@ def sync_tparams(tparams, dup_tparams):
         tparams[kk].set_value(np.array([vv.get_value()[0]], dtype=fX).reshape((1,)))
 
 def all_reduce_params(sent_shared_params, rec_buffers, average_cnt = 1):
+    from mpi4py import MPI
     mpi_communicator = MPI.COMM_WORLD
     commu_time = 0.0
     gpu2cpu_cp_time = 0.0
