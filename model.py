@@ -551,10 +551,6 @@ class NMTModel(object):
         kw_ret = {}
         have_kw_ret = bool(kwargs)
 
-        ret_memory = kwargs.pop('ret_memory', False)
-        if ret_memory:
-            kw_ret['memory'] = []
-
         get_gates = kwargs.pop('get_gates', False)
         if get_gates:
             kw_ret['input_gates_list'] = []
@@ -563,6 +559,8 @@ class NMTModel(object):
             kw_ret['input_gates_att_list'] = []
             kw_ret['forget_gates_att_list'] = []
             kw_ret['output_gates_att_list'] = []
+            kw_ret['state_list'] = []
+            kw_ret['memory_list'] = []
 
         unit = self.O['unit']
 
@@ -600,9 +598,6 @@ class NMTModel(object):
             if 'lstm' in unit:
                 next_memory = ret[3]
 
-                if ret_memory:
-                    kw_ret['memory'].append(next_memory)
-
             if get_gates:
                 kw_ret['input_gates_list'].append(ret[-6])
                 kw_ret['forget_gates_list'].append(ret[-5])
@@ -610,6 +605,9 @@ class NMTModel(object):
                 kw_ret['input_gates_att_list'].append(ret[-3])
                 kw_ret['forget_gates_att_list'].append(ret[-2])
                 kw_ret['output_gates_att_list'].append(ret[-1])
+                kw_ret['state_list'].append(next_state)
+                if 'lstm' in unit:
+                    kw_ret['memory_list'].append(ret[3])
 
             if stochastic:
                 if argmax:

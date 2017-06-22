@@ -14,7 +14,6 @@ import random
 import gzip
 import sys
 import time
-from mpi4py import MPI
 
 import theano
 import theano.tensor as tensor
@@ -145,6 +144,7 @@ def sync_tparams(tparams, dup_tparams):
         tparams[kk].set_value(np.array([vv.get_value()[0]], dtype=fX).reshape((1,)))
 
 def all_reduce_params(sent_shared_params, rec_buffers, average_cnt = 1):
+    from mpi4py import MPI
     mpi_communicator = MPI.COMM_WORLD
     commu_time = 0.0
     gpu2cpu_cp_time = 0.0
@@ -284,6 +284,21 @@ def apply_gradient_clipping(clip_c, grads, clip_shared=None):
         grads = new_grads
     return grads, g2
 
+def clip_grad_remove_nan(grads, clip_c_shared, mt_tparams):
+    g2 = 0.
+    for g in grads:
+        g2 += (g*g).sum()
+    not_finite = tensor.or_(tensor.isnan(g2), tensor.isinf(g2))
+    if clip_c_shared.get_value() > 0.:
+        new_grads = []
+        for g, p in zip(grads, itemlist(mt_tparams)):
+            tmpg = tensor.switch(g2 > (clip_c_shared*clip_c_shared),
+                                 g / tensor.sqrt(g2) * clip_c_shared,
+                                 g)
+            new_grads.append(tensor.switch(not_finite, np.float32(.1)*p, tmpg))
+        return new_grads, tensor.sqrt(g2)
+    else:
+        return grads, tensor.sqrt(g2)
 
 def l2_regularization(cost, tparams, decay_c):
     """Apply L2 regularization on weights."""
@@ -511,17 +526,18 @@ def get_adadelta_imm_data(optimizer, given_imm, saveto):
         if os.path.exists(given_imm_filename):
             message('Loading adadelta immediate data')
             with np.load(given_imm_filename) as data:
-                data_size = len(data.files)
+                data = data['arr_0']
+                data_size = len(data)
                 if optimizer == 'adadelta':
                     return [
-                        [data['arr_{}'.format(i)] for i in range(0, data_size // 2)],
-                        [data['arr_{}'.format(i)] for i in range(data_size // 2, data_size)],
+                        [data[i] for i in range(0, data_size // 2)],
+                        [data[i] for i in range(data_size // 2, data_size)],
                     ]
                 elif optimizer == 'adam':
                     return [
-                        data['arr_0'],
-                        [data['arr_{}'.format(i)] for i in range(1, data_size // 2 + 1)],
-                        [data['arr_{}'.format(i)] for i in range(data_size // 2 + 1, data_size)],
+                        data[0],
+                        [data[i] for i in range(1, data_size // 2 + 1)],
+                        [data[i] for i in range(data_size // 2 + 1, data_size)],
                     ]
                 else:
                     pass
@@ -668,4 +684,5 @@ __all__ = [
     'get_adadelta_imm_data',
     'dump_adadelta_imm_data',
     'load_shuffle_text_iterator',
+    'clip_grad_remove_nan'
 ]
