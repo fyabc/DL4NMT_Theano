@@ -526,17 +526,18 @@ def get_adadelta_imm_data(optimizer, given_imm, saveto):
         if os.path.exists(given_imm_filename):
             message('Loading adadelta immediate data')
             with np.load(given_imm_filename) as data:
-                data_size = len(data.files)
+                data = data['arr_0']
+                data_size = len(data)
                 if optimizer == 'adadelta':
                     return [
-                        [data['arr_{}'.format(i)] for i in range(0, data_size // 2)],
-                        [data['arr_{}'.format(i)] for i in range(data_size // 2, data_size)],
+                        [data[i] for i in range(0, data_size // 2)],
+                        [data[i] for i in range(data_size // 2, data_size)],
                     ]
                 elif optimizer == 'adam':
                     return [
-                        data['arr_0'],
-                        [data['arr_{}'.format(i)] for i in range(1, data_size // 2 + 1)],
-                        [data['arr_{}'.format(i)] for i in range(data_size // 2 + 1, data_size)],
+                        data[0],
+                        [data[i] for i in range(1, data_size // 2 + 1)],
+                        [data[i] for i in range(data_size // 2 + 1, data_size)],
                     ]
                 else:
                     pass
