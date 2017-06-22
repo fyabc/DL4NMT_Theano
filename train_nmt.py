@@ -2,8 +2,8 @@ import argparse
 import sys
 import os
 
-from constants import Datasets
-from gpu_manager import get_gpu_usage
+from libs.constants import Datasets
+from libs.gpu_manager import get_gpu_usage
 
 
 def main():
@@ -150,7 +150,7 @@ def main():
     print args
     sys.stdout.flush()
 
-     # Init multiverso or mpi and set theano flags.
+    # Init multiverso or mpi and set theano flags.
     if args.dist_type == 'mv':
         try:
             import multiverso as mv
@@ -162,7 +162,7 @@ def main():
         worker_id = mv.worker_id()
         workers_cnt = mv.workers_num()
     elif args.dist_type == 'mpi_reduce':
-        from mpi4py import MPI
+        from libs.mpi4py import MPI
         communicator = MPI.COMM_WORLD
         worker_id = communicator.Get_rank()
         workers_cnt = communicator.Get_size()
@@ -171,7 +171,7 @@ def main():
         available_gpus = get_gpu_usage(workers_cnt)
         gpu_maps_info = {idx: idx for idx in available_gpus}
         if args.gpu_map_file:
-            for line in open(args.gpu_map_file, 'r'):
+            for line in open(os.path.join('gpu_map', args.gpu_map_file), 'r'):
                 phy_id, theano_id = line.split()
                 gpu_maps_info[int(phy_id)] = int(theano_id)
         theano_id = gpu_maps_info[available_gpus[worker_id]]
@@ -179,7 +179,7 @@ def main():
         os.environ['THEANO_FLAGS'] = 'device=gpu{},floatX=float32'.format(theano_id)
         sys.stdout.flush()
 
-    from nmt import train
+    from libs.nmt import train
 
     train(
         saveto=args.model_file,

@@ -8,9 +8,9 @@ from pprint import pprint
 import numpy as np
 import theano
 
-from config import DefaultOptions
-from utils_fine_tune import load_translate_data, seqs2words, translate, translate_block
-from model import build_and_init_model
+from libs.config import DefaultOptions
+from libs.model import build_and_init_model
+from libs.utility.translate import load_translate_data, seqs2words, translate, translate_block
 
 __author__ = 'fyabc'
 

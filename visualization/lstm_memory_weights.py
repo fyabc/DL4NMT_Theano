@@ -3,24 +3,24 @@
 
 """Visualize memory weights of LSTM models."""
 
-import sys
-import os
-import cPickle as pkl
-from pprint import pprint
 import argparse
+import cPickle as pkl
+import os
+import sys
+from pprint import pprint
 
-import theano
-import numpy as np
-from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
-import matplotlib.pyplot as plt
 import matplotlib.cm as cm
+import matplotlib.pyplot as plt
+import numpy as np
+import theano
+from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from config import DefaultOptions
-from model import build_and_init_model
-from utils_fine_tune import load_translate_data
-from constants import Datasets
+from libs.config import DefaultOptions
+from libs.model import build_and_init_model
+from libs.utility.translate import load_translate_data
+from libs.constants import Datasets
 
 __author__ = 'fyabc'
 

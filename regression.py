@@ -25,11 +25,11 @@ import theano
 import theano.tensor as T
 import numpy as np
 
-from model import NMTModel, ParameterInitializer
-from config import DefaultOptions
-from data_iterator import TextIterator
-from utils import *
-from optimizers import Optimizers
+from libs.config import DefaultOptions
+from libs.model import NMTModel, ParameterInitializer
+from libs.utility.data_iterator import TextIterator
+from libs.utility.optimizers import Optimizers
+from libs.utility.utils import *
 
 __author__ = 'fyabc'
 

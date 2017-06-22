@@ -36,8 +36,8 @@ perl truecase.perl --model %model2% < data/test/%test2% > data/test/tc_%test2%
 
 @rem Extract new dictionary.
 if "%single_dict%" == "" (
-    python build_dictionary.py tc_%train1%
-    python build_dictionary.py tc_%train2%
+    python scripts/build_dictionary.py tc_%train1%
+    python scripts/build_dictionary.py tc_%train2%
 ) else (
-    python build_dictionary.py tc_%train1% tc_%train2% -o %single_dict%
+    python scripts/build_dictionary.py tc_%train1% tc_%train2% -o %single_dict%
 )
