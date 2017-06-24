@@ -192,9 +192,9 @@ def build_regression(args, top_options):
     # Build model.
     if only_encoder:
         print('Building model...', end='')
-        input_, context_old = old_model.input_to_context()
+        input_, context_old, _ = old_model.input_to_context()
         x, x_mask, y, y_mask = input_
-        _, context_new = new_model.input_to_context(input_)
+        _, context_new, _ = new_model.input_to_context(input_)
         print('Done')
 
         # Build output and MSE loss.

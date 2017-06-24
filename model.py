@@ -320,6 +320,8 @@ class NMTModel(object):
         :returns tuple of input list and output
         """
 
+        get_gates = kwargs.pop('get_gates', False)
+
         x, x_mask, y, y_mask = self.get_input() if given_input is None else given_input
 
         # For the backward rnn, we just need to invert x and x_mask
@@ -332,10 +334,10 @@ class NMTModel(object):
         src_embedding_r = self.embedding(x_r, n_timestep, n_samples)
 
         # Encoder
-        context = self.encoder(src_embedding, src_embedding_r, x_mask, x_mask_r,
-                               dropout_params=kwargs.pop('dropout_params', None))
+        context, kw_ret = self.encoder(src_embedding, src_embedding_r, x_mask, x_mask_r,
+                                       dropout_params=kwargs.pop('dropout_params', None), get_gates=get_gates)
 
-        return [x, x_mask, y, y_mask], context
+        return [x, x_mask, y, y_mask], context, kw_ret
 
     def input_to_decoder_context(self, given_input=None):
         """Build the part of the model that from input to context vector of decoder.
@@ -345,7 +347,7 @@ class NMTModel(object):
         :return: tuple of input list and output
         """
 
-        (x, x_mask, y, y_mask), context = self.input_to_context(given_input)
+        (x, x_mask, y, y_mask), context, _ = self.input_to_context(given_input)
 
         n_timestep, n_timestep_tgt, n_samples = self.input_dimensions(x, y)
 
@@ -372,7 +374,7 @@ class NMTModel(object):
         return [x, x_mask, y, y_mask], hidden_decoder, context_decoder
 
     def init_tparams(self, np_parameters):
-        self.P, self.dupP = init_tparams(np_parameters, use_mv= self.O['dist_type'] == 'mv')
+        self.P, self.dupP = init_tparams(np_parameters, use_mv=self.O['dist_type'] == 'mv')
 
     def sync_tparams(self):
         sync_tparams(self.P, self.dupP)
@@ -392,7 +394,7 @@ class NMTModel(object):
         else:
             dropout_params = None
 
-        (x, x_mask, y, y_mask), context = self.input_to_context(dropout_params=dropout_params)
+        (x, x_mask, y, y_mask), context, _ = self.input_to_context(dropout_params=dropout_params)
 
         n_timestep, n_timestep_tgt, n_samples = self.input_dimensions(x, y)
 
@@ -436,8 +438,75 @@ class NMTModel(object):
 
         return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost, context_mean
 
+    def build_context(self, **kwargs):
+        """Build function to get encoder context (or encoder gates).
+
+        :param kwargs:
+        :return: f_context
+            inputs: x, x_mask
+            outputs: context,
+                [if get_gates:
+                    kw_ret_encoder['input_gates_first'],
+                    kw_ret_encoder['forget_gates_first'],
+                    kw_ret_encoder['output_gates_first'],
+                    kw_ret_encoder['input_gates_first_r'],
+                    kw_ret_encoder['forget_gates_first_r'],
+                    kw_ret_encoder['output_gates_first_r'],
+                    [if n_encoder_layers >= 2:
+                        T.stack(kw_ret_encoder['input_gates']),
+                        T.stack(kw_ret_encoder['forget_gates']),
+                        T.stack(kw_ret_encoder['output_gates']),
+                    ]
+                ]
+        """
+        get_gates = kwargs.pop('get_gates', False)
+
+        [x, x_mask, y, y_mask], context, kw_ret_encoder = self.input_to_context(get_gates=get_gates)
+
+        inps = [x, x_mask]
+        outs = [context]
+        if get_gates:
+            # Encoder gates
+            encoder_gates = [
+                kw_ret_encoder['input_gates_first'],
+                kw_ret_encoder['forget_gates_first'],
+                kw_ret_encoder['output_gates_first'],
+                kw_ret_encoder['input_gates_first_r'],
+                kw_ret_encoder['forget_gates_first_r'],
+                kw_ret_encoder['output_gates_first_r'],
+            ]
+            if self.O['n_encoder_layers'] >= 2:
+                encoder_gates.extend([
+                    T.stack(kw_ret_encoder['input_gates']),
+                    T.stack(kw_ret_encoder['forget_gates']),
+                    T.stack(kw_ret_encoder['output_gates']),
+                ])
+            outs.extend(encoder_gates)
+
+        f_context = theano.function(inps, outs, name='f_context', profile=profile)
+
+        return f_context
+
     def build_sampler(self, **kwargs):
-        """Build a sampler."""
+        """Build a sampler.
+
+        :returns f_init, f_next
+            f_init: Theano function
+                inputs: x, [if batch mode: x_mask]
+                outputs: init_state, ctx
+
+            f_next: Theano function
+                inputs: y, ctx, [if batch mode: x_mask], init_state, [if LSTM unit: init_memory]
+                outputs: next_probs, next_sample, hiddens_without_dropout, [if LSTM unit: memory_out],
+                    [if get_gates:
+                        T.stack(kw_ret['input_gates']),
+                        T.stack(kw_ret['forget_gates']),
+                        T.stack(kw_ret['output_gates']),
+                        kw_ret['input_gates_att'],
+                        kw_ret['forget_gates_att'],
+                        kw_ret['output_gates_att'],
+                    ]
+        """
 
         batch_mode = kwargs.pop('batch_mode', False)
         trng = kwargs.pop('trng', RandomStreams(1234))
@@ -460,7 +529,7 @@ class NMTModel(object):
         src_embedding_r = self.embedding(xr, n_timestep, n_samples)
 
         # Encoder
-        ctx = self.encoder(
+        ctx, _ = self.encoder(
             src_embedding, src_embedding_r,
             x_mask if batch_mode else None, xr_mask if batch_mode else None,
             dropout_params=None,
@@ -894,7 +963,7 @@ class NMTModel(object):
 
         return (context * x_mask[:, :, None]).sum(0) / x_mask.sum(0)[:, None]
 
-    def encoder(self, src_embedding, src_embedding_r, x_mask, xr_mask, dropout_params=None):
+    def encoder(self, src_embedding, src_embedding_r, x_mask, xr_mask, dropout_params=None, **kwargs):
         """GRU encoder layer: source embedding -> encoder context
         
         :return Context vector: Theano tensor
@@ -905,6 +974,15 @@ class NMTModel(object):
         n_layers = self.O['n_encoder_layers']
         residual = self.O['residual_enc']
         use_zigzag = self.O['use_zigzag']
+        # FIXME: Add get_gates for only common mode (bidirectional only at first layer) here.
+        get_gates = kwargs.pop('get_gates', False)
+
+        kw_ret = {}
+
+        if get_gates:
+            kw_ret['input_gates'] = []
+            kw_ret['forget_gates'] = []
+            kw_ret['output_gates'] = []
 
         input_ = src_embedding
         input_r = src_embedding_r
@@ -916,10 +994,21 @@ class NMTModel(object):
         # First layer (bidirectional)
         inputs.append((input_, input_r))
 
-        h_last = get_build(unit)(self.P, inputs[-1][0], self.O, prefix='encoder', mask=x_mask, layer_id=0,
-                                 dropout_params=dropout_params)[0]
-        h_last_r = get_build(unit)(self.P, inputs[-1][1], self.O, prefix='encoder_r', mask=xr_mask,
-                                   layer_id=0, dropout_params=dropout_params)[0]
+        layer_out = get_build(unit)(self.P, inputs[-1][0], self.O, prefix='encoder', mask=x_mask, layer_id=0,
+                                    dropout_params=dropout_params, get_gates=get_gates)
+        h_last, kw_ret_layer = layer_out[0], layer_out[-1]
+        if get_gates:
+            kw_ret['input_gates_first'] = kw_ret_layer['input_gates']
+            kw_ret['forget_gates_first'] = kw_ret_layer['forget_gates']
+            kw_ret['output_gates_first'] = kw_ret_layer['output_gates']
+
+        layer_out_r = get_build(unit)(self.P, inputs[-1][1], self.O, prefix='encoder_r', mask=xr_mask,
+                                      layer_id=0, dropout_params=dropout_params, get_gates=get_gates)
+        h_last_r, kw_ret_layer = layer_out_r[0], layer_out_r[-1]
+        if get_gates:
+            kw_ret['input_gates_first_r'] = kw_ret_layer['input_gates']
+            kw_ret['forget_gates_first_r'] = kw_ret_layer['forget_gates']
+            kw_ret['output_gates_first_r'] = kw_ret_layer['output_gates']
 
         if self.O['encoder_many_bidirectional']:
             # First layer output
@@ -993,8 +1082,14 @@ class NMTModel(object):
                         x_mask_ = xr_mask
 
                 # FIXME: mask modified from None to x_mask
-                h_last = get_build(self.O['unit'])(self.P, inputs[-1], self.O, prefix='encoder', mask=x_mask_,
-                                                   layer_id=layer_id, dropout_params=dropout_params)[0]
+                layer_out = get_build(self.O['unit'])(
+                    self.P, inputs[-1], self.O, prefix='encoder', mask=x_mask_,
+                    layer_id=layer_id, dropout_params=dropout_params, get_gates=get_gates)
+                h_last, kw_ret_layer = layer_out[0], layer_out[-1]
+                if get_gates:
+                    kw_ret['input_gates'].append(kw_ret_layer['input_gates'])
+                    kw_ret['forget_gates'].append(kw_ret_layer['forget_gates'])
+                    kw_ret['output_gates'].append(kw_ret_layer['output_gates'])
 
                 outputs.append(h_last)
 
@@ -1004,7 +1099,7 @@ class NMTModel(object):
             else:
                 context = outputs[-1]
 
-        return context
+        return context, kw_ret
 
     def decoder(self, tgt_embedding, y_mask, init_state, context, x_mask,
                 dropout_params=None, one_step=False, init_memory=None, **kwargs):

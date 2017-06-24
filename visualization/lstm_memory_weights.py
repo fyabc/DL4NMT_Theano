@@ -21,6 +21,7 @@ from config import DefaultOptions
 from model import build_and_init_model
 from utils_fine_tune import load_translate_data
 from constants import Datasets
+from utils import prepare_data_x
 
 __author__ = 'fyabc'
 
@@ -93,6 +94,24 @@ def translate_sentence(src_seq, build_result, k, normalize):
     return sample[sidx], kw_ret
 
 
+def get_encoder_gate_weights(args, model, options, inputs):
+    x, x_mask = prepare_data_x(inputs, maxlen=options['maxlen'])
+
+    print 'Building context...',
+    f_context = model.build_context(get_gates=True)
+    print 'Done'
+
+    outputs = f_context(x, x_mask)
+
+    # todo:
+
+    results = []
+
+    print '$', len(outputs)
+
+    exit(0)
+
+
 def get_gate_weights(model_name, dictionary, dictionary_target, source_file, args,
                      k=5, normalize=False, chr_level=False):
     # load model model_options
@@ -131,11 +150,15 @@ def get_gate_weights(model_name, dictionary, dictionary_target, source_file, arg
     print 'Done'
 
     print 'Building model...',
+    model, _ = build_and_init_model(model_name, options, build=False)
+    print 'Done'
+
+    if args.encoder:
+        return get_encoder_gate_weights(args, model, options, inputs)
+
+    print 'Building sampler...'
     trng = RandomStreams(1234)
     use_noise = theano.shared(np.float32(0.))
-
-    model, _ = build_and_init_model(model_name, options, build=False)
-
     f_init, f_next = model.build_sampler(
         trng=trng, use_noise=use_noise, batch_mode=False, get_gates=True,
     )
@@ -354,12 +377,16 @@ def main():
                         help='Use normalize, default to False, set to True')
     parser.add_argument('-c', action="store_true", default=False,
                         help='Char level model, default to False, set to True')
+    parser.add_argument('-e', '--encoder', action='store_true', default=False, dest='encoder',
+                        help='Get encoder weights, default to False, set to True')
     parser.add_argument('--dic1', type=str, dest='dictionary_source',
                         help='The source dict path')
     parser.add_argument('--dic2', type=str, dest='dictionary_target',
                         help='The target dict path')
     parser.add_argument('--src', type=str, dest='source',
                         help='The source input path')
+    parser.add_argument('--tgt', type=str, dest='target',
+                        help='The target input path')
     parser.add_argument('-N', '--number', type=int, default=1, dest='test_number',
                         help='Number of test sentences, default is %(default)s')
     parser.add_argument('-i', '--index', type=int, default=6, dest='index',
@@ -383,7 +410,13 @@ def main():
 
         args.dictionary_source = os.path.join('data', 'dic', dataset[8])
         args.dictionary_target = os.path.join('data', 'dic', dataset[9])
-        args.source = os.path.join('data', 'test', dataset[6])
+
+        if args.encoder:
+            # [NOTE]: In encoder, input and output sentences are from dev set, not test set.
+            args.source = os.path.join('data', 'dev', dataset[4])
+            args.target = os.path.join('data', 'dev', dataset[5])
+        else:
+            args.source = os.path.join('data', 'test', dataset[6])
 
     real_main(args.model, args.dictionary_source, args.dictionary_target, args.source, args,
               k=args.k, normalize=args.n, chr_level=args.c)
