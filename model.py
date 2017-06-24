@@ -467,7 +467,7 @@ class NMTModel(object):
         )
 
         # Get the input for decoder rnn initializer mlp
-        ctx_mean = ctx.mean(0)
+        ctx_mean = self.get_context_mean(ctx, x_mask) if batch_mode else ctx.mean(0)
         init_state = self.feed_forward(ctx_mean, prefix='ff_state', activation=tanh)
 
         print('Building f_init...', end='')
