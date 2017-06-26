@@ -62,7 +62,7 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
     else:
         word_dict, word_idict, word_idict_trg, all_src_blocks, m_block = load_translate_data(
             dictionary, dictionary_target, source_file,
-            batch_mode=True, chr_level=chr_level, n_words_src=options['n_words_src'],
+            batch_mode=True, chr_level=chr_level, n_words_src=options['n_words_src'],batch_size= batch_size,
         )
 
         print 'Translating ', source_file, '...'

@@ -118,7 +118,7 @@ Datasets = {
     'zh-en_tc': [
         'tc_zh-en.1.25M.zh', 'tc_zh-en.1.25M.en',
         'small_tc_zh-en.1.25M.zh', 'small_tc_zh-en.1.25M.en',
-        'tc_Nist2003.chs.word.max50.snt', 'tc_Nist2003.chs.word.max50.snt',
+        'tc_Nist2003.chs.word.max50.snt', 'tc_Nist2003.enu.word.max50.snt',
         '', '',
         'tc_zh-en.1.25M.zh.pkl', 'tc_zh-en.1.25M.en.pkl',
     ],
