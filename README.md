@@ -84,3 +84,8 @@ truecase的test脚本暂时还没有，根据[这里](http://www.statmt.org/mose
     （就是validation points），dev 集上的bleu仍然没涨，那么就进行halve lr/clip value。所以你需要加一个subprocess，就是get dev集上的bleu score。
 所以也就是说以后我们不用--lr_discount 这个参数，而是改成一个类似lr_discount_patience这样的参数，默认可以是10，
 然后在get dev bleu的时候，为了快速计算可以用beam_size=2。
+
+
+## NOTES
+
+Scripts in `scripts` must be call at root directory of the project (the directory of this README).

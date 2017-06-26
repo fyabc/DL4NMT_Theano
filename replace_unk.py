@@ -3,13 +3,14 @@
 
 import argparse
 import cPickle as pkl
-import theano
-import numpy as np
 
-from constants import Datasets
-from utils_fine_tune import get_bleu, de_bpe
-from utils import prepare_data
-from model import build_and_init_model
+import numpy as np
+import theano
+
+from libs.constants import Datasets
+from libs.model import build_and_init_model
+from libs.utility.translate import get_bleu, de_bpe
+from libs.utility.utils import prepare_data
 
 __author__ = 'fyabc'
 

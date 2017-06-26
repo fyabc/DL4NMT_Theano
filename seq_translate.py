@@ -7,7 +7,7 @@ import subprocess
 import operator
 import re
 
-from constants import Datasets
+from .constants import Datasets
 
 def get_bleu(ref_file, hyp_file):
     pl_output = subprocess.Popen(

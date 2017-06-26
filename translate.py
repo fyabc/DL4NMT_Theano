@@ -10,10 +10,10 @@ from pprint import pprint
 import numpy as np
 import theano
 
-from config import DefaultOptions
-from utils import load_params
-from utils_fine_tune import seqs2words, load_translate_data
-from model import NMTModel
+from libs.config import DefaultOptions
+from libs.model import NMTModel
+from libs.utility.translate import seqs2words, load_translate_data
+from libs.utility.utils import load_params
 
 
 def translate_model(queue, rqueue, pid, model_name, options, k, normalize):

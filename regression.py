@@ -25,11 +25,11 @@ import theano
 import theano.tensor as T
 import numpy as np
 
-from model import NMTModel, ParameterInitializer
-from config import DefaultOptions
-from data_iterator import TextIterator
-from utils import *
-from optimizers import Optimizers
+from libs.config import DefaultOptions
+from libs.model import NMTModel, ParameterInitializer
+from libs.utility.data_iterator import TextIterator
+from libs.utility.optimizers import Optimizers
+from libs.utility.utils import *
 
 __author__ = 'fyabc'
 
@@ -192,9 +192,9 @@ def build_regression(args, top_options):
     # Build model.
     if only_encoder:
         print('Building model...', end='')
-        input_, context_old = old_model.input_to_context()
+        input_, context_old, _ = old_model.input_to_context()
         x, x_mask, y, y_mask = input_
-        _, context_new = new_model.input_to_context(input_)
+        _, context_new, _ = new_model.input_to_context(input_)
         print('Done')
 
         # Build output and MSE loss.
