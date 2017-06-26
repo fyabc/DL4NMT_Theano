@@ -135,6 +135,7 @@ def train(dim_word=100,  # word vector dimensionality
           task='en-fr',
 
           fine_tune_patience=8,
+          nccl = False
           ):
     model_options = locals().copy()
 
@@ -152,6 +153,10 @@ def train(dim_word=100,  # word vector dimensionality
         mpi_communicator = MPI.COMM_WORLD
         worker_id = mpi_communicator.Get_rank()
         workers_cnt = mpi_communicator.Get_size()
+
+        if nccl:
+            nccl_comm = init_nccl_env(mpi_communicator)
+
     if dist_type and not sync_models:
         sync_batch = 1 #force sync gradient in every mini-batch
 
@@ -368,14 +373,17 @@ Start Time = {}
                         commu_time += commu_time_delta
                         gpucpu_cp_time += cp_time_delta
                 else: #sync gradients
-                    commu_time, gpucpu_cp_time = all_reduce_params(grads_shared, rec_grads)
+                    if not nccl:
+                        commu_time, gpucpu_cp_time = all_reduce_params(grads_shared, rec_grads)
+                    else:
+                        commu_time, gpucpu_cp_time = all_reduce_params_nccl(nccl_comm, grads_shared)
 
                 reduce_time = time.time() - reduce_start
                 commu_time_sum += commu_time
                 reduce_time_sum += reduce_time
                 cp_time_sum += gpucpu_cp_time
 
-                print '@Worker = {}, Reduce time = {:.5f}, Commu time = {:.5f}, GPUCPU time = {:.5f}'.format(
+                print '@Worker = {}, Reduce time = {:.5f}, Commu time = {:.5f}, Copy time = {:.5f}'.format(
                     worker_id, reduce_time_sum / effective_uidx, commu_time_sum / effective_uidx, cp_time_sum /effective_uidx)
 
             # do the update on parameters
