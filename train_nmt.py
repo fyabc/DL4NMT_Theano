@@ -157,7 +157,7 @@ def main():
         try:
             import multiverso as mv
         except ImportError:
-            import multiverso_ as mv
+            import libs.multiverso_ as mv
 
         # FIXME: This must before the import of theano!
         mv.init(sync=True)
