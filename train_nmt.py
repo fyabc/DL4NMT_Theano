@@ -113,6 +113,8 @@ def main():
                                            'each line is in the form physical_gpu_id\\theano_id')
     parser.add_argument('--ft_patience', action='store', metavar='N', dest='fine_tune_patience', type=int, default=-1,
                         help='Fine tune patience, default is %(default)s, set 8 to enable it')
+    parser.add_argument('--valid_freq', action='store', metavar='N', dest='valid_freq', type=int, default=5000,
+                        help='Validation frequency, default is 5000')
 
     args = parser.parse_args()
     print args
@@ -197,7 +199,7 @@ def main():
         valid_batch_size=128,
         dispFreq=1,
         saveFreq=args.save_freq,
-        validFreq=5000,  # Change it from 2500 to 5000 @ 6/11/2017
+        validFreq=args.valid_freq,
         datasets=('./data/train/{}'.format(args.train1),
                   './data/train/{}'.format(args.train2)),
         valid_datasets=('./data/dev/{}'.format(args.valid1),

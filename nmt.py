@@ -241,7 +241,6 @@ Start Time = {}
     inps = [x, x_mask, y, y_mask]
 
     print 'Building sampler'
-    # f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise)
     f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise, batch_mode=True)
 
     # before any regularizer
@@ -307,7 +306,11 @@ Start Time = {}
     best_p = None
     bad_counter = 0
     uidx = search_start_uidx(reload_, preload)
-    print 'uidx', uidx, 'l_rate', lrate
+    epoch_n_batches = get_epoch_batch_cnt(dataset_src, dataset_tgt, vocab_filenames, batch_size, maxlen, n_words_src, n_words)
+    start_epoch = uidx / epoch_n_batches
+    pass_batches = uidx % epoch_n_batches
+
+    print 'uidx', uidx, 'l_rate', lrate, 'n_batches', epoch_n_batches, 'start_epoch', start_epoch, 'pass_batches', pass_batches
     start_uidx = uidx
 
     if dump_before_train:
@@ -324,8 +327,9 @@ Start Time = {}
     reduce_time_sum=0.0
 
     start_time = time.time()
+    finetune_cnt = 0
 
-    for eidx in xrange(max_epochs):
+    for eidx in xrange(start_epoch, max_epochs):
         if shuffle_data:
             text_iterator = load_shuffle_text_iterator(
                 eidx, text_iterator_list,
@@ -337,6 +341,8 @@ Start Time = {}
             mpi_communicator.Barrier()
 
         for i, (x, y) in enumerate(text_iterator):
+            if eidx == start_epoch and i < pass_batches: #ignore the first several batches when reload
+                continue
             n_samples += len(x)
             uidx += 1
             use_noise.set_value(1.)
@@ -397,7 +403,7 @@ Start Time = {}
 
             # discount reward
             # FIXME: Do NOT enable this and fine-tune at the same time
-            if lr_discount_freq > 0 and np.mod(uidx, lr_discount_freq) == 0:
+            if lr_discount_freq > 0 and np.mod(effective_uidx, lr_discount_freq) == 0:
                 lrate *= 0.5
                 clip_shared.set_value(clip_shared.get_value() * 0.5)
                 message('Discount learning rate to {} at iteration {}'.format(lrate, uidx))
