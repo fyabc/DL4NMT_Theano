@@ -818,7 +818,7 @@ class NMTModel(object):
                 cand_scores = batch_hyp_scores[jj][:, None] - np.log(next_p[index_range, :])
                 cand_flat = cand_scores.flatten()
 
-                ranks_flat = bottleneck.argpartsort(cand_flat, k - deads_k[jj])[:k - deads_k[jj]]
+                ranks_flat = bottleneck.argpartition(cand_flat, kth = k - deads_k[jj] - 1)[:k - deads_k[jj]]
 
                 voc_size = next_p.shape[1]
                 trans_indices = ranks_flat / voc_size
