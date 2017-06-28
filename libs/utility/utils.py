@@ -202,7 +202,7 @@ def init_nccl_env(mpi_comm):
     sys.stdout.flush()
     return comm
 
-def load_params(path, params):
+def load_params(path, params, src_map_file = None, tgt_map_file = None):
     """Load parameters
 
     :param path: Path of old parameters.
@@ -214,7 +214,13 @@ def load_params(path, params):
         if key not in old_params:
             warnings.warn('{} is not in the archive'.format(key))
             continue
-        params[key] = old_params[key]
+        if params[key].shape == old_params[key].shape:
+            params[key] = old_params[key]
+
+    if src_map_file and tgt_map_file:
+        src_map = pkl.load(open(src_map_file, 'rb'))
+        tgt_map = pkl.load(open(tgt_map_file, 'rb'))
+        params = load_word_params(params, old_params, src_map, tgt_map)
 
     return params
 
@@ -227,6 +233,37 @@ def load_embedding(params, embedding_model_file, emb_keys=('Wemb', 'Wemb_dec')):
 
     return params
 
+def load_word_params(params, old_params, src_map, tgt_map):
+    UNK_ID = 1
+
+    src_vocab_size = params['Wemb'].shape[0]
+    Wemb_T = np.tile(old_params['Wemb'][UNK_ID], [src_vocab_size, 1]).T
+    old_Wemb_T = old_params['Wemb'].T #transpose to speed up by more efficient cache
+
+    for (new_word_id, old_word_id) in src_map.iteritems():
+        if old_word_id < old_params['Wemb'].shape[0]:
+            Wemb_T[:, new_word_id] = old_Wemb_T[:, old_word_id]
+        sys.stdout.write('\r%d' % new_word_id)
+    params['Wemb'] = Wemb_T.T
+    print('\n', params['Wemb'].shape)
+
+    tgt_vocab_size = params['Wemb_dec'].shape[0]
+    Wemb_dec_T = np.tile(old_params['Wemb_dec'][UNK_ID], [tgt_vocab_size, 1]).T
+    old_Wemb_dec_T = old_params['Wemb_dec'].T
+    params['ff_logit_W'] = np.tile(old_params['ff_logit_W'][:,UNK_ID], [tgt_vocab_size,1]).T
+    params['ff_logit_b'].fill(old_params['ff_logit_b'][UNK_ID])
+
+    print(params['Wemb_dec'].shape, params['ff_logit_W'].shape, params['ff_logit_b'].shape)
+
+    for (new_word_id, old_word_id) in tgt_map.iteritems():
+        if old_word_id < old_params['Wemb_dec'].shape[0]:
+            Wemb_dec_T[:,new_word_id] = old_Wemb_dec_T[:,old_word_id]
+            params['ff_logit_W'][:,new_word_id] = old_params['ff_logit_W'][:,old_word_id]
+            params['ff_logit_b'][new_word_id] = old_params['ff_logit_b'][old_word_id]
+        sys.stdout.write('\r%d' % new_word_id)
+    params['Wemb_dec'] = Wemb_dec_T.T
+
+    return params
 
 # some utilities
 def orthogonal_weight(ndim):
@@ -490,11 +527,12 @@ def print_params(params, exit_=False):
         exit(0)
 
 
-def load_options(options, reload_=None, preload=None, print_options=True):
+def load_options(options, reload_=None, preload=None):
     """Reload options."""
 
     reload_ = options['reload_'] if reload_ is None else reload_
     preload = options['preload'] if preload is None else preload
+    dropout = options['use_dropout']
 
     if reload_ and os.path.exists(preload):
         print('Reloading model options')
@@ -503,15 +541,10 @@ def load_options(options, reload_=None, preload=None, print_options=True):
             # FIXME: Update the option instead of replace it
             options.update(pkl.load(f))
 
-        # Remain reload_ and preload
+        # Remain reload_, preload and dropout
         options['reload_'] = reload_
         options['preload'] = preload
-
-    if print_options:
-        message('Model options:')
-        pprint(options)
-        pprint(options, stream=get_logging_file())
-        message()
+        options['use_dropout'] = dropout
 
 
 def save_options(options, iteration, saveto=None):
@@ -530,6 +563,9 @@ def check_options(options):
 
     if 'multi' in options['unit']:
         assert options['unit_size'] > 0 and options['cond_unit_size'] > 0, 'Unit size must > 0'
+
+    if options['reload_']:
+        assert os.path.exists(options['preload'])
 
 
 def search_start_uidx(reload_, preload):

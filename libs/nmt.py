@@ -97,7 +97,7 @@ def train(dim_word=100,  # word vector dimensionality
           preload='',
 
           # Options below are from v-yanfa
-          dump_before_train=False,
+          dump_before_train=True,
           plot_graph=None,
           vocab_filenames=('./data/dic/filtered_dic_en-fr.en.pkl',
                            './data/dic/filtered_dic_en-fr.fr.pkl'),
@@ -135,7 +135,9 @@ def train(dim_word=100,  # word vector dimensionality
           task='en-fr',
 
           fine_tune_patience=8,
-          nccl = False
+          nccl = False,
+          src_vocab_map_file = None,
+          tgt_vocab_map_file = None,
           ):
     model_options = locals().copy()
 
@@ -184,6 +186,11 @@ Start Time = {}
 
     load_options(model_options, reload_, preload)
     check_options(model_options)
+    if True:
+        message('Model options:')
+        pprint(model_options)
+        pprint(model_options, stream=get_logging_file())
+        message()
 
     print 'Loading data'
     log('\n\n\nStart to prepare data\n@Current Time = {}'.format(time.time()))
@@ -225,7 +232,7 @@ Start Time = {}
     # Reload parameters
     if reload_ and os.path.exists(preload):
         print 'Reloading model parameters'
-        load_params(preload, params)
+        load_params(preload, params, src_map_file = src_vocab_map_file, tgt_map_file = tgt_vocab_map_file)
     sys.stdout.flush()
 
     # Given embedding
@@ -311,7 +318,11 @@ Start Time = {}
     best_p = None
     bad_counter = 0
     uidx = search_start_uidx(reload_, preload)
-    epoch_n_batches = get_epoch_batch_cnt(dataset_src, dataset_tgt, vocab_filenames, batch_size, maxlen, n_words_src, n_words)
+    if uidx != 0:
+        epoch_n_batches = get_epoch_batch_cnt(dataset_src, dataset_tgt, vocab_filenames, batch_size, maxlen, n_words_src, n_words)
+    else:
+        epoch_n_batches = 1 #avoid heavy data IO
+
     start_epoch = uidx / epoch_n_batches
     pass_batches = uidx % epoch_n_batches
 
@@ -327,6 +338,8 @@ Start Time = {}
                  uidx=uidx, **unzip(model.P))
         save_options(model_options, uidx, saveto)
         print 'Done'
+        sys.stdout.flush()
+        raw_input()
 
     commu_time_sum = 0.0
     cp_time_sum =0.0

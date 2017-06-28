@@ -26,7 +26,7 @@ def main():
                         help='Train batch size, default is %(default)s')
     parser.add_argument('--dim_word', action='store', default=512, type=int, dest='dim_word',
                         help='Dim of word embedding, default is %(default)s')
-    parser.add_argument('--maxlen', action='store', default=64, type=int, dest='maxlen',
+    parser.add_argument('--maxlen', action='store', default=80, type=int, dest='maxlen',
                         help='Max sentence length, default is %(default)s')
     parser.add_argument('-S', action='store_false', default=True, dest='shuffle',
                         help='Shuffle data per epoch, default is True, set to False')
@@ -54,11 +54,21 @@ def main():
     parser.add_argument('--dic2', action='store', metavar='filename', dest='dic2', type=str,
                         default='filtered_dic_en-fr.fr.pkl',
                         help='Target dict file, default is %(default)s')
+    parser.add_argument('--n_words_src', action='store', default=30000, type=int, dest='n_words_src',
+                        help='Vocabularies in source side, default is %(default)s')
+    parser.add_argument('--n_words_tgt', action='store', default=30000, type=int, dest='n_words_tgt',
+                        help='Vocabularies in target side, default is %(default)s')
 
     parser.add_argument('model_file', nargs='?', default='model/baseline/baseline.npz',
                         help='Generated model file, default is "%(default)s"')
     parser.add_argument('pre_load_file', nargs='?', default='model/en2fr.iter160000.npz',
                         help='Pre-load model file, default is "%(default)s"')
+    parser.add_argument('--src_vocab_map', action='store', metavar='filename', dest='src_vocab_map_file', type=str,
+                        default=None, help='The file containing source vocab mapping information' 
+                                           'used to initialize a model on large dataset from small one')
+    parser.add_argument('--tgt_vocab_map', action='store', metavar='filename', dest='tgt_vocab_map_file', type=str,
+                        default=None, help='The file containing target vocab mapping information'
+                                           'used to initialize a model on large dataset from small one')
 
     parser.add_argument('--enc', action='store', default=1, type=int, dest='n_encoder_layers',
                         help='Number of encoder layers, default is 1')
@@ -198,7 +208,7 @@ def main():
         patience=1000,
         maxlen=args.maxlen,
         batch_size=args.batch_size,
-        valid_batch_size=128,
+        valid_batch_size=args.batch_size,
         dispFreq=1,
         saveFreq=args.save_freq,
         validFreq=args.valid_freq,
@@ -213,8 +223,8 @@ def main():
         task=args.dataset,
         use_dropout=args.dropout,
         overwrite=False,
-        n_words=30000,
-        n_words_src=30000,
+        n_words=args.n_words_tgt,
+        n_words_src=args.n_words_src,
 
         # Options from v-yanfa
         dump_before_train=args.dump_before_train,
@@ -248,7 +258,9 @@ def main():
         sync_models = args.sync_models,
 
         fine_tune_patience=args.fine_tune_patience,
-        nccl= args.nccl
+        nccl= args.nccl,
+        src_vocab_map_file= args.src_vocab_map_file,
+        tgt_vocab_map_file= args.tgt_vocab_map_file,
     )
 
 
