@@ -818,7 +818,12 @@ class NMTModel(object):
                 cand_scores = batch_hyp_scores[jj][:, None] - np.log(next_p[index_range, :])
                 cand_flat = cand_scores.flatten()
 
-                ranks_flat = bottleneck.argpartition(cand_flat, kth = k - deads_k[jj] - 1)[:k - deads_k[jj]]
+                try:
+                    from bottleneck import argpartition as part_sort
+                    ranks_flat = part_sort(cand_flat, kth=k - deads_k[jj] - 1)[:k - deads_k[jj]]
+                except ImportError:
+                    from bottleneck import argpartsort as part_sort
+                    ranks_flat = part_sort(cand_flat, k - deads_k[jj])[:k - deads_k[jj]]
 
                 voc_size = next_p.shape[1]
                 trans_indices = ranks_flat / voc_size

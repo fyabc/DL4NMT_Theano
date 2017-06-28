@@ -54,7 +54,7 @@ Datasets = {
         'tc_small_train_enfr_large_bpe.en', 'tc_small_train_enfr_large_bpe.fr',
         'tc_valid_enfr_bpe_by_large.en', 'tc_valid_enfr_bpe_by_large.fr',
         'tc_test_enfr_bpe_by_large.en', 'test_en-fr.fr.tok',
-        '', '',
+        'tc_enfr_large_bpe.vocab.pkl', 'tc_enfr_large_bpe.vocab.pkl',
     ],
 
     'fr-en_bpe_tc': [
@@ -109,7 +109,7 @@ Datasets = {
         'tc_small_train.tok.clean.bpe.32000.en', 'tc_small_train.tok.clean.bpe.32000.de',
         'tc_newstest2013.tok.bpe.32000.en', 'tc_newstest2013.tok.bpe.32000.de',
         'tc_newstest2014.tok.bpe.32000.en', 'test_en-de.de.tok',
-        '', '',
+        'ende_s2s_vocab.bpe.32000.pkl', 'ende_s2s_vocab.bpe.32000.pkl',
     ],
 
     'de-en':['train.de-en.de', 'train.de-en.en',
