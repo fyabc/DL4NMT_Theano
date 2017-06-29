@@ -185,7 +185,7 @@ def main():
         available_gpus = get_gpu_usage(workers_cnt)
         gpu_maps_info = {idx: idx for idx in available_gpus}
         if args.gpu_map_file:
-            for line in open(os.path.join('gpu_map', args.gpu_map_file), 'r'):
+            for line in open(os.path.join('resources', args.gpu_map_file), 'r'):
                 phy_id, theano_id = line.split()
                 gpu_maps_info[int(phy_id)] = int(theano_id)
         theano_id = gpu_maps_info[available_gpus[worker_id]]

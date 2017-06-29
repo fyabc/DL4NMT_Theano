@@ -184,7 +184,7 @@ Start Time = {}
     message('Done')
     sys.stdout.flush()
 
-    load_options(model_options, reload_, preload)
+    load_options(model_options, reload_, preload, src_vocab_map_file and tgt_vocab_map_file)
     check_options(model_options)
     if True:
         message('Model options:')

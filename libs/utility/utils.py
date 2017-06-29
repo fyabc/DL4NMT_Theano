@@ -239,30 +239,28 @@ def load_word_params(params, old_params, src_map, tgt_map):
     src_vocab_size = params['Wemb'].shape[0]
     Wemb_T = np.tile(old_params['Wemb'][UNK_ID], [src_vocab_size, 1]).T
     old_Wemb_T = old_params['Wemb'].T #transpose to speed up by more efficient cache
-
+    print(Wemb_T.shape, old_Wemb_T.shape)
     for (new_word_id, old_word_id) in src_map.iteritems():
-        if old_word_id < old_params['Wemb'].shape[0]:
+        if new_word_id < src_vocab_size and old_word_id < old_params['Wemb'].shape[0]:
             Wemb_T[:, new_word_id] = old_Wemb_T[:, old_word_id]
-        sys.stdout.write('\r%d' % new_word_id)
+        sys.stdout.write('\r%d %d' % (new_word_id, old_word_id))
     params['Wemb'] = Wemb_T.T
-    print('\n', params['Wemb'].shape)
 
     tgt_vocab_size = params['Wemb_dec'].shape[0]
     Wemb_dec_T = np.tile(old_params['Wemb_dec'][UNK_ID], [tgt_vocab_size, 1]).T
     old_Wemb_dec_T = old_params['Wemb_dec'].T
     params['ff_logit_W'] = np.tile(old_params['ff_logit_W'][:,UNK_ID], [tgt_vocab_size,1]).T
     params['ff_logit_b'].fill(old_params['ff_logit_b'][UNK_ID])
-
     print(params['Wemb_dec'].shape, params['ff_logit_W'].shape, params['ff_logit_b'].shape)
-
     for (new_word_id, old_word_id) in tgt_map.iteritems():
-        if old_word_id < old_params['Wemb_dec'].shape[0]:
+        if new_word_id < tgt_vocab_size and old_word_id < old_params['Wemb_dec'].shape[0]:
             Wemb_dec_T[:,new_word_id] = old_Wemb_dec_T[:,old_word_id]
             params['ff_logit_W'][:,new_word_id] = old_params['ff_logit_W'][:,old_word_id]
             params['ff_logit_b'][new_word_id] = old_params['ff_logit_b'][old_word_id]
-        sys.stdout.write('\r%d' % new_word_id)
+        sys.stdout.write('\r%d %d' % (new_word_id, old_word_id))
     params['Wemb_dec'] = Wemb_dec_T.T
 
+    print('\nLoad previous word related params done')
     return params
 
 # some utilities
@@ -527,12 +525,14 @@ def print_params(params, exit_=False):
         exit(0)
 
 
-def load_options(options, reload_=None, preload=None):
+def load_options(options, reload_=None, preload=None, maintain_vocab_size = False):
     """Reload options."""
 
     reload_ = options['reload_'] if reload_ is None else reload_
     preload = options['preload'] if preload is None else preload
     dropout = options['use_dropout']
+    src_vocab_size = options['n_words_src']
+    tgt_vocab_size = options['n_words']
 
     if reload_ and os.path.exists(preload):
         print('Reloading model options')
@@ -545,7 +545,9 @@ def load_options(options, reload_=None, preload=None):
         options['reload_'] = reload_
         options['preload'] = preload
         options['use_dropout'] = dropout
-
+        if maintain_vocab_size:
+            options['n_words_src'] = src_vocab_size
+            options['n_words'] = tgt_vocab_size
 
 def save_options(options, iteration, saveto=None):
     saveto = options['saveto'] if saveto is None else saveto
