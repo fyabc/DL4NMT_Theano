@@ -176,7 +176,7 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
         h_tmp = h_
         c_tmp = c_
         for j in range(unit_size):
-            x = _slice(x_, layer_id, 4 * dim)
+            x = _slice(x_, j, 4 * dim)
             h, c = _lstm_step_slice(mask_, x, h_tmp, c_tmp, U[j])
             h_tmp = h
             c_tmp = c
@@ -186,7 +186,7 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
         h_tmp = h_
         c_tmp = c_
         for j in range(unit_size):
-            x = _slice(x_, layer_id, 4 * dim)
+            x = _slice(x_, j, 4 * dim)
             h, c = _lstm_step_slice_attention(mask_, x, context, h_tmp, c_tmp, U[j], Wc[j])
             h_tmp = h
             c_tmp = c
