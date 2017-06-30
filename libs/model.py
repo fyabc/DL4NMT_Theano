@@ -417,7 +417,7 @@ class NMTModel(object):
         trng, use_noise, probs = self.get_word_probability(hidden_decoder, context_decoder, tgt_embedding,
                                                            trng=trng, use_noise=use_noise)
 
-        cost = self.build_cost(y, y_mask, probs)
+        cost = self.build_cost(y, y_mask, probs) / self.O['cost_normalization']
 
         # Plot computation graph
         if self.O['plot_graph'] is not None:

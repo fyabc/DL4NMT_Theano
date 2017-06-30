@@ -176,7 +176,8 @@ def main():
         worker_id = mv.worker_id()
         workers_cnt = mv.workers_num()
     elif args.dist_type == 'mpi_reduce':
-        from libs.mpi4py import MPI
+        from mpi4py import MPI
+
         communicator = MPI.COMM_WORLD
         worker_id = communicator.Get_rank()
         workers_cnt = communicator.Get_size()
