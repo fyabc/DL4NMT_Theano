@@ -144,7 +144,7 @@ def sync_tparams(tparams, dup_tparams):
         tparams[kk].set_value(np.array([vv.get_value()[0]], dtype=fX).reshape((1,)))
 
 def all_reduce_params(sent_shared_params, rec_buffers, average_cnt = 1):
-    from ..mpi4py import MPI
+    from mpi4py import MPI
     mpi_communicator = MPI.COMM_WORLD
     commu_time = 0.0
     gpu2cpu_cp_time = 0.0
@@ -369,9 +369,20 @@ def clip_grad_remove_nan(grads, clip_c_shared, mt_tparams):
                                  g / tensor.sqrt(g2) * clip_c_shared,
                                  g)
             new_grads.append(tensor.switch(not_finite, np.float32(.1)*p, tmpg))
+
         return new_grads, tensor.sqrt(g2)
     else:
         return grads, tensor.sqrt(g2)
+
+def make_grads_clip_func(grads_shared, mt_tparams, clip_c_shared):
+
+    new_grads, g2_sqrt = clip_grad_remove_nan(grads_shared, clip_c_shared, mt_tparams)
+
+    zgup = [(zg, g) for zg, g in zip(grads_shared, new_grads)]
+    f_grads_clip = theano.function([], g2_sqrt, updates=zgup, on_unused_input='ignore', profile=profile)
+
+    return f_grads_clip
+
 
 def l2_regularization(cost, tparams, decay_c):
     """Apply L2 regularization on weights."""
@@ -696,10 +707,10 @@ def create_shuffle_data(datasets_orig, dataset_src, dataset_tgt):
 
 
 def load_shuffle_text_iterator(
-        epoch, text_iterator_list,
+        epoch, worker_id, text_iterator_list,
         datasets, vocab_filenames, batch_size, maxlen, n_words_src, n_words,
 ):
-    e = epoch % ShuffleCycle
+    e = (epoch + worker_id) % ShuffleCycle
 
     if text_iterator_list[e] is None:
         # Create new text iterator
@@ -776,5 +787,6 @@ __all__ = [
     'get_adadelta_imm_data',
     'dump_adadelta_imm_data',
     'load_shuffle_text_iterator',
-    'clip_grad_remove_nan'
+    'clip_grad_remove_nan',
+    'make_grads_clip_func'
 ]

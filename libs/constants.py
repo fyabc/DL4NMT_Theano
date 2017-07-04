@@ -14,7 +14,7 @@ ImmediateFilename = '{}_imm.npz'
 TempImmediateFilename = '{}_imm_tmp.npz'
 
 # Cycle of shuffle data.
-ShuffleCycle = 8
+ShuffleCycle = 7
 
 # Set datasets
 # train1, train2, small1, small2, valid1, valid2, test1, test2, dic1, dic2

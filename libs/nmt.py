@@ -150,7 +150,7 @@ def train(dim_word=100,  # word vector dimensionality
             from . import multiverso_ as mv
 
         worker_id = mv.worker_id()
-    elif dist_type == 'mpi_reduce' :
+    elif dist_type == 'mpi_reduce':
         from mpi4py import MPI
         mpi_communicator = MPI.COMM_WORLD
         worker_id = mpi_communicator.Get_rank()
@@ -186,6 +186,11 @@ Start Time = {}
 
     load_options(model_options, reload_, preload, src_vocab_map_file and tgt_vocab_map_file)
     check_options(model_options)
+    model_options['cost_normalization'] = 1
+    if dist_type == 'mpi_reduce' and not sync_models:
+        model_options['cost_normalization'] = workers_cnt
+        lrate *= workers_cnt
+
     if True:
         message('Model options:')
         pprint(model_options)
@@ -196,11 +201,14 @@ Start Time = {}
     log('\n\n\nStart to prepare data\n@Current Time = {}'.format(time.time()))
     sys.stdout.flush()
 
+    '''
     if dist_type:
         dataset_src = '{}_{}'.format(datasets[0], worker_id)
         dataset_tgt = '{}_{}'.format(datasets[1], worker_id)
     else:
         dataset_src, dataset_tgt = datasets[0], datasets[1]
+    '''
+    dataset_src, dataset_tgt = datasets[0], datasets[1]
 
     if shuffle_data:
         text_iterator_list = [None for _ in range(10)]
@@ -258,7 +266,6 @@ Start Time = {}
     # before any regularizer
     print 'Building f_log_probs...',
     f_log_probs = theano.function(inps, cost, profile=profile)
-    f_x_emb = theano.function([x, x_mask], x_emb, profile=profile)
     print 'Done'
     sys.stdout.flush()
     cost = cost.mean()
@@ -284,7 +291,11 @@ Start Time = {}
     grads = tensor.grad(cost, wrt=itemlist(model.P))
 
     clip_shared = theano.shared(np.array(clip_c, dtype=fX), name='clip_shared')
-    grads, g2 = clip_grad_remove_nan(grads, clip_shared, model.P)
+
+    if dist_type != 'mpi_reduce' or sync_models: #build grads clip into computational graph
+        grads, g2 = clip_grad_remove_nan(grads, clip_shared, model.P)
+    else: #do the grads clip after gradients aggregation
+        g2 = None
 
     # compile the optimizer, the actual computational graph is compiled here
     lr = tensor.scalar(name='lr')
@@ -296,13 +307,15 @@ Start Time = {}
         lr, model.P, grads, inps, cost, g2=g2, given_imm_data=given_imm_data, dump_imm=dump_imm)
     print 'Done'
 
+    if dist_type == 'mpi_reduce' and not sync_models:
+        f_grads_clip = make_grads_clip_func(grads_shared = grads_shared, mt_tparams= model.P, clip_c_shared = clip_shared)
+
     print 'Optimization'
     log('Preparation Done\n@Current Time = {}'.format(time.time()))
 
     if dist_type == 'mv':
         mv.barrier()
     elif dist_type == 'mpi_reduce':
-        mpi_communicator.Barrier()
         #create receive buffers for mpi allreduce
         if sync_models:
             rec_models = [np.zeros_like(p.get_value()) for p in model.P.itervalues()]
@@ -319,14 +332,17 @@ Start Time = {}
     bad_counter = 0
     uidx = search_start_uidx(reload_, preload)
     if uidx != 0:
-        epoch_n_batches = get_epoch_batch_cnt(dataset_src, dataset_tgt, vocab_filenames, batch_size, maxlen, n_words_src, n_words)
+        epoch_n_batches = get_epoch_batch_cnt(dataset_src, dataset_tgt, vocab_filenames, batch_size, maxlen, n_words_src, n_words) \
+            if worker_id == 0 else None
     else:
         epoch_n_batches = 1 #avoid heavy data IO
 
+    if dist_type == 'mpi_reduce':
+        epoch_n_batches = mpi_communicator.bcast([epoch_n_batches, MPI.INT], root = 0)
     start_epoch = uidx / epoch_n_batches
     pass_batches = uidx % epoch_n_batches
 
-    print 'uidx', uidx, 'l_rate', lrate, 'n_batches', epoch_n_batches, 'start_epoch', start_epoch, 'pass_batches', pass_batches
+    print 'worker', worker_id, 'uidx', uidx, 'l_rate', lrate, 'n_batches', epoch_n_batches, 'start_epoch', start_epoch, 'pass_batches', pass_batches
 
     start_uidx = uidx
 
@@ -351,7 +367,7 @@ Start Time = {}
     for eidx in xrange(start_epoch, max_epochs):
         if shuffle_data:
             text_iterator = load_shuffle_text_iterator(
-                eidx, text_iterator_list,
+                eidx, worker_id, text_iterator_list,
                 datasets, vocab_filenames, batch_size, maxlen, n_words_src, n_words,
             )
         n_samples = 0
@@ -375,8 +391,11 @@ Start Time = {}
             effective_uidx = uidx - start_uidx
             ud_start = time.time()
 
-            # compute cost, grads and copy grads to shared variables
-            cost, g2_value = f_grad_shared(x, x_mask, y, y_mask)
+            # compute cost, grads
+            if dist_type != 'mpi_reduce' or sync_models:
+                cost, g2_value = f_grad_shared(x, x_mask, y, y_mask)
+            else:
+                cost = f_grad_shared(x, x_mask, y, y_mask)
 
             if dist_type == 'mpi_reduce' and uidx % sync_batch == 0:
                 reduce_start = time.time()
@@ -391,13 +410,15 @@ Start Time = {}
                         commu_time_delta, cp_time_delta = all_reduce_params(imm_shared[i], rec_immes_list[i], workers_cnt)
                         commu_time += commu_time_delta
                         gpucpu_cp_time += cp_time_delta
+                    reduce_time = time.time() - reduce_start
                 else: #sync gradients
                     if not nccl:
                         commu_time, gpucpu_cp_time = all_reduce_params(grads_shared, rec_grads)
                     else:
                         commu_time, gpucpu_cp_time = all_reduce_params_nccl(nccl_comm, grads_shared)
+                    reduce_time = time.time() - reduce_start
+                    g2_value = f_grads_clip()
 
-                reduce_time = time.time() - reduce_start
                 commu_time_sum += commu_time
                 reduce_time_sum += reduce_time
                 cp_time_sum += gpucpu_cp_time

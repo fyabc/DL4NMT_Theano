@@ -176,7 +176,8 @@ def main():
         worker_id = mv.worker_id()
         workers_cnt = mv.workers_num()
     elif args.dist_type == 'mpi_reduce':
-        from libs.mpi4py import MPI
+        from mpi4py import MPI
+
         communicator = MPI.COMM_WORLD
         worker_id = communicator.Get_rank()
         workers_cnt = communicator.Get_size()
@@ -190,7 +191,7 @@ def main():
                 gpu_maps_info[int(phy_id)] = int(theano_id)
         theano_id = gpu_maps_info[available_gpus[worker_id]]
         print 'worker id:%d, using theano id:%d, physical id %d' % (worker_id, theano_id, available_gpus[worker_id])
-        os.environ['THEANO_FLAGS'] = 'device=gpu{},floatX=float32'.format(theano_id)
+        os.environ['THEANO_FLAGS'] = 'device=cuda{},floatX=float32'.format(theano_id)
         sys.stdout.flush()
 
     from libs.nmt import train
