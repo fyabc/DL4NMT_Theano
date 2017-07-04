@@ -332,14 +332,17 @@ Start Time = {}
     bad_counter = 0
     uidx = search_start_uidx(reload_, preload)
     if uidx != 0:
-        epoch_n_batches = get_epoch_batch_cnt(dataset_src, dataset_tgt, vocab_filenames, batch_size, maxlen, n_words_src, n_words)
+        epoch_n_batches = get_epoch_batch_cnt(dataset_src, dataset_tgt, vocab_filenames, batch_size, maxlen, n_words_src, n_words) \
+            if worker_id == 0 else None
     else:
         epoch_n_batches = 1 #avoid heavy data IO
 
+    if dist_type == 'mpi_reduce':
+        epoch_n_batches = mpi_communicator.bcast([epoch_n_batches, MPI.INT], root = 0)
     start_epoch = uidx / epoch_n_batches
     pass_batches = uidx % epoch_n_batches
 
-    print 'uidx', uidx, 'l_rate', lrate, 'n_batches', epoch_n_batches, 'start_epoch', start_epoch, 'pass_batches', pass_batches
+    print 'worker', worker_id, 'uidx', uidx, 'l_rate', lrate, 'n_batches', epoch_n_batches, 'start_epoch', start_epoch, 'pass_batches', pass_batches
 
     start_uidx = uidx
 
@@ -407,14 +410,15 @@ Start Time = {}
                         commu_time_delta, cp_time_delta = all_reduce_params(imm_shared[i], rec_immes_list[i], workers_cnt)
                         commu_time += commu_time_delta
                         gpucpu_cp_time += cp_time_delta
+                    reduce_time = time.time() - reduce_start
                 else: #sync gradients
                     if not nccl:
                         commu_time, gpucpu_cp_time = all_reduce_params(grads_shared, rec_grads)
                     else:
                         commu_time, gpucpu_cp_time = all_reduce_params_nccl(nccl_comm, grads_shared)
+                    reduce_time = time.time() - reduce_start
                     g2_value = f_grads_clip()
 
-                reduce_time = time.time() - reduce_start
                 commu_time_sum += commu_time
                 reduce_time_sum += reduce_time
                 cp_time_sum += gpucpu_cp_time
