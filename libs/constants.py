@@ -14,7 +14,7 @@ ImmediateFilename = '{}_imm.npz'
 TempImmediateFilename = '{}_imm_tmp.npz'
 
 # Cycle of shuffle data.
-ShuffleCycle = 8
+ShuffleCycle = 7
 
 # Set datasets
 # train1, train2, small1, small2, valid1, valid2, test1, test2, dic1, dic2
@@ -50,7 +50,7 @@ Datasets = {
     ],
 
     'large_en-fr_bpe_tc': [
-        'train_enfr_large_bpe.en', 'train_enfr_large_bpe.fr',
+        'tc_train_enfr_large_bpe.en', 'tc_train_enfr_large_bpe.fr',
         'tc_small_train_enfr_large_bpe.en', 'tc_small_train_enfr_large_bpe.fr',
         'tc_valid_enfr_bpe_by_large.en', 'tc_valid_enfr_bpe_by_large.fr',
         'tc_test_enfr_bpe_by_large.en', 'test_en-fr.fr.tok',

@@ -201,11 +201,14 @@ Start Time = {}
     log('\n\n\nStart to prepare data\n@Current Time = {}'.format(time.time()))
     sys.stdout.flush()
 
+    '''
     if dist_type:
         dataset_src = '{}_{}'.format(datasets[0], worker_id)
         dataset_tgt = '{}_{}'.format(datasets[1], worker_id)
     else:
         dataset_src, dataset_tgt = datasets[0], datasets[1]
+    '''
+    dataset_src, dataset_tgt = datasets[0], datasets[1]
 
     if shuffle_data:
         text_iterator_list = [None for _ in range(10)]
@@ -361,7 +364,7 @@ Start Time = {}
     for eidx in xrange(start_epoch, max_epochs):
         if shuffle_data:
             text_iterator = load_shuffle_text_iterator(
-                eidx, text_iterator_list,
+                eidx, worker_id, text_iterator_list,
                 datasets, vocab_filenames, batch_size, maxlen, n_words_src, n_words,
             )
         n_samples = 0
