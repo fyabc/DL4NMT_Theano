@@ -301,7 +301,7 @@ Start Time = {}
     lr = tensor.scalar(name='lr')
     print 'Building optimizers...',
 
-    given_imm_data = get_adadelta_imm_data(optimizer, given_imm, saveto)
+    given_imm_data = get_adadelta_imm_data(optimizer, given_imm, preload)
 
     f_grad_shared, f_update, grads_shared, imm_shared = Optimizers[optimizer](
         lr, model.P, grads, inps, cost, g2=g2, given_imm_data=given_imm_data, dump_imm=dump_imm)

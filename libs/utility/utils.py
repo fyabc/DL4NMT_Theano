@@ -603,13 +603,15 @@ def make_f_train(f_grad_shared, f_update):
     return f_train
 
 
-def get_adadelta_imm_data(optimizer, given_imm, saveto):
+def get_adadelta_imm_data(optimizer, given_imm, preload):
     if given_imm:
-        given_imm_filename = ImmediateFilename.format(os.path.splitext(saveto)[0])
+        # [NOTE] preload filename format: filename.iter10000.npz
+        _real_filename = os.path.splitext(os.path.splitext(preload)[0])[0]
+        given_imm_filename = ImmediateFilename.format(_real_filename)
 
         # For back compatibility
-        given_imm_filename_backup = ImmediateFilenameBackup.format(os.path.splitext(saveto)[0])
-        given_imm_filename_backup2 = ImmediateFilenameBackup2.format(os.path.splitext(saveto)[0])
+        given_imm_filename_backup = ImmediateFilenameBackup.format(_real_filename)
+        given_imm_filename_backup2 = ImmediateFilenameBackup2.format(_real_filename)
         if os.path.exists(given_imm_filename):
             message('Loading adadelta immediate data')
             with np.load(given_imm_filename) as data:
@@ -634,6 +636,8 @@ def get_adadelta_imm_data(optimizer, given_imm, saveto):
         elif os.path.exists(given_imm_filename_backup2):
             message('Loading adadelta immediate data')
             return pkl.load(fopen(given_imm_filename_backup2, 'rb'))
+        else:
+            message('Immediate data not found.')
     return None
 
 
