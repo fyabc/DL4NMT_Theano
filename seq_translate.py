@@ -1,4 +1,4 @@
-#usage: python seq_translate.py model_prefix --start start_iteration --end end_iteration --gap interval --dataset dataset
+# usage: python seq_translate.py model_prefix --start start_iteration --end end_iteration --gap interval --dataset dataset
 
 import argparse
 import sys
@@ -8,10 +8,12 @@ import operator
 import re
 
 from libs.constants import Datasets
+from libs.utility.translate import de_bpe
+
 
 def get_bleu(ref_file, hyp_file):
     pl_output = subprocess.Popen(
-        'perl multi-bleu.perl {} < {}\n'.format(ref_file, hyp_file) , shell=True,
+        'perl scripts/moses/multi-bleu.perl {} < {}\n'.format(ref_file, hyp_file), shell=True,
         stdout=subprocess.PIPE, stderr=open(os.devnull, 'w')).stdout.read()
 
     contents = pl_output.split(',')
@@ -24,10 +26,9 @@ def get_bleu(ref_file, hyp_file):
 
     return float(BLEU)
 
-def de_bpe(input_str):
-    return re.sub(r'(@@ )|(@@ ?$)', '', input_str)
 
 TestDatasets = {'enfr_bpe'}
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -51,7 +52,8 @@ def main():
 
     if args.result_file == 'trans_result.tsv':
         model_file_name = os.path.split(args.model_prefix)[-1]
-        args.result_file = './translated/complete/{}_bs{}.txt'.format(os.path.splitext(model_file_name)[0], args.beam_size)
+        args.result_file = './translated/complete/{}_bs{}.txt'.format(os.path.splitext(model_file_name)[0],
+                                                                      args.beam_size)
     else:
         model_file_name = os.path.split(args.result_file)[-1]
 
@@ -66,14 +68,15 @@ def main():
 
         if not os.path.exists(trans_result_file):
             exec_str = 'python translate_single.py -b 64 -k {} -p 1 -n {} {} {} {} {}\n'.format(
-                args.beam_size, trans_model_file, './data/dic/{}'.format(dic1), './data/dic/{}'.format(dic2), './data/test/{}'.format(test1), trans_result_file
+                args.beam_size, trans_model_file, './data/dic/{}'.format(dic1), './data/dic/{}'.format(dic2),
+                './data/test/{}'.format(test1), trans_result_file
             )
             print 'Translate model {} '.format(trans_model_file)
             print exec_str
             pl_output = subprocess.Popen(exec_str, shell=True, stdout=subprocess.PIPE).stdout.read()
 
-        if 'tc' in args.dataset: #first de-truecase, then de-bpe
-            exec_str ='perl detruecase.perl < {} > {}.detc'.format(trans_result_file, trans_result_file)
+        if 'tc' in args.dataset:  # first de-truecase, then de-bpe
+            exec_str = 'perl scripts/multi/detruecase.perl < {} > {}.detc'.format(trans_result_file, trans_result_file)
             pl_output = subprocess.Popen(exec_str, shell=True, stdout=subprocess.PIPE).stdout.read()
             trans_result_file = '{}.detc'.format(trans_result_file)
 
@@ -86,10 +89,12 @@ def main():
 
         print 'model %s, bleu %.2f' % (idx * args.interval, bleus[idx])
 
-    args.result_file = './translated/complete/{}_s{}_e{}.txt'.format(os.path.splitext(model_file_name)[0], args.start, args.end)
+    args.result_file = './translated/complete/{}_s{}_e{}.txt'.format(os.path.splitext(model_file_name)[0], args.start,
+                                                                     args.end)
     bleu_array = sorted(bleus.items(), key=operator.itemgetter(0), reverse=False)
     with open(args.result_file, 'w') as fout:
         fout.write('\n'.join([str(idx) + '\t' + str(score) for (idx, score) in bleu_array]))
+
 
 if __name__ == '__main__':
     main()
