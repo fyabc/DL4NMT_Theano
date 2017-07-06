@@ -791,6 +791,5 @@ __all__ = [
     'get_adadelta_imm_data',
     'dump_adadelta_imm_data',
     'load_shuffle_text_iterator',
-    'clip_grad_remove_nan',
     'make_grads_clip_func'
 ]

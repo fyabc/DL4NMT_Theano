@@ -108,12 +108,11 @@ def main():
                         help = 'The distribution version, default is None (singe GPU mode), candiates are "mv", "mpi_reduce"')
     parser.add_argument('--nccl', action="store_true", default=False, dest='nccl',
                         help='Use NCCL in distributed mode, default to False, set to True')
-    parser.add_argument('--syncbatch', action='store', metavar='batch', dest='sync_batch', type=int, default=1,
-                        help='Sync batch frequency, default is 1')
+    parser.add_argument('--clip_grads_local', action="store_true", default=False, dest='clip_grads_local',
+                        help='Whether to clip grads in distributed mode, default to False, set to True')
     parser.add_argument('--recover_lr_iter', action='store', dest='dist_recover_lr', type = int, default=10000,
                         help='The mini-batch index to recover lrate in distributed mode, default is 10000.')
-    parser.add_argument('--sync_models', action='store_true', dest='sync_models', default=False,
-                        help='Sync grads, otherwise sync model parameters. Set to True')
+
     parser.add_argument('--all_att', action='store_true', dest='all_att', default=False,
                         help='Generate attention from all decoder layers, default is False, set to True')
     parser.add_argument('--avg_ctx', action='store_true', dest='avg_ctx', default=False,
@@ -254,9 +253,8 @@ def main():
         average_context=args.avg_ctx,
 
         dist_type=args.dist_type,
-        sync_batch=args.sync_batch,
         dist_recover_lr_iter = args.dist_recover_lr,
-        sync_models = args.sync_models,
+        clip_grads_local = args.clip_grads_local,
 
         fine_tune_patience=args.fine_tune_patience,
         nccl= args.nccl,
