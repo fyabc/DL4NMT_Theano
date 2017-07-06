@@ -7,7 +7,10 @@ from libs.gpu_manager import get_gpu_usage
 
 
 def main():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description='Train the deep NMT model.',
+        fromfile_prefix_chars='@',
+    )
 
     parser.add_argument('-R', action="store_false", default=True, dest='reload',
                         help='Reload old model, default to True, set to False')

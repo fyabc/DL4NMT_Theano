@@ -7,7 +7,22 @@ from .utils import itemlist
 profile = False
 
 
-# todo: Add return grad norm value.
+# todo: change optimizer function to optimizer class, move save/load immediate data here.
+
+class Optimizer(object):
+    def __init__(self):
+        pass
+
+    def load_immediate_data(self, given_imm):
+        pass
+
+    def dump_immediate_data(self, imm_shared):
+        pass
+
+
+class AdamOptimizer(Optimizer):
+    def __init__(self):
+        super(AdamOptimizer, self).__init__()
 
 
 # optimizers
