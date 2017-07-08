@@ -655,13 +655,13 @@ def dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto):
     message('Dumping adadelta immediate data to temp file...', end='')
     if optimizer == 'adadelta':
         np.savez(tmp_filename,
-                 [g.get_value() for g in imm_shared[0]] +
-                 [g.get_value() for g in imm_shared[1]])
+                 np.array([g.get_value() for g in imm_shared[0]] +
+                          [g.get_value() for g in imm_shared[1]], dtype=object))
     elif optimizer == 'adam':
         np.savez(tmp_filename,
-                 [imm_shared[0].get_value()] +
-                 [g.get_value() for g in imm_shared[1]] +
-                 [g.get_value() for g in imm_shared[2]])
+                 np.array([imm_shared[0].get_value()] +
+                          [g.get_value() for g in imm_shared[1]] +
+                          [g.get_value() for g in imm_shared[2]], dtype=object))
     else:
         pass
     message('Done')
