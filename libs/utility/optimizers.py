@@ -78,9 +78,7 @@ def adam(lr, tparams, grads, inp, cost, beta1=0.9, beta2=0.999, e=1e-8, **kwargs
     f_update = theano.function([lr], [], updates=updates,
                                on_unused_input='ignore', profile=profile)
 
-    if dump_imm:
-        return f_grad_shared, f_update, [t_prev, ms, vs]
-    return f_grad_shared, f_update, None
+    return f_grad_shared, f_update, gshared, [t_prev, ms, vs] if dump_imm else None
 
 
 def adadelta(lr, tparams, grads, inp, cost, **kwargs):
