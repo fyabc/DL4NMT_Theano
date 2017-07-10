@@ -138,4 +138,8 @@ DefaultOptions = dict(
 
     # Fine-tune options
     fine_tune_patience=8,
+
+    # Target attention options
+    # Target attention layer id, default is None, means not use target attention.
+    trg_attention_layer_id=None,
 )

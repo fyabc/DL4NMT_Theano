@@ -19,7 +19,7 @@ from .utility.optimizers import Optimizers
 from .utility.utils import *
 
 from .utility.translate import translate_dev_get_bleu
-from .model import NMTModel
+from .model import NMTModel, TrgAttnNMTModel
 
 
 def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True, normalize=False):
@@ -138,6 +138,8 @@ def train(dim_word=100,  # word vector dimensionality
           nccl = False,
           src_vocab_map_file = None,
           tgt_vocab_map_file = None,
+
+          trg_attention_layer_id=None,
           ):
     model_options = locals().copy()
 
@@ -234,7 +236,11 @@ Start Time = {}
     )
 
     print 'Building model'
-    model = NMTModel(model_options)
+    if trg_attention_layer_id is None:
+        model = NMTModel(model_options)
+    else:
+        model = TrgAttnNMTModel(model_options)
+
     params = model.initializer.init_params()
 
     # Reload parameters

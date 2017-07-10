@@ -130,6 +130,8 @@ def main():
                         help='Fine tune patience, default is %(default)s, set 8 to enable it')
     parser.add_argument('--valid_freq', action='store', metavar='N', dest='valid_freq', type=int, default=5000,
                         help='Validation frequency, default is 5000')
+    parser.add_argument('--trg_att', action='store', metavar='N', dest='trg_attention_layer_id', type=int, default=None,
+                        help='Target attention layer id, default is None (not use target attention)')
 
     args = parser.parse_args()
     print args
@@ -265,6 +267,8 @@ def main():
         nccl= args.nccl,
         src_vocab_map_file= args.src_vocab_map_file,
         tgt_vocab_map_file= args.tgt_vocab_map_file,
+
+        trg_attention_layer_id=args.trg_attention_layer_id,
     )
 
 
