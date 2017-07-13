@@ -19,7 +19,7 @@ from .utility.optimizers import Optimizers
 from .utility.utils import *
 
 from .utility.translate import translate_dev_get_bleu
-from .model import NMTModel, TrgAttnNMTModel
+from .models import NMTModel, TrgAttnNMTModel
 
 
 def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True, normalize=False):

@@ -8,7 +8,7 @@ import numpy as np
 import theano
 
 from libs.constants import Datasets
-from libs.model import build_and_init_model
+from libs.models import build_and_init_model
 from libs.utility.translate import get_bleu, de_bpe
 from libs.utility.utils import prepare_data
 

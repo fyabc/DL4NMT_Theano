@@ -9,7 +9,7 @@ import numpy as np
 import theano
 
 from libs.config import DefaultOptions
-from libs.model import build_and_init_model
+from libs.models import build_and_init_model
 from libs.utility.translate import load_translate_data, seqs2words, translate, translate_block
 
 __author__ = 'fyabc'
