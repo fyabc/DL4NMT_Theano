@@ -1,6 +1,10 @@
 #! /usr/bin/python
 # -*- coding: utf-8 -*-
 
+"""Models and their initializers."""
+
+# TODO: Like target attention, split more model options into different models.
+
 from __future__ import print_function
 
 from collections import OrderedDict
@@ -15,10 +19,10 @@ import numpy as np
 import cPickle as pkl
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
-from .constants import fX, profile
-from .config import DefaultOptions
-from .utility.utils import *
-from .layers import *
+from ..constants import fX, profile
+from ..config import DefaultOptions
+from ..utility.utils import *
+from ..layers import *
 
 __author__ = 'fyabc'
 
@@ -774,7 +778,7 @@ class NMTModel(object):
         # get initial state of decoder rnn and encoder context
         ret = f_init(x, x_mask)
         next_state, ctx0 = ret[0], ret[1]
-        next_w = np.array([-1] * batch_size, dtype='int64')     # bos indicator
+        next_w = np.array([-1] * batch_size, dtype='int64')  # bos indicator
         next_state = np.tile(next_state[None, :, :], (self.O['n_decoder_layers'], 1, 1))
         next_memory = np.zeros((self.O['n_decoder_layers'], next_state.shape[1], next_state.shape[2]), dtype=fX)
 
@@ -1360,21 +1364,7 @@ class NMTModel(object):
                 self.P[k].set_value(v)
 
 
-def build_and_init_model(model_name, options=None, build=True):
-    if options is None:
-        with open('{}.pkl'.format(model_name), 'rb') as f:
-            options = DefaultOptions.copy()
-            options.update(pkl.load(f))
-
-    model = NMTModel(options)
-
-    # allocate model parameters
-    params = model.initializer.init_params()
-    # load model parameters and set theano shared variables
-    params = load_params(model_name, params)
-    model.init_tparams(params)
-
-    if build:
-        ret = model.build_model()
-        return model, options, ret
-    return model, options
+__all__ = [
+    'NMTModel',
+    'ParameterInitializer',
+]

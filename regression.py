@@ -26,7 +26,7 @@ import theano.tensor as T
 import numpy as np
 
 from libs.config import DefaultOptions
-from libs.model import NMTModel, ParameterInitializer
+from libs.models.model import NMTModel, ParameterInitializer
 from libs.utility.data_iterator import TextIterator
 from libs.utility.optimizers import Optimizers
 from libs.utility.utils import *

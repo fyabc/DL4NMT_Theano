@@ -11,7 +11,7 @@ import numpy as np
 import theano
 
 from libs.config import DefaultOptions
-from libs.model import NMTModel
+from libs.models.model import NMTModel
 from libs.utility.translate import seqs2words, load_translate_data
 from libs.utility.utils import load_params
 
