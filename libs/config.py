@@ -139,3 +139,9 @@ DefaultOptions = dict(
     # Fine-tune options
     fine_tune_patience=8,
 )
+
+
+# Dict of dual learning default options
+DualLearningDefaultOptions = {
+
+}
