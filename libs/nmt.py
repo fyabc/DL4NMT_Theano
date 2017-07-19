@@ -246,7 +246,7 @@ Start Time = {}
     trng, use_noise, \
         x, x_mask, y, y_mask, \
         opt_ret, \
-        cost, x_emb = model.build_model()
+        cost, test_cost, x_emb = model.build_model()
     inps = [x, x_mask, y, y_mask]
 
     print 'Building sampler'
@@ -257,6 +257,8 @@ Start Time = {}
     f_log_probs = theano.function(inps, cost, profile=profile)
     print 'Done'
     sys.stdout.flush()
+    test_cost = test_cost.mean() #FIXME: do not regularize test_cost here
+
     cost = cost.mean()
 
     cost = l2_regularization(cost, model.P, decay_c)
@@ -264,7 +266,7 @@ Start Time = {}
     cost = regularize_alpha_weights(cost, alpha_c, model_options, x_mask, y_mask, opt_ret)
 
     print 'Building f_cost...',
-    f_cost = theano.function(inps, cost, profile=profile)
+    f_cost = theano.function(inps, test_cost, profile=profile)
     print 'Done'
 
     if plot_graph is not None:
@@ -346,6 +348,11 @@ Start Time = {}
 
     start_time = time.time()
     finetune_cnt = 0
+
+    valid_cost = validation(valid_iterator, f_cost, maxlen=maxlen)
+    small_train_cost = validation(small_train_iterator, f_cost, maxlen=maxlen)
+    message('Initial: Valid cost {:.5f} Small train cost {:.5f}'.format(valid_cost, small_train_cost))
+    sys.stdout.flush()
 
     for eidx in xrange(start_epoch, max_epochs):
         if shuffle_data:

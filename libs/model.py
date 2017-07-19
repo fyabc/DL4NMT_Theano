@@ -416,8 +416,8 @@ class NMTModel(object):
 
         trng, use_noise, probs = self.get_word_probability(hidden_decoder, context_decoder, tgt_embedding,
                                                            trng=trng, use_noise=use_noise)
-
-        cost = self.build_cost(y, y_mask, probs) / self.O['cost_normalization']
+        test_cost = self.build_cost(y, y_mask, probs)
+        cost =  test_cost / self.O['cost_normalization'] #cost used to derive gradient in training
 
         # Plot computation graph
         if self.O['plot_graph'] is not None:
@@ -433,7 +433,7 @@ class NMTModel(object):
             # Unused now
             self.x, self.x_mask, self.y, self.y_mask = x, x_mask, y, y_mask
 
-        return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost, context_mean
+        return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost, test_cost, context_mean
 
     def build_context(self, **kwargs):
         """Build function to get encoder context (or encoder gates).
