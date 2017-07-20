@@ -4,7 +4,7 @@
 import theano
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
-from ..model import build_and_init_model
+from ..models import build_and_init_model
 
 __author__ = 'fyabc'
 
