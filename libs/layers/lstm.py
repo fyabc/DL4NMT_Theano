@@ -21,7 +21,7 @@ def param_init_lstm(O, params, prefix='lstm', nin=None, dim=None, **kwargs):
     layer_id = kwargs.pop('layer_id', 0)
     context_dim = kwargs.pop('context_dim', None)
     multi = 'multi' in O.get('unit', 'lstm')
-    unit_size = O.get('unit_size', 2)
+    unit_size = kwargs.pop('unit_size', O.get('unit_size', 2))
 
     if not multi:
         params[_p(prefix, 'W', layer_id)] = np.concatenate([
@@ -149,7 +149,7 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
     init_state = kwargs.pop('init_state', None)
     init_memory = kwargs.pop('init_memory', None)
     multi = 'multi' in O.get('unit', 'lstm')
-    unit_size = O.get('unit_size', 2)
+    unit_size = kwargs.pop('unit_size', O.get('unit_size', 2))
     # FIXME: multi-gru/lstm do NOT support get_gates now
     get_gates = kwargs.pop('get_gates', False)
 
@@ -264,7 +264,7 @@ def param_init_lstm_cond(O, params, prefix='lstm_cond', nin=None, dim=None, dimc
         dim_nonlin = dim
     layer_id = kwargs.pop('layer_id', 0)
     multi = 'multi' in O.get('unit', 'lstm_cond')
-    unit_size = O.get('unit_size_cond', 2)
+    unit_size = kwargs.pop('unit_size', O.get('cond_unit_size', 2))
 
     if not multi:
         params[_p(prefix, 'W', layer_id)] = np.concatenate([
@@ -343,7 +343,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
 
     layer_id = kwargs.pop('layer_id', 0)
     multi = 'multi' in O.get('unit', 'lstm_cond')
-    unit_size = O.get('unit_size_cond', 2)
+    unit_size = kwargs.pop('unit_size', O.get('cond_unit_size', 2))
     # FIXME: multi-gru/lstm do NOT support get_gates now
     get_gates = kwargs.pop('get_gates', False)
 

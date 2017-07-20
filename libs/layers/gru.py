@@ -21,7 +21,7 @@ def param_init_gru(O, params, prefix='gru', nin=None, dim=None, **kwargs):
     layer_id = kwargs.pop('layer_id', 0)
     context_dim = kwargs.pop('context_dim', None)
     multi = 'multi' in O.get('unit', 'gru')
-    unit_size = O.get('unit_size', 2)
+    unit_size = kwargs.pop('unit_size', O.get('unit_size', 2))
 
     if not multi:
         # embedding to gates transformation weights, biases
@@ -147,7 +147,7 @@ def gru_layer(P, state_below, O, prefix='gru', mask=None, **kwargs):
     one_step = kwargs.pop('one_step', False)
     init_state = kwargs.pop('init_state', None)
     multi = 'multi' in O.get('unit', 'gru')
-    unit_size = O.get('unit_size', 2)
+    unit_size = kwargs.pop('unit_size', O.get('unit_size', 2))
 
     kw_ret = {}
 
@@ -259,7 +259,7 @@ def param_init_gru_cond(O, params, prefix='gru_cond', nin=None, dim=None, dimctx
         dim_nonlin = dim
     layer_id = kwargs.pop('layer_id', 0)
     multi = 'multi' in O.get('unit', 'gru_cond')
-    unit_size = O.get('cond_unit_size', 2)
+    unit_size = kwargs.pop('unit_size', O.get('cond_unit_size', 2))
 
     if not multi:
         params[_p(prefix, 'W', layer_id)] = np.concatenate([normal_weight(nin, dim),
@@ -350,7 +350,7 @@ def gru_cond_layer(P, state_below, O, prefix='gru', mask=None, context=None, one
 
     layer_id = kwargs.pop('layer_id', 0)
     multi = 'multi' in O.get('unit', 'gru_cond')
-    unit_size = O.get('cond_unit_size', 2)
+    unit_size = kwargs.pop('unit_size', O.get('cond_unit_size', 2))
 
     kw_ret = {}
 
