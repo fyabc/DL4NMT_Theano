@@ -7,6 +7,7 @@ import copy
 import os
 import sys
 import time
+import math
 from pprint import pprint
 
 import numpy as np
@@ -183,9 +184,11 @@ Start Time = {}
     load_options(model_options, reload_, preload, src_vocab_map_file and tgt_vocab_map_file)
     check_options(model_options)
     model_options['cost_normalization'] = 1
+    ada_alpha = 0.95
     if dist_type == 'mpi_reduce':
         model_options['cost_normalization'] = workers_cnt
         lrate *= workers_cnt
+        ada_alpha = pow(0.95, workers_cnt)
 
     if True:
         message('Model options:')
@@ -295,7 +298,7 @@ Start Time = {}
     given_imm_data = get_adadelta_imm_data(optimizer, given_imm, preload)
 
     f_grad_shared, f_update, grads_shared, imm_shared = Optimizers[optimizer](
-        lr, model.P, grads, inps, cost, g2=g2, given_imm_data=given_imm_data, dump_imm=dump_imm)
+        lr, model.P, grads, inps, cost, g2=g2, given_imm_data=given_imm_data, alpha = ada_alpha)
     print 'Done'
 
     if dist_type == 'mpi_reduce':
@@ -344,7 +347,7 @@ Start Time = {}
 
     commu_time_sum = 0.0
     cp_time_sum =0.0
-    reduce_time_sum=0.0
+    reduce_time_sum = 0.0
 
     start_time = time.time()
     finetune_cnt = 0

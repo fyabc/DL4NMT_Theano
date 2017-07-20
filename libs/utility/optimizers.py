@@ -71,7 +71,7 @@ def adam(lr, tparams, grads, inp, cost, beta1=0.9, beta2=0.999, e=1e-8, **kwargs
 def adadelta(lr, tparams, grads, inp, cost, **kwargs):
     g2 = kwargs.pop('g2', None)
     given_imm_data = kwargs.pop('given_imm_data', None)
-    dump_imm = kwargs.pop('dump_imm', False)
+    alpha = kwargs.pop('alpha', 0.95)
 
     if g2 is None:
         outputs = cost
@@ -98,13 +98,13 @@ def adadelta(lr, tparams, grads, inp, cost, **kwargs):
     f_grad_shared = theano.function(inp, outputs, updates=zgup ,
                                     profile=profile)
 
-    rg2up = [(rg2, 0.95 * rg2 + 0.05 * (g ** 2))
+    rg2up = [(rg2, alpha * rg2 + (1 - alpha) * (g ** 2))
              for rg2, g in zip(running_grads2, zipped_grads)]
 
     updir = [-tensor.sqrt(ru2 + 1e-6) / tensor.sqrt(rg2 + 1e-6) * zg
              for zg, ru2, rg2 in zip(zipped_grads, running_up2,
                                      running_grads2)]
-    ru2up = [(ru2, 0.95 * ru2 + 0.05 * (ud ** 2))
+    ru2up = [(ru2, alpha * ru2 + (1 - alpha) * (ud ** 2))
              for ru2, ud in zip(running_up2, updir)]
     param_up = [(p, p + lr * ud) for p, ud in zip(itemlist(tparams), updir)]
 
