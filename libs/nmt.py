@@ -119,9 +119,8 @@ def train(dim_word=100,  # word vector dimensionality
           given_embedding=None,
 
           dist_type=None,
-          sync_batch=0,
           dist_recover_lr_iter=False,
-          sync_models=False,
+          clip_grads_local = False,
 
           unit_size=2,
           cond_unit_size=2,
@@ -161,9 +160,6 @@ def train(dim_word=100,  # word vector dimensionality
         if nccl:
             nccl_comm = init_nccl_env(mpi_communicator)
 
-    if dist_type and not sync_models:
-        sync_batch = 1 #force sync gradient in every mini-batch
-
     print 'Use {}, worker id: {}'.format('multiverso' if dist_type == 'mv' else 'mpi' if dist_recover_lr_iter else 'none', worker_id)
     sys.stdout.flush()
 
@@ -189,7 +185,7 @@ Start Time = {}
     load_options(model_options, reload_, preload, src_vocab_map_file and tgt_vocab_map_file)
     check_options(model_options)
     model_options['cost_normalization'] = 1
-    if dist_type == 'mpi_reduce' and not sync_models:
+    if dist_type == 'mpi_reduce':
         model_options['cost_normalization'] = workers_cnt
         lrate *= workers_cnt
 
@@ -203,13 +199,6 @@ Start Time = {}
     log('\n\n\nStart to prepare data\n@Current Time = {}'.format(time.time()))
     sys.stdout.flush()
 
-    '''
-    if dist_type:
-        dataset_src = '{}_{}'.format(datasets[0], worker_id)
-        dataset_tgt = '{}_{}'.format(datasets[1], worker_id)
-    else:
-        dataset_src, dataset_tgt = datasets[0], datasets[1]
-    '''
     dataset_src, dataset_tgt = datasets[0], datasets[1]
 
     if shuffle_data:
@@ -263,7 +252,7 @@ Start Time = {}
     trng, use_noise, \
         x, x_mask, y, y_mask, \
         opt_ret, \
-        cost, x_emb = model.build_model()
+        cost, test_cost, x_emb = model.build_model()
     inps = [x, x_mask, y, y_mask]
 
     print 'Building sampler'
@@ -274,6 +263,8 @@ Start Time = {}
     f_log_probs = theano.function(inps, cost, profile=profile)
     print 'Done'
     sys.stdout.flush()
+    test_cost = test_cost.mean() #FIXME: do not regularize test_cost here
+
     cost = cost.mean()
 
     cost = l2_regularization(cost, model.P, decay_c)
@@ -281,7 +272,7 @@ Start Time = {}
     cost = regularize_alpha_weights(cost, alpha_c, model_options, x_mask, y_mask, opt_ret)
 
     print 'Building f_cost...',
-    f_cost = theano.function(inps, cost, profile=profile)
+    f_cost = theano.function(inps, test_cost, profile=profile)
     print 'Done'
 
     if plot_graph is not None:
@@ -298,7 +289,7 @@ Start Time = {}
 
     clip_shared = theano.shared(np.array(clip_c, dtype=fX), name='clip_shared')
 
-    if dist_type != 'mpi_reduce' or sync_models: #build grads clip into computational graph
+    if dist_type != 'mpi_reduce' or clip_grads_local: #build grads clip into computational graph
         grads, g2 = clip_grad_remove_nan(grads, clip_shared, model.P)
     else: #do the grads clip after gradients aggregation
         g2 = None
@@ -313,7 +304,7 @@ Start Time = {}
         lr, model.P, grads, inps, cost, g2=g2, given_imm_data=given_imm_data, dump_imm=dump_imm)
     print 'Done'
 
-    if dist_type == 'mpi_reduce' and not sync_models:
+    if dist_type == 'mpi_reduce':
         f_grads_clip = make_grads_clip_func(grads_shared = grads_shared, mt_tparams= model.P, clip_c_shared = clip_shared)
 
     print 'Optimization'
@@ -323,13 +314,7 @@ Start Time = {}
         mv.barrier()
     elif dist_type == 'mpi_reduce':
         #create receive buffers for mpi allreduce
-        if sync_models:
-            rec_models = [np.zeros_like(p.get_value()) for p in model.P.itervalues()]
-            rec_immes_list = [None for _ in imm_shared]
-            for i in xrange(len(imm_shared)):
-                rec_immes_list[i] = [np.zeros_like(p.get_value()) for p in model.P.itervalues()]
-        else:
-            rec_grads = [np.zeros_like(p.get_value()) for p in model.P.itervalues()]
+        rec_grads = [np.zeros_like(p.get_value()) for p in model.P.itervalues()]
 
     estop = False
     history_errs = []
@@ -344,7 +329,7 @@ Start Time = {}
         epoch_n_batches = 1 #avoid heavy data IO
 
     if dist_type == 'mpi_reduce':
-        epoch_n_batches = mpi_communicator.bcast([epoch_n_batches, MPI.INT], root = 0)
+        epoch_n_batches = mpi_communicator.bcast(epoch_n_batches, root = 0)
     start_epoch = uidx / epoch_n_batches
     pass_batches = uidx % epoch_n_batches
 
@@ -369,6 +354,11 @@ Start Time = {}
 
     start_time = time.time()
     finetune_cnt = 0
+
+    valid_cost = validation(valid_iterator, f_cost, maxlen=maxlen)
+    small_train_cost = validation(small_train_iterator, f_cost, maxlen=maxlen)
+    message('Initial: Valid cost {:.5f} Small train cost {:.5f}'.format(valid_cost, small_train_cost))
+    sys.stdout.flush()
 
     for eidx in xrange(start_epoch, max_epochs):
         if shuffle_data:
@@ -398,31 +388,24 @@ Start Time = {}
             ud_start = time.time()
 
             # compute cost, grads
-            if dist_type != 'mpi_reduce' or sync_models:
+            if dist_type != 'mpi_reduce' or clip_grads_local:
                 cost, g2_value = f_grad_shared(x, x_mask, y, y_mask)
             else:
                 cost = f_grad_shared(x, x_mask, y, y_mask)
 
-            if dist_type == 'mpi_reduce' and uidx % sync_batch == 0:
+            if dist_type == 'mpi_reduce':
                 reduce_start = time.time()
                 commu_time = 0
 
                 gpucpu_cp_time = 0
-                if sync_models: #sync model parameters
-                    commu_time_delta, cp_time_delta = all_reduce_params(model.P.itervalues(), rec_models, workers_cnt)
-                    commu_time += commu_time_delta
-                    gpucpu_cp_time += cp_time_delta
-                    for i in xrange(len(imm_shared)):  # sync immediate parameters in ada* algorithm
-                        commu_time_delta, cp_time_delta = all_reduce_params(imm_shared[i], rec_immes_list[i], workers_cnt)
-                        commu_time += commu_time_delta
-                        gpucpu_cp_time += cp_time_delta
-                    reduce_time = time.time() - reduce_start
-                else: #sync gradients
-                    if not nccl:
-                        commu_time, gpucpu_cp_time = all_reduce_params(grads_shared, rec_grads)
-                    else:
-                        commu_time, gpucpu_cp_time = all_reduce_params_nccl(nccl_comm, grads_shared)
-                    reduce_time = time.time() - reduce_start
+
+                if not nccl:
+                    commu_time, gpucpu_cp_time = all_reduce_params(grads_shared, rec_grads)
+                else:
+                    commu_time, gpucpu_cp_time = all_reduce_params_nccl(nccl_comm, grads_shared)
+                reduce_time = time.time() - reduce_start
+
+                if not clip_grads_local: #clip gradient after aggregation
                     g2_value = f_grads_clip()
 
                 commu_time_sum += commu_time

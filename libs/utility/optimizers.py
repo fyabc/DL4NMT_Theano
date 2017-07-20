@@ -10,19 +10,54 @@ profile = False
 # todo: change optimizer function to optimizer class, move save/load immediate data here.
 
 class Optimizer(object):
-    def __init__(self):
-        pass
+    def __init__(self, lr, tparams, grads, inputs, cost, **kwargs):
+        g2 = kwargs.pop('g2', None)
+        self.given_imm_data = kwargs.pop('given_imm_data', None)
+
+        self.imm_shared = None
+        self.grad_shared = None
+        self.f_grad_shared = None
+        self.f_update = None
+
+        if g2 is None:
+            self.outputs = cost
+        else:
+            self.outputs = [cost, g2]
 
     def load_immediate_data(self, given_imm):
         pass
 
-    def dump_immediate_data(self, imm_shared):
+    def dump_immediate_data(self):
         pass
 
 
 class AdamOptimizer(Optimizer):
-    def __init__(self):
-        super(AdamOptimizer, self).__init__()
+    def __init__(self, lr, tparams, grads, inputs, cost, **kwargs):
+        super(AdamOptimizer, self).__init__(lr, tparams, grads, inputs, cost, **kwargs)
+
+        beta1 = kwargs.pop('beta1', 0.9)
+        beta2 = kwargs.pop('beta2', 0.999)
+        e = kwargs.pop('e', 1e-8)
+
+        self.grad_shared = [theano.shared(p.get_value() * 0., name='%s_grad' % k)
+                            for k, p in tparams.iteritems()]
+        gs_up = [(gs, g) for gs, g in zip(self.grad_shared, grads)]
+
+        self.f_grad_shared = theano.function(inputs, self.outputs, updates=gs_up, profile=profile)
+
+        updates = []
+
+        ms = []
+        vs = []
+
+        if self.given_imm_data is not None:
+            t_prev = theano.shared(self.given_imm_data[0])
+        else:
+            t_prev = theano.shared(numpy.float32(0.))
+        t = t_prev + 1.
+        lr_t = lr * tensor.sqrt(1. - beta2 ** t) / (1. - beta1 ** t)
+
+        # todo
 
 
 # optimizers
@@ -73,14 +108,12 @@ def adam(lr, tparams, grads, inp, cost, beta1=0.9, beta2=0.999, e=1e-8, **kwargs
         updates.append((m, m_t))
         updates.append((v, v_t))
         updates.append((p, p_t))
-        updates.append((t_prev, t))
+    updates.append((t_prev, t))
 
     f_update = theano.function([lr], [], updates=updates,
                                on_unused_input='ignore', profile=profile)
 
-    if dump_imm:
-        return f_grad_shared, f_update, [t_prev, ms, vs]
-    return f_grad_shared, f_update, None
+    return f_grad_shared, f_update, gshared, [t_prev, ms, vs]
 
 
 def adadelta(lr, tparams, grads, inp, cost, **kwargs):

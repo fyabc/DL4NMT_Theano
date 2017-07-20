@@ -73,19 +73,6 @@ truecase的test脚本暂时还没有，根据[这里](http://www.statmt.org/mose
 应该在运行`perl multi-bleu.perl`之前运行`perl detruecase.perl < translated_file > output`。
 
 
-## TODO
-
-1. 师弟，现在有一些任务需要你来做一下。你先读一下附件里的这篇paper，我们想要做一个类似这个paper里面的事情，
-就是visualize一下 deep NMT model里面不同layers的gates/activation的值。你读完之后我们再具体讨论下应该怎么做。
-2. 另外你改一下现在的code，把fine tune阶段改成这样的feature:
-    先halve lr，再halve grad clip threshold，再halve lr， 再clip threshold，再lr ......
-
-    什么时候决定halve取决于dev集上的bleu score，即类似于原始code里面的early stop，如果patience个check point
-    （就是validation points），dev 集上的bleu仍然没涨，那么就进行halve lr/clip value。所以你需要加一个subprocess，就是get dev集上的bleu score。
-所以也就是说以后我们不用--lr_discount 这个参数，而是改成一个类似lr_discount_patience这样的参数，默认可以是10，
-然后在get dev bleu的时候，为了快速计算可以用beam_size=2。
-
-
 ## NOTES
 
 Scripts in `scripts` must be call at root directory of the project (the directory of this README).
