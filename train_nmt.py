@@ -7,7 +7,10 @@ from libs.gpu_manager import get_gpu_usage
 
 
 def main():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description='Train the deep NMT model.',
+        fromfile_prefix_chars='@',
+    )
 
     parser.add_argument('-R', action="store_false", default=True, dest='reload',
                         help='Reload old model, default to True, set to False')
@@ -93,8 +96,9 @@ def main():
                         help='Dropout rate, default is False (not use dropout)')
     parser.add_argument('--unit_size', action='store', default=2, type=int, dest='unit_size',
                         help='Number of unit size, default is %(default)s')
+    # TODO: rename this option to decoder_unit_size in future
     parser.add_argument('--cond_unit_size', action='store', default=2, type=int, dest='cond_unit_size',
-                        help='Number of cond unit size, default is %(default)s')
+                        help='Number of decoder unit size (will rename in future), default is %(default)s')
     parser.add_argument('--clip', action='store', metavar='clip', dest='clip', type=float, default=1.0,
                         help='Gradient clip rate, default is 1.0.')
     parser.add_argument('--manual', action='store_false', dest='auto', default=True,

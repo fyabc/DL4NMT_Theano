@@ -64,6 +64,8 @@ class ParameterInitializer(object):
         n_layers = self.O['n_decoder_layers']
         all_att = self.O['decoder_all_attention']
         avg_ctx = self.O['average_context']
+        unit = self.O['unit']
+        unit_size = self.O['cond_unit_size']
 
         # init_state, init_cell
         np_parameters = self.init_feed_forward(np_parameters, prefix='ff_state', nin=context_dim, nout=self.O['dim'])
@@ -71,28 +73,28 @@ class ParameterInitializer(object):
         if all_att:
             # All decoder layers have attention.
             for layer_id in xrange(0, n_layers):
-                np_parameters = get_init(self.O['unit'] + '_cond')(
+                np_parameters = get_init(unit + '_cond')(
                     self.O, np_parameters, prefix='decoder',
                     nin=self.O['dim_word'] if layer_id == 0 else self.O['dim'],
-                    dim=self.O['dim'], dimctx=context_dim, layer_id=layer_id)
+                    dim=self.O['dim'], dimctx=context_dim, layer_id=layer_id, unit_size=unit_size)
         else:
             # Layers before attention layer
             for layer_id in xrange(0, attention_layer_id):
-                np_parameters = get_init(self.O['unit'])(
+                np_parameters = get_init(unit)(
                     self.O, np_parameters, prefix='decoder', nin=self.O['dim_word'] if layer_id == 0 else self.O['dim'],
-                    dim=self.O['dim'], layer_id=layer_id, context_dim=None)
+                    dim=self.O['dim'], layer_id=layer_id, context_dim=None, unit_size=unit_size)
 
             # Attention layer
-            np_parameters = get_init(self.O['unit'] + '_cond')(
+            np_parameters = get_init(unit + '_cond')(
                 self.O, np_parameters, prefix='decoder',
                 nin=self.O['dim_word'] if attention_layer_id == 0 else self.O['dim'],
-                dim=self.O['dim'], dimctx=context_dim, layer_id=attention_layer_id)
+                dim=self.O['dim'], dimctx=context_dim, layer_id=attention_layer_id, unit_size=unit_size)
 
             # Layers after attention layer
             for layer_id in xrange(attention_layer_id + 1, n_layers):
-                np_parameters = get_init(self.O['unit'])(
+                np_parameters = get_init(unit)(
                     self.O, np_parameters, prefix='decoder', nin=self.O['dim'],
-                    dim=self.O['dim'], layer_id=layer_id, context_dim=context_dim)
+                    dim=self.O['dim'], layer_id=layer_id, context_dim=context_dim, unit_size=unit_size)
 
         return np_parameters
 
@@ -1112,6 +1114,7 @@ class NMTModel(object):
 
         n_layers = self.O['n_decoder_layers']
         unit = self.O['unit']
+        unit_size = self.O['cond_unit_size']
         attention_layer_id = self.O['attention_layer_id']
         residual = self.O['residual_dec']
         all_att = self.O['decoder_all_attention']
@@ -1171,7 +1174,7 @@ class NMTModel(object):
                     self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, context=context,
                     context_mask=x_mask, one_step=one_step, init_state=init_state[layer_id],
                     dropout_params=dropout_params, layer_id=layer_id,
-                    init_memory=init_memory[layer_id],
+                    init_memory=init_memory[layer_id], unit_size=unit_size,
                 )
 
                 context_decoder_list.append(context_decoder)
@@ -1210,7 +1213,7 @@ class NMTModel(object):
                 layer_out = get_build(unit)(
                     self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
                     dropout_params=dropout_params, one_step=one_step, init_state=init_state[layer_id], context=None,
-                    init_memory=init_memory[layer_id], get_gates=get_gates,
+                    init_memory=init_memory[layer_id], get_gates=get_gates, unit_size=unit_size,
                 )
                 kw_ret_layer = layer_out[-1]
 
@@ -1243,7 +1246,7 @@ class NMTModel(object):
                 self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, context=context,
                 context_mask=x_mask, one_step=one_step, init_state=init_state[attention_layer_id],
                 dropout_params=dropout_params, layer_id=attention_layer_id, init_memory=init_memory[attention_layer_id],
-                get_gates=get_gates,
+                get_gates=get_gates, unit_size=unit_size,
             )
 
             hiddens_without_dropout.append(kw_ret_att['hidden_without_dropout'])
@@ -1276,7 +1279,7 @@ class NMTModel(object):
                 layer_out = get_build(unit)(
                     self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
                     dropout_params=dropout_params, context=context_decoder, init_state=init_state[layer_id],
-                    one_step=one_step, init_memory=init_memory[layer_id], get_gates=get_gates,
+                    one_step=one_step, init_memory=init_memory[layer_id], get_gates=get_gates, unit_size=unit_size,
                 )
                 kw_ret_layer = layer_out[-1]
 

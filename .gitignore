@@ -108,3 +108,6 @@ translated/
 
 # theano config files
 .theanorc.*
+
+# Command line argument files
+/arguments/
