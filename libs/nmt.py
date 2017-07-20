@@ -393,13 +393,13 @@ Start Time = {}
             if dist_type == 'mpi_reduce':
                 reduce_start = time.time()
                 commu_time = 0
-
                 gpucpu_cp_time = 0
 
                 if not nccl:
                     commu_time, gpucpu_cp_time = all_reduce_params(grads_shared, rec_grads)
                 else:
                     commu_time, gpucpu_cp_time = all_reduce_params_nccl(nccl_comm, grads_shared)
+
                 reduce_time = time.time() - reduce_start
 
                 if not clip_grads_local: #clip gradient after aggregation
@@ -410,14 +410,14 @@ Start Time = {}
                 cp_time_sum += gpucpu_cp_time
 
                 print '@Worker = {}, Reduce time = {:.5f}, Commu time = {:.5f}, Copy time = {:.5f}'.format(
-                    worker_id, reduce_time_sum / effective_uidx, commu_time_sum / effective_uidx, cp_time_sum /effective_uidx)
-
-            # do the update on parameters
+                    #worker_id, reduce_time_sum / effective_uidx, commu_time_sum / effective_uidx, cp_time_sum /effective_uidx)
+                    worker_id, reduce_time, commu_time, gpucpu_cp_time)
 
             curr_lr = lrate if not dist_type or dist_recover_lr_iter < effective_uidx else lrate * 0.05 + effective_uidx * lrate / dist_recover_lr_iter * 0.95
             if curr_lr < lrate:
                 print 'Curr lr %.3f' % curr_lr
 
+            # do the update on parameters
             f_update(curr_lr)
 
             ud = time.time() - ud_start
@@ -429,7 +429,7 @@ Start Time = {}
                 sys.stdout.flush()
                 return 1., 1., 1.
 
-            # discount reward
+            # discount learning rate
             # FIXME: Do NOT enable this and fine-tune at the same time
             if lr_discount_freq > 0 and np.mod(effective_uidx, lr_discount_freq) == 0:
                 lrate *= 0.5
@@ -443,8 +443,8 @@ Start Time = {}
 
             # verbose
             if np.mod(uidx, dispFreq) == 0:
-                message('Epoch {} Update {} Cost {:.5f} G2 {:.5f} UD {:.5f} Time {:.5f} s'.format(
-                    eidx, uidx, float(cost), float(g2_value), ud, time.time() - start_time,
+                message('Worker {} Epoch {} Update {} Cost {:.5f} G2 {:.5f} UD {:.5f} Time {:.5f} s'.format(
+                    worker_id, eidx, uidx, float(cost), float(g2_value), ud, time.time() - start_time,
                 ))
                 sys.stdout.flush()
 
