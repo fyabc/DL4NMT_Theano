@@ -431,14 +431,14 @@ Start Time = {}
 
             # do the update on parameters
             if worker_id == 0:
-                print 'Before updating, rg2 sum,', imm_shared[0][0].get_value().sum(), 'ru2 sum', imm_shared[1][0].get_value().sum()
+                print 'Before updating, rg2 sum %.6f,'%  imm_shared[0][0].get_value().sum(), 'ru2 sum %.6f'% imm_shared[1][0].get_value().sum()
 
             sum_before = model.P['Wemb'].get_value().sum()
             f_update(curr_lr)
             sum_after = model.P['Wemb'].get_value().sum()
 
             if worker_id == 0:
-                print 'After updating, rg2 sum,', imm_shared[0][0].get_value().sum(), 'ru2 sum', imm_shared[1][0].get_value().sum()
+                print 'After updating, rg2 sum %.6f,'% imm_shared[0][0].get_value().sum(), 'ru2 sum %.6f' % imm_shared[1][0].get_value().sum()
 
             rg_before = (1 - ada_alpha) * grad_before * grad_before
             up_before = -np.sqrt(1e-6) / np.sqrt(rg_before + 1e-6) * grad_before
