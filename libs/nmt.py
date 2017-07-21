@@ -430,9 +430,15 @@ Start Time = {}
                 print 'Curr lr %.3f' % curr_lr
 
             # do the update on parameters
+            if worker_id == 0:
+                print 'Before updating, rg2 sum,', imm_shared[0][0].get_value().sum(), 'ru2 sum', imm_shared[1][0].get_value().sum()
+
             sum_before = model.P['Wemb'].get_value().sum()
             f_update(curr_lr)
             sum_after = model.P['Wemb'].get_value().sum()
+
+            if worker_id == 0:
+                print 'After updating, rg2 sum,', imm_shared[0][0].get_value().sum(), 'ru2 sum', imm_shared[1][0].get_value().sum()
 
             rg_before = (1 - ada_alpha) * grad_before * grad_before
             up_before = -np.sqrt(1e-6) / np.sqrt(rg_before + 1e-6) * grad_before
@@ -441,7 +447,7 @@ Start Time = {}
             up = -np.sqrt(1e-6) / np.sqrt(rg + 1e-6) * grad_
 
             if worker_id == 0:
-                print 'Workder', worker_id, 'rg %.6f' % rg.sum(), 'delta %.6f'% (sum_after - sum_before), 'Assumed change %.6f' % (up * lrate).sum(), 'Assumed change2 %.6f' % (up_before * lrate).sum()
+                print 'Workder', worker_id, 'rg %.6f' % rg.sum(), 'delta %.6f'% (sum_after - sum_before), 'Assumed change %.6f' % (up * curr_lr).sum(), 'Assumed change2 %.6f' % (up_before * curr_lr).sum()
             sys.stdout.flush()
 
             ud = time.time() - ud_start
