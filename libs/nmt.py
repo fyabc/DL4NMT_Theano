@@ -187,8 +187,8 @@ Start Time = {}
     ada_alpha = 0.95
     if dist_type == 'mpi_reduce':
         model_options['cost_normalization'] = workers_cnt
-        lrate *= workers_cnt
-        ada_alpha = pow(0.95, workers_cnt)
+        #lrate *= workers_cnt
+        #ada_alpha = pow(0.95, workers_cnt)
 
     if True:
         message('Model options:')
@@ -357,13 +357,6 @@ Start Time = {}
 
     start_time = time.time()
     finetune_cnt = 0
-
-    '''
-    valid_cost = validation(valid_iterator, f_cost, maxlen=maxlen)
-    small_train_cost = validation(small_train_iterator, f_cost, maxlen=maxlen)
-    message('Initial: Valid cost {:.5f} Small train cost {:.5f}'.format(valid_cost, small_train_cost))
-    sys.stdout.flush()
-    '''
 
     for eidx in xrange(start_epoch, max_epochs):
         if shuffle_data:
