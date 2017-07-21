@@ -336,7 +336,7 @@ Start Time = {}
     start_epoch = 0
     pass_batches = 0
 
-    print 'worker', worker_id, 'uidx', uidx, 'l_rate', lrate, 'n_batches', epoch_n_batches, 'start_epoch', start_epoch, 'pass_batches', pass_batches
+    print 'worker', worker_id, 'uidx', uidx, 'l_rate', lrate, 'ada_alpha', ada_alpha, 'n_batches', epoch_n_batches, 'start_epoch', start_epoch, 'pass_batches', pass_batches
 
     start_uidx = uidx
 
@@ -437,13 +437,12 @@ Start Time = {}
             rg_before = (1 - ada_alpha) * grad_before * grad_before
             up_before = -np.sqrt(1e-6) / np.sqrt(rg_before + 1e-6) * grad_before
 
-            rg = (1 - ada_alpha) * grad_ * grad_
+            rg = (1 - ada_alpha) * (grad_ ** 2)
             up = -np.sqrt(1e-6) / np.sqrt(rg + 1e-6) * grad_
 
-            print 'Workder', worker_id, 'rg %.6f' % rg.sum(), 'delta %.6f'% (sum_after - sum_before), 'Assumed change %.6f' % (up * lrate).sum(), 'Assumed change2 %.6f' % (up_before * lrate).sum()
+            if worker_id == 0:
+                print 'Workder', worker_id, 'rg %.6f' % rg.sum(), 'delta %.6f'% (sum_after - sum_before), 'Assumed change %.6f' % (up * lrate).sum(), 'Assumed change2 %.6f' % (up_before * lrate).sum()
             sys.stdout.flush()
-
-            raw_input()
 
             ud = time.time() - ud_start
 
