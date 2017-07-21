@@ -413,13 +413,15 @@ Start Time = {}
                 else:
                     commu_time, gpucpu_cp_time = all_reduce_params_nccl(nccl_comm, grads_shared)
 
-                grad_ = grads_shared[0].get_value()
-                print 'Workder', worker_id, 'After %.5f, sum by lr %.2f is %.5f' % (grad_.sum(), lrate, grad_.sum() * lrate)
+
+                #print 'Workder', worker_id, 'After %.5f, sum by lr %.2f is %.5f' % (grad_.sum(), lrate, grad_.sum() * lrate)
 
                 reduce_time = time.time() - reduce_start
 
                 if not clip_grads_local: #clip gradient after aggregation
                     g2_value = f_grads_clip()
+
+                grad_ = grads_shared[0].get_value()
 
                 commu_time_sum += commu_time
                 reduce_time_sum += reduce_time
