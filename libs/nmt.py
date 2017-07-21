@@ -358,10 +358,12 @@ Start Time = {}
     start_time = time.time()
     finetune_cnt = 0
 
+    '''
     valid_cost = validation(valid_iterator, f_cost, maxlen=maxlen)
     small_train_cost = validation(small_train_iterator, f_cost, maxlen=maxlen)
     message('Initial: Valid cost {:.5f} Small train cost {:.5f}'.format(valid_cost, small_train_cost))
     sys.stdout.flush()
+    '''
 
     for eidx in xrange(start_epoch, max_epochs):
         if shuffle_data:
@@ -429,7 +431,8 @@ Start Time = {}
             sum_before = model.P['Wemb'].get_value().sum()
             f_update(curr_lr)
             sum_after = model.P['Wemb'].get_value().sum()
-            print 'Workder', worker_id, 'Model delta %.4f', sum_after - sum_before
+            print 'Workder', worker_id, 'Model delta %.4f'% (sum_after - sum_before)
+            sys.stdout.flush()
 
             ud = time.time() - ud_start
 
