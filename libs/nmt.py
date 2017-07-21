@@ -319,6 +319,7 @@ Start Time = {}
     best_p = None
     bad_counter = 0
     uidx = search_start_uidx(reload_, preload)
+    '''
     if uidx != 0:
         epoch_n_batches = get_epoch_batch_cnt(dataset_src, dataset_tgt, vocab_filenames, batch_size, maxlen, n_words_src, n_words) \
             if worker_id == 0 else None
@@ -329,6 +330,11 @@ Start Time = {}
         epoch_n_batches = mpi_communicator.bcast(epoch_n_batches, root = 0)
     start_epoch = uidx / epoch_n_batches
     pass_batches = uidx % epoch_n_batches
+    '''
+
+    epoch_n_batches = 0
+    start_epoch = 0
+    pass_batches = 0
 
     print 'worker', worker_id, 'uidx', uidx, 'l_rate', lrate, 'n_batches', epoch_n_batches, 'start_epoch', start_epoch, 'pass_batches', pass_batches
 
@@ -395,10 +401,14 @@ Start Time = {}
                 commu_time = 0
                 gpucpu_cp_time = 0
 
+                print 'Workder', worker_id, 'Before %.4f'% grads_shared[0].get_value().sum()
+
                 if not nccl:
                     commu_time, gpucpu_cp_time = all_reduce_params(grads_shared, rec_grads)
                 else:
                     commu_time, gpucpu_cp_time = all_reduce_params_nccl(nccl_comm, grads_shared)
+
+                print 'Workder', worker_id, 'After %.4f, mul by lr %.2f is %.4f' % (grads_shared[0].get_value().sum(), lrate, grads_shared[0].get_value().sum() * lrate)
 
                 reduce_time = time.time() - reduce_start
 
@@ -409,16 +419,17 @@ Start Time = {}
                 reduce_time_sum += reduce_time
                 cp_time_sum += gpucpu_cp_time
 
-                print '@Worker = {}, Reduce time = {:.5f}, Commu time = {:.5f}, Copy time = {:.5f}'.format(
-                    #worker_id, reduce_time_sum / effective_uidx, commu_time_sum / effective_uidx, cp_time_sum /effective_uidx)
-                    worker_id, reduce_time, commu_time, gpucpu_cp_time)
+                print '@Worker = {}, Reduce time = {:.5f}, Commu time = {:.5f}, Copy time = {:.5f}'.format(worker_id, reduce_time, commu_time, gpucpu_cp_time)
 
             curr_lr = lrate if not dist_type or dist_recover_lr_iter < effective_uidx else lrate * 0.05 + effective_uidx * lrate / dist_recover_lr_iter * 0.95
             if curr_lr < lrate:
                 print 'Curr lr %.3f' % curr_lr
 
             # do the update on parameters
+            sum_before = model.P['Wemb'].get_value().sum()
             f_update(curr_lr)
+            sum_after = model.P['Wemb'].get_value().sum()
+            print 'Workder', worker_id, 'Model delta %.4f', sum_after - sum_before
 
             ud = time.time() - ud_start
 
