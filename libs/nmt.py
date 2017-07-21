@@ -398,66 +398,36 @@ Start Time = {}
             else:
                 cost = f_grad_shared(x, x_mask, y, y_mask)
 
-            grad_before = grads_shared[0].get_value()
-            grad_ = grad_before
-
             if dist_type == 'mpi_reduce':
                 reduce_start = time.time()
                 commu_time = 0
                 gpucpu_cp_time = 0
-
-                print 'Workder', worker_id, 'Before %.4f'% grad_before.sum()
 
                 if not nccl:
                     commu_time, gpucpu_cp_time = all_reduce_params(grads_shared, rec_grads)
                 else:
                     commu_time, gpucpu_cp_time = all_reduce_params_nccl(nccl_comm, grads_shared)
 
-
-                #print 'Workder', worker_id, 'After %.5f, sum by lr %.2f is %.5f' % (grad_.sum(), lrate, grad_.sum() * lrate)
-
                 reduce_time = time.time() - reduce_start
 
                 if not clip_grads_local: #clip gradient after aggregation
                     g2_value = f_grads_clip()
 
-                grad_ = grads_shared[0].get_value()
-
                 commu_time_sum += commu_time
                 reduce_time_sum += reduce_time
                 cp_time_sum += gpucpu_cp_time
 
-                #print '@Worker = {}, Reduce time = {:.5f}, Commu time = {:.5f}, Copy time = {:.5f}'.format(worker_id, reduce_time, commu_time, gpucpu_cp_time)
+                print '@Worker = {}, Reduce time = {:.5f}, Commu time = {:.5f}, Copy time = {:.5f}'.format(worker_id, reduce_time, commu_time, gpucpu_cp_time)
 
             curr_lr = lrate if not dist_type or dist_recover_lr_iter < effective_uidx else lrate * 0.05 + effective_uidx * lrate / dist_recover_lr_iter * 0.95
             if curr_lr < lrate:
                 print 'Curr lr %.3f' % curr_lr
 
             # do the update on parameters
-            if worker_id == 0:
-                print 'Before updating, ru2 sum %.6f,'% imm_shared[0][0].get_value().sum(), 'rg2 sum %.6f'% imm_shared[1][0].get_value().sum()
-
-            rg_before = (1 - ada_alpha) * grad_before * grad_before
-            up_before = -np.sqrt(1e-6) / np.sqrt(rg_before + 1e-6) * grad_before
-
-            rg = (1 - ada_alpha) * (grad_ ** 2)
-            up = -np.sqrt(1e-6) / np.sqrt(rg + 1e-6) * grad_
-
-            sum_before = model.P['Wemb'].get_value().sum()
             f_update(curr_lr)
-            sum_after = model.P['Wemb'].get_value().sum()
-
-            if worker_id == 0:
-                print 'After updating, ru2 sum %.6f,'% imm_shared[0][0].get_value().sum(), 'rg2 sum %.6f' % imm_shared[1][0].get_value().sum()
-
-            if worker_id == 0:
-                print 'Worker', worker_id, 'rg %.6f' % rg.sum(), 'delta %.6f'% (sum_after - sum_before), 'Assumed change %.6f' % (up * curr_lr).sum(), 'Assumed change2 %.6f' % (up_before * curr_lr).sum()
-            sys.stdout.flush()
 
             ud = time.time() - ud_start
 
-            # check for bad numbers, usually we remove non-finite elements
-            # and continue training - but not done here
             if np.isnan(cost) or np.isinf(cost):
                 message('NaN detected')
                 sys.stdout.flush()
