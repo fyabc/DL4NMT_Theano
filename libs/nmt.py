@@ -398,12 +398,14 @@ Start Time = {}
             else:
                 cost = f_grad_shared(x, x_mask, y, y_mask)
 
+            grad_before = grads_shared[0].get_value()
+            grad_ = grad_before
+
             if dist_type == 'mpi_reduce':
                 reduce_start = time.time()
                 commu_time = 0
                 gpucpu_cp_time = 0
 
-                grad_before = grads_shared[0].get_value()
                 print 'Workder', worker_id, 'Before %.4f'% grad_before.sum()
 
                 if not nccl:
@@ -431,14 +433,14 @@ Start Time = {}
 
             # do the update on parameters
             if worker_id == 0:
-                print 'Before updating, rg2 sum %.6f,'%  imm_shared[0][0].get_value().sum(), 'ru2 sum %.6f'% imm_shared[1][0].get_value().sum()
+                print 'Before updating, ru2 sum %.6f,'%  imm_shared[0][0].get_value().sum(), 'rg2 sum %.6f'% imm_shared[1][0].get_value().sum()
 
             sum_before = model.P['Wemb'].get_value().sum()
             f_update(curr_lr)
             sum_after = model.P['Wemb'].get_value().sum()
 
             if worker_id == 0:
-                print 'After updating, rg2 sum %.6f,'% imm_shared[0][0].get_value().sum(), 'ru2 sum %.6f' % imm_shared[1][0].get_value().sum()
+                print 'After updating, ru2 sum %.6f,'% imm_shared[0][0].get_value().sum(), 'rg2 sum %.6f' % imm_shared[1][0].get_value().sum()
 
             rg_before = (1 - ada_alpha) * grad_before * grad_before
             up_before = -np.sqrt(1e-6) / np.sqrt(rg_before + 1e-6) * grad_before
