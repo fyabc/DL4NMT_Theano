@@ -403,7 +403,8 @@ Start Time = {}
                 commu_time = 0
                 gpucpu_cp_time = 0
 
-                print 'Workder', worker_id, 'Before %.4f'% grads_shared[0].get_value().sum()
+                grad_before = grads_shared[0].get_value()
+                print 'Workder', worker_id, 'Before %.4f'% grad_before.sum()
 
                 if not nccl:
                     commu_time, gpucpu_cp_time = all_reduce_params(grads_shared, rec_grads)
@@ -411,7 +412,7 @@ Start Time = {}
                     commu_time, gpucpu_cp_time = all_reduce_params_nccl(nccl_comm, grads_shared)
 
                 grad_ = grads_shared[0].get_value()
-                print 'Workder', worker_id, 'After %.5f, max by lr %.2f is %.5f' % (grad_.sum(), lrate, grad_.sum() * lrate)
+                print 'Workder', worker_id, 'After %.5f, sum by lr %.2f is %.5f' % (grad_.sum(), lrate, grad_.sum() * lrate)
 
                 reduce_time = time.time() - reduce_start
 
@@ -422,7 +423,7 @@ Start Time = {}
                 reduce_time_sum += reduce_time
                 cp_time_sum += gpucpu_cp_time
 
-                print '@Worker = {}, Reduce time = {:.5f}, Commu time = {:.5f}, Copy time = {:.5f}'.format(worker_id, reduce_time, commu_time, gpucpu_cp_time)
+                #print '@Worker = {}, Reduce time = {:.5f}, Commu time = {:.5f}, Copy time = {:.5f}'.format(worker_id, reduce_time, commu_time, gpucpu_cp_time)
 
             curr_lr = lrate if not dist_type or dist_recover_lr_iter < effective_uidx else lrate * 0.05 + effective_uidx * lrate / dist_recover_lr_iter * 0.95
             if curr_lr < lrate:
@@ -432,11 +433,17 @@ Start Time = {}
             sum_before = model.P['Wemb'].get_value().sum()
             f_update(curr_lr)
             sum_after = model.P['Wemb'].get_value().sum()
+
+            rg_before = (1 - ada_alpha) * grad_before * grad_before
+            up_before = -np.sqrt(1e-6) / np.sqrt(rg_before + 1e-6) * grad_before
+
             rg = (1 - ada_alpha) * grad_ * grad_
             up = -np.sqrt(1e-6) / np.sqrt(rg + 1e-6) * grad_
 
-            print 'Workder', worker_id, 'rg %.6f' % rg.sum(), 'Model delta %.6f'% (sum_after - sum_before), 'Assumed change %.6f' % (up * lrate).sum()
+            print 'Workder', worker_id, 'rg %.6f' % rg.sum(), 'delta %.6f'% (sum_after - sum_before), 'Assumed change %.6f' % (up * lrate).sum(), 'Assumed change2 %.6f' % (up_before * lrate).sum()
             sys.stdout.flush()
+
+            raw_input()
 
             ud = time.time() - ud_start
 
