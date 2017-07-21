@@ -411,11 +411,7 @@ Start Time = {}
                     commu_time, gpucpu_cp_time = all_reduce_params_nccl(nccl_comm, grads_shared)
 
                 grad_ = grads_shared[0].get_value()
-
-                grad_idx = 0
-                grad_ele = grad_.flatten()[grad_idx]
-
-                print 'Workder', worker_id, 'After %.4f, max by lr %.2f is %.4f, max squre %.4f' % (grad_.sum(), lrate, grad_ele * lrate, grad_ele * grad_ele)
+                print 'Workder', worker_id, 'After %.5f, max by lr %.2f is %.5f' % (grad_.sum(), lrate, grad_.sum() * lrate)
 
                 reduce_time = time.time() - reduce_start
 
@@ -433,14 +429,13 @@ Start Time = {}
                 print 'Curr lr %.3f' % curr_lr
 
             # do the update on parameters
-            sum_before = model.P['Wemb'].get_value().flatten()[grad_idx]
+            sum_before = model.P['Wemb'].get_value().sum()
             f_update(curr_lr)
-            sum_after = model.P['Wemb'].get_value().flatten()[grad_idx]
-            rg = (1 - ada_alpha) * grad_ele * grad_ele
-            import math
-            up = -math.sqrt(1e-6) / math.sqrt(rg + 1e-6) * grad_ele
+            sum_after = model.P['Wemb'].get_value().sum()
+            rg = (1 - ada_alpha) * grad_ * grad_
+            up = -np.sqrt(1e-6) / np.sqrt(rg + 1e-6) * grad_
 
-            print 'Workder', worker_id, 'rg', rg, 'Model delta %.4f'% (sum_after - sum_before), 'Assumed change %.4f' % (up * lrate)
+            print 'Workder', worker_id, 'rg %.6f' % rg.sum(), 'Model delta %.6f'% (sum_after - sum_before), 'Assumed change %.6f' % (up * lrate).sum()
             sys.stdout.flush()
 
             ud = time.time() - ud_start
