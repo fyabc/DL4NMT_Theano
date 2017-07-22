@@ -349,7 +349,10 @@ Start Time = {}
         save_options(model_options, uidx, saveto)
         print 'Done'
         sys.stdout.flush()
-        raw_input()
+
+    valid_cost = validation(valid_iterator, f_cost, maxlen=maxlen)
+    small_train_cost = validation(small_train_iterator, f_cost, maxlen=maxlen)
+    message('Initial Valid cost {:.5f} Small train cost {:.5f}'.format(valid_cost, small_train_cost))
 
     commu_time_sum = 0.0
     cp_time_sum =0.0
@@ -461,9 +464,11 @@ Start Time = {}
                 dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto)
 
             if np.mod(uidx, validFreq) == 0:
+                use_noise.set_value(0.)
                 valid_cost = validation(valid_iterator, f_cost, maxlen=maxlen)
                 small_train_cost = validation(small_train_iterator, f_cost, maxlen=maxlen)
                 message('Valid cost {:.5f} Small train cost {:.5f}'.format(valid_cost, small_train_cost))
+                use_noise.set_value(1.)
                 sys.stdout.flush()
 
                 # Fine-tune based on dev BLEU
