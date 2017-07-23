@@ -730,7 +730,7 @@ def load_shuffle_text_iterator(
         text_iterator_list[e] = TextIterator(
             dataset_src, dataset_tgt,
             vocab_filenames[0], vocab_filenames[1],
-            batch_size, maxlen, n_words_src, n_words,
+            batch_size, n_words_src, n_words, maxlen
         )
         message('Done')
         return text_iterator_list[e]
@@ -745,7 +745,7 @@ def get_epoch_batch_cnt(dataset_src, dataset_tgt, vocab_filenames, batch_size, m
     text_iterator = TextIterator(
         dataset_src, dataset_tgt,
         vocab_filenames[0], vocab_filenames[1],
-        batch_size, maxlen, n_words_src, n_words,
+        batch_size, n_words_src, n_words,maxlen
     )
     n_batches = 0
     for (x, y) in text_iterator:

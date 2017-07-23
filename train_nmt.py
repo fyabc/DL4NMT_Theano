@@ -27,6 +27,8 @@ def main():
                         help='Dim of hidden units, default is %(default)s')
     parser.add_argument('--bs', action='store', default=128, type=int, dest='batch_size',
                         help='Train batch size, default is %(default)s')
+    parser.add_argument('--valid_bs', action='store', default=128, type=int, dest='valid_batch_size',
+                        help='Valid batch size, default is %(default)s')
     parser.add_argument('--dim_word', action='store', default=512, type=int, dest='dim_word',
                         help='Dim of word embedding, default is %(default)s')
     parser.add_argument('--maxlen', action='store', default=80, type=int, dest='maxlen',
@@ -212,7 +214,7 @@ def main():
         patience=1000,
         maxlen=args.maxlen,
         batch_size=args.batch_size,
-        valid_batch_size=args.batch_size,
+        valid_batch_size=args.valid_batch_size,
         dispFreq=1,
         saveFreq=args.save_freq,
         validFreq=args.valid_freq,

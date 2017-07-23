@@ -210,7 +210,7 @@ Start Time = {}
         text_iterator = TextIterator(
             dataset_src, dataset_tgt,
             vocab_filenames[0], vocab_filenames[1],
-            batch_size, maxlen, n_words_src, n_words,
+            batch_size,n_words_src, n_words,maxlen
         )
 
     valid_iterator = TextIterator(
