@@ -45,7 +45,7 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
     use_noise = theano.shared(np.float32(0.))
 
     model_type = 'NMTModel'
-    if args.trg_att:
+    if args.trg_attention:
         model_type = 'TrgAttnNMTModel'
 
     model, _ = build_and_init_model(model, options=options, build=False, model_type=model_type)
