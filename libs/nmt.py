@@ -59,9 +59,10 @@ def validation(iterator, f_cost):
         if x is None:
             continue
 
-        valid_cost += f_cost(x, x_mask, y, y_mask)
-        valid_count += 1
+        valid_cost += f_cost(x, x_mask, y, y_mask) * x_mask.shape[1]
+        valid_count += x_mask.shape[1]
 
+    print 'Valid total cost', valid_cost, 'Valid count', valid_cost
     return valid_cost / valid_count
 
 
