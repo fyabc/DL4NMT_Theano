@@ -16,7 +16,7 @@ class TextIterator:
     def __init__(self, source, target,
                  source_dict, target_dict,
                  batch_size=128,
-                 maxlen=100,
+                 maxlen=1000000,
                  n_words_source=-1,
                  n_words_target=-1):
         self.source = fopen(source, 'r')

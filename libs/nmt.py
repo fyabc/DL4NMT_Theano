@@ -50,11 +50,11 @@ def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True, norma
     return np.array(probs)
 
 
-def validation(iterator, f_cost, maxlen=None):
+def validation(iterator, f_cost):
     valid_cost = 0.0
     valid_count = 0
     for x, y in iterator:
-        x, x_mask, y, y_mask = prepare_data(x, y, maxlen=maxlen)
+        x, x_mask, y, y_mask = prepare_data(x, y, maxlen=None)
 
         if x is None:
             continue
@@ -216,13 +216,13 @@ Start Time = {}
     valid_iterator = TextIterator(
         valid_datasets[0], valid_datasets[1],
         vocab_filenames[0], vocab_filenames[1],
-        valid_batch_size, maxlen, n_words_src, n_words,
+        valid_batch_size, n_words_src, n_words,
     )
 
     small_train_iterator = TextIterator(
         small_train_datasets[0], small_train_datasets[1],
         vocab_filenames[0], vocab_filenames[1],
-        batch_size, maxlen, n_words_src, n_words,
+        valid_batch_size, n_words_src, n_words,
     )
 
     print 'Building model'
@@ -350,8 +350,8 @@ Start Time = {}
         print 'Done'
         sys.stdout.flush()
 
-    valid_cost = validation(valid_iterator, f_cost, maxlen=maxlen)
-    small_train_cost = validation(small_train_iterator, f_cost, maxlen=maxlen)
+    valid_cost = validation(valid_iterator, f_cost)
+    small_train_cost = validation(small_train_iterator, f_cost)
     message('Initial Valid cost {:.5f} Small train cost {:.5f}'.format(valid_cost, small_train_cost))
 
     commu_time_sum = 0.0
@@ -465,8 +465,8 @@ Start Time = {}
 
             if np.mod(uidx, validFreq) == 0:
                 use_noise.set_value(0.)
-                valid_cost = validation(valid_iterator, f_cost, maxlen=maxlen)
-                small_train_cost = validation(small_train_iterator, f_cost, maxlen=maxlen)
+                valid_cost = validation(valid_iterator, f_cost)
+                small_train_cost = validation(small_train_iterator, f_cost)
                 message('Valid cost {:.5f} Small train cost {:.5f}'.format(valid_cost, small_train_cost))
                 use_noise.set_value(1.)
                 sys.stdout.flush()
