@@ -76,7 +76,7 @@ def main():
             pl_output = subprocess.Popen(exec_str, shell=True, stdout=subprocess.PIPE).stdout.read()
 
         if 'tc' in args.dataset:  # first de-truecase, then de-bpe
-            exec_str = 'perl scripts/multi/detruecase.perl < {} > {}.detc'.format(trans_result_file, trans_result_file)
+            exec_str = 'perl scripts/moses/detruecase.perl < {} > {}.detc'.format(trans_result_file, trans_result_file)
             pl_output = subprocess.Popen(exec_str, shell=True, stdout=subprocess.PIPE).stdout.read()
             trans_result_file = '{}.detc'.format(trans_result_file)
 
