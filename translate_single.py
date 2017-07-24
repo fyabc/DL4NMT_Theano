@@ -9,7 +9,7 @@ import numpy as np
 import theano
 
 from libs.config import DefaultOptions
-from libs.model import build_and_init_model
+from libs.models import build_and_init_model
 from libs.utility.translate import load_translate_data, seqs2words, translate, translate_block
 
 __author__ = 'fyabc'
@@ -29,7 +29,7 @@ def translate_model_single(input_, model_name, options, k, normalize):
 
 
 def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
-         normalize=False, chr_level=False, batch_size=-1):
+         normalize=False, chr_level=False, batch_size=-1, args=None):
     batch_mode = batch_size > 0
 
     # load model model_options
@@ -44,7 +44,11 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
     trng = RandomStreams(1234)
     use_noise = theano.shared(np.float32(0.))
 
-    model, _ = build_and_init_model(model, options=options, build=False)
+    model_type = 'NMTModel'
+    if args.trg_attention:
+        model_type = 'TrgAttnNMTModel'
+
+    model, _ = build_and_init_model(model, options=options, build=False, model_type=model_type)
 
     f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise, batch_mode=batch_mode)
 
@@ -96,9 +100,11 @@ if __name__ == "__main__":
     parser.add_argument('dictionary_target', type=str, help='The target dict path')
     parser.add_argument('source', type=str, help='The source input path')
     parser.add_argument('saveto', type=str, help='The translated file output path')
+    parser.add_argument('--trg_att', action='store_true', dest='trg_attention', default=False,
+                        help='Use target attention, default is False, set to True')
 
     args = parser.parse_args()
 
     main(args.model, args.dictionary_source, args.dictionary_target, args.source,
          args.saveto, k=args.k, normalize=args.n,
-         chr_level=args.c, batch_size=args.b)
+         chr_level=args.c, batch_size=args.b, args=args)
