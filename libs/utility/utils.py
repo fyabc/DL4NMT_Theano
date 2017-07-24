@@ -692,6 +692,14 @@ def dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto):
     os.rename(tmp_filename, imm_filename)
     message('Done')
 
+def adadelta_set_imm_data(optimizer, given_imm_data, imm_shared):
+    if optimizer == 'adadelta':
+        running_up2, running_grads2 = imm_shared[0], imm_shared[1]
+        for (ru, rg, ru_given, rg_given) in zip(running_up2, running_grads2, given_imm_data[0], given_imm_data[1]):
+            ru.set_value(ru_given)
+            rg.set_value(rg_given)
+    else: #TODO: add adam support
+        return
 
 def create_shuffle_data(datasets_orig, dataset_src, dataset_tgt):
     orig_src, orig_tgt = datasets_orig[0], datasets_orig[1]
@@ -791,5 +799,6 @@ __all__ = [
     'get_adadelta_imm_data',
     'dump_adadelta_imm_data',
     'load_shuffle_text_iterator',
-    'make_grads_clip_func'
+    'make_grads_clip_func',
+    'adadelta_set_imm_data',
 ]

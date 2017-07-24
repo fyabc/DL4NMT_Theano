@@ -71,7 +71,6 @@ def train(dim_word=100,  # word vector dimensionality
           decoder='gru_cond',
           n_words_src=30000,
           n_words=30000,
-          patience=10,  # early stopping patience
           max_epochs=5000,
           finish_after=10000000,  # finish after this many updates
           dispFreq=100,
@@ -86,6 +85,7 @@ def train(dim_word=100,  # word vector dimensionality
           saveto='model.npz',
           saveFreq=1000,  # save the parameters after every saveFreq updates
           validFreq=2500,
+          devBLEUFreq=20000,
           datasets=('/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.en.tok',
                     '/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.fr.tok'),
           valid_datasets=('./data/dev/dev_en.tok',
@@ -121,7 +121,6 @@ def train(dim_word=100,  # word vector dimensionality
 
           dist_type=None,
           dist_recover_lr_iter=False,
-          clip_grads_local = False,
 
           unit_size=2,
           cond_unit_size=2,
@@ -189,14 +188,11 @@ Start Time = {}
     ada_alpha = 0.95
     if dist_type == 'mpi_reduce':
         model_options['cost_normalization'] = workers_cnt
-        #lrate *= workers_cnt
-        #ada_alpha = pow(0.95, workers_cnt)
 
-    if True:
-        message('Model options:')
-        pprint(model_options)
-        pprint(model_options, stream=get_logging_file())
-        message()
+    message('Model options:')
+    pprint(model_options)
+    pprint(model_options, stream=get_logging_file())
+    message()
 
     print 'Loading data'
     log('\n\n\nStart to prepare data\n@Current Time = {}'.format(time.time()))
@@ -292,7 +288,7 @@ Start Time = {}
 
     clip_shared = theano.shared(np.array(clip_c, dtype=fX), name='clip_shared')
 
-    if dist_type != 'mpi_reduce' or clip_grads_local: #build grads clip into computational graph
+    if dist_type != 'mpi_reduce': #build grads clip into computational graph
         grads, g2 = clip_grad_remove_nan(grads, clip_shared, model.P)
     else: #do the grads clip after gradients aggregation
         g2 = None
@@ -322,21 +318,10 @@ Start Time = {}
     estop = False
     history_errs = []
     best_bleu = -1.0
+    best_valid_cost = 1e6
     best_p = None
     bad_counter = 0
     uidx = search_start_uidx(reload_, preload)
-    '''
-    if uidx != 0:
-        epoch_n_batches = get_epoch_batch_cnt(dataset_src, dataset_tgt, vocab_filenames, batch_size, maxlen, n_words_src, n_words) \
-            if worker_id == 0 else None
-    else:
-        epoch_n_batches = 1 #avoid heavy data IO
-
-    if dist_type == 'mpi_reduce':
-        epoch_n_batches = mpi_communicator.bcast(epoch_n_batches, root = 0)
-    start_epoch = uidx / epoch_n_batches
-    pass_batches = uidx % epoch_n_batches
-    '''
 
     epoch_n_batches = 0
     start_epoch = 0
@@ -395,7 +380,7 @@ Start Time = {}
             ud_start = time.time()
 
             # compute cost, grads
-            if dist_type != 'mpi_reduce' or clip_grads_local:
+            if dist_type != 'mpi_reduce':
                 cost, g2_value = f_grad_shared(x, x_mask, y, y_mask)
             else:
                 cost = f_grad_shared(x, x_mask, y, y_mask)
@@ -404,26 +389,21 @@ Start Time = {}
                 reduce_start = time.time()
                 commu_time = 0
                 gpucpu_cp_time = 0
-
                 if not nccl:
                     commu_time, gpucpu_cp_time = all_reduce_params(grads_shared, rec_grads)
                 else:
                     commu_time, gpucpu_cp_time = all_reduce_params_nccl(nccl_comm, grads_shared)
-
                 reduce_time = time.time() - reduce_start
-
-                if not clip_grads_local: #clip gradient after aggregation
-                    g2_value = f_grads_clip()
-
                 commu_time_sum += commu_time
                 reduce_time_sum += reduce_time
                 cp_time_sum += gpucpu_cp_time
 
+                g2_value = f_grads_clip()
                 print '@Worker = {}, Reduce time = {:.5f}, Commu time = {:.5f}, Copy time = {:.5f}'.format(worker_id, reduce_time, commu_time, gpucpu_cp_time)
 
             curr_lr = lrate if not dist_type or dist_recover_lr_iter < effective_uidx else lrate * 0.05 + effective_uidx * lrate / dist_recover_lr_iter * 0.95
             if curr_lr < lrate:
-                print 'Curr lr %.3f' % curr_lr
+                print 'Curr lr {:.3f}'.format(curr_lr)
 
             # do the update on parameters
             f_update(curr_lr)
@@ -433,7 +413,19 @@ Start Time = {}
             if np.isnan(cost) or np.isinf(cost):
                 message('NaN detected')
                 sys.stdout.flush()
-                return 1., 1., 1.
+                clip_shared.set_value(clip_shared.get_value() * 0.9)
+                message('Discount clip value to {:.4f} at iteration {}'.format(clip_shared.get_value(), uidx))
+
+                #reload the best saved model
+                if not os.path.exists(saveto):
+                    message('No saved model at {}. Task exited'.format(saveto))
+                    return 1., 1., 1.
+                else:
+                    message('Load previously dumped model at {}'.format(saveto))
+                    prev_params = load_params(saveto, params)
+                    zipp(prev_params, model.P)
+                    prev_imm_data = get_adadelta_imm_data(optimizer, True, saveto)
+                    adadelta_set_imm_data(optimizer, prev_imm_data, imm_shared)
 
             # discount learning rate
             # FIXME: Do NOT enable this and fine-tune at the same time
@@ -458,34 +450,32 @@ Start Time = {}
                 # save with uidx
                 if not overwrite:
                     print 'Saving the model at iteration {}...'.format(uidx),
-                    saveto_uidx = '{}.iter{}.npz'.format(
-                        os.path.splitext(saveto)[0], uidx)
-                    np.savez(saveto_uidx, history_errs=history_errs,
-                             uidx=uidx, **unzip(model.P))
-                    save_options(model_options, uidx, saveto)
+                    model.save_model(saveto, history_errs, uidx)
                     print 'Done'
                     sys.stdout.flush()
 
                 # save immediate data in adadelta
-                dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto)
+                saveto_imm_path = '{}_latest.npz'.format(os.path.splitext(saveto)[0])
+                dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto_imm_path)
 
             if np.mod(uidx, validFreq) == 0:
                 use_noise.set_value(0.)
                 valid_cost = validation(valid_iterator, f_cost)
                 small_train_cost = validation(small_train_iterator, f_cost)
-                message('Valid cost {:.5f} Small train cost {:.5f}'.format(valid_cost, small_train_cost))
+                if worker_id == 0:
+                    message('Valid cost {:.5f} Small train cost {:.5f}'.format(valid_cost, small_train_cost))
                 use_noise.set_value(1.)
                 sys.stdout.flush()
 
-                # Fine-tune based on dev BLEU
+                # Fine-tune based on dev cost
                 if fine_tune_patience > 0:
-                    new_bleu = translate_dev_get_bleu(model, f_init, f_next, trng, use_noise)
-
-                    message('BLEU = {:.2f} at iteration {}'.format(new_bleu, uidx))
-
-                    if new_bleu > best_bleu:
+                    if valid_cost < best_valid_cost:
                         bad_counter = 0
-                        best_bleu = new_bleu
+                        best_valid_cost = valid_cost
+                        #dump the best model so far, including the immediate file
+                        message('Dump the the best model so far at uidx {}'.format(uidx))
+                        model.save_model(saveto, history_errs)
+                        dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto)
                     else:
                         bad_counter += 1
                         if bad_counter >= fine_tune_patience:
@@ -493,11 +483,18 @@ Start Time = {}
                             if finetune_cnt % 2 == 0:
                                 lrate *= 0.5
                                 message('Discount learning rate to {} at iteration {}'.format(lrate, uidx))
+                                if lrate <= 0.025:
+                                    message('Learning rate decayed to {:.5f}, task completed'.format(lrate))
+                                    return 1., 1., 1.
                             else:
-                                clip_shared.set_value(clip_shared.get_value() * 0.5)
+                                clip_shared.set_value(clip_shared.get_value() * 0.2)
                                 message('Discount clip value to {} at iteration {}'.format(clip_shared.get_value(), uidx))
                             finetune_cnt += 1
                             bad_counter = 0
+
+            if np.mod(uidx, devBLEUFreq) == 0:
+                new_bleu = translate_dev_get_bleu(model, f_init, f_next, trng, use_noise)
+                message('Dev BLEU = {:.2f} at uidx {}'.format(new_bleu, uidx))
 
             # finish after this many updates
             if uidx >= finish_after:

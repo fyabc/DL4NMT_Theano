@@ -896,7 +896,13 @@ class NMTModel(object):
             return sample, sample_score, kw_ret
         return sample, sample_score
 
-    # Methods to build the each component of the model
+    def save_model(self, saveto, history_errs, uidx = -1):
+        saveto_path = '{}.iter{}.npz'.format(
+                        os.path.splitext(saveto)[0], uidx) \
+            if uidx != -1 else saveto
+        np.savez(saveto_path, history_errs=history_errs,
+                 uidx=uidx, **unzip(self.P))
+        save_options(self.O, uidx, saveto)
 
     @staticmethod
     def get_input():

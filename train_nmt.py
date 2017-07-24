@@ -23,6 +23,8 @@ def main():
                         help='Plot filename, default is None (not plot) (deprecated).')
     parser.add_argument('--save_freq', action='store', default=10000, type=int, dest='save_freq',
                         help='Model save frequency, default is %(default)s')
+    parser.add_argument('--dev_bleu_freq', action='store', default=20000, type=int, dest='dev_bleu_freq',
+                        help='Get dev set BLEU frequency, default is %(default)s')
     parser.add_argument('--dim', action='store', default=512, type=int, dest='dim',
                         help='Dim of hidden units, default is %(default)s')
     parser.add_argument('--bs', action='store', default=128, type=int, dest='batch_size',
@@ -213,7 +215,6 @@ def main():
         clip_c=args.clip,
         lrate=args.learning_rate,
         optimizer=args.optimizer,
-        patience=1000,
         maxlen=args.maxlen,
         batch_size=args.batch_size,
         valid_batch_size=args.valid_batch_size,
@@ -262,7 +263,6 @@ def main():
 
         dist_type=args.dist_type,
         dist_recover_lr_iter = args.dist_recover_lr,
-        clip_grads_local = args.clip_grads_local,
 
         fine_tune_patience=args.fine_tune_patience,
         nccl= args.nccl,
@@ -270,6 +270,7 @@ def main():
         tgt_vocab_map_file= args.tgt_vocab_map_file,
 
         trg_attention_layer_id=args.trg_attention_layer_id,
+        devBLEUFreq= args.dev_bleu_freq,
     )
 
 

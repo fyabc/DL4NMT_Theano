@@ -149,7 +149,7 @@ def adadelta(lr, tparams, grads, inp, cost, **kwargs):
     rg2up = [(rg2, alpha * rg2 + (1 - alpha) * (g ** 2))
              for rg2, g in zip(running_grads2, zipped_grads)]
 
-    updir = [-tensor.sqrt(ru2 + 1e-6) / tensor.sqrt(rg2 + 1e-6) * zg
+    updir = [-tensor.sqrt(ru2 + 1e-7) / tensor.sqrt(rg2 + 1e-7) * zg
              for zg, ru2, rg2 in zip(zipped_grads, running_up2,
                                      running_grads2)]
     ru2up = [(ru2, alpha * ru2 + (1 - alpha) * (ud ** 2))
@@ -160,7 +160,6 @@ def adadelta(lr, tparams, grads, inp, cost, **kwargs):
                                on_unused_input='ignore', profile=profile)
 
     return f_grad_shared, f_update, zipped_grads, [running_up2, running_grads2]
-
 
 def rmsprop(lr, tparams, grads, inp, cost, **kwargs):
     g2 = kwargs.pop('g2', None)
@@ -229,11 +228,11 @@ Optimizers = {
     'sgd': sgd,
 }
 
-
 __all__ = [
     'adadelta',
     'adam',
     'rmsprop',
     'sgd',
     'Optimizers',
+    'Optimizers_Set_Imm',
 ]
