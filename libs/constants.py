@@ -57,6 +57,14 @@ Datasets = {
         'tc_enfr_large_bpe.vocab.pkl', 'tc_enfr_large_bpe.vocab.pkl',
     ],
 
+    'large_fr-en_bpe_tc': [
+        'tc_train_enfr_large_bpe.fr', 'tc_train_enfr_large_bpe.en',
+        'tc_small_train_enfr_large_bpe.fr', 'tc_small_train_enfr_large_bpe.en',
+        'tc_valid_enfr_bpe_by_large.fr', 'tc_valid_enfr_bpe_by_large.en',
+        'tc_test_enfr_bpe_by_large.fr', 'test_en-fr.en.tok',
+        'tc_enfr_large_bpe.vocab.pkl', 'tc_enfr_large_bpe.vocab.pkl',
+    ],
+
     'fr-en_bpe_tc': [
         'tc_en-fr_fr.tok.bpe.32000','tc_en-fr_en.tok.bpe.32000',
         'tc_small_en-fr_fr.tok.bpe.32000', 'tc_small_en-fr_en.tok.bpe.32000',
