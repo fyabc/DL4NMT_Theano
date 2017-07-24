@@ -110,7 +110,7 @@ def main():
     parser.add_argument('--emb', action='store', metavar='filename', dest='given_embedding', type=str, default=None,
                         help='Given embedding model file, default is None')
     parser.add_argument('--lr_discount', action='store', metavar='freq', dest='lr_discount_freq', type=int,
-                        default=80000, help='The learning rate discount frequency, default is 80000')
+                        default=-1, help='The learning rate discount frequency, default is -1')
 
     parser.add_argument('--distribute', action = 'store', metavar ='type', dest = 'dist_type', type = str, default= None,
                         help = 'The distribution version, default is None (singe GPU mode), candiates are "mv", "mpi_reduce"')
