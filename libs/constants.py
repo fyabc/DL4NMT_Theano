@@ -120,11 +120,37 @@ Datasets = {
         'ende_s2s_vocab.bpe.32000.pkl', 'ende_s2s_vocab.bpe.32000.pkl',
     ],
 
-    'de-en':['train.de-en.de', 'train.de-en.en',
-             '','',
-             'dev.de-en.de', 'dev.de-en.en',
-             'test.de-en.de','test.de-en.en',
-             'de-en_vocab.de','de-en_vocab.en'],
+    'de-en':[
+       'train.de-en.de', 'train.de-en.en',
+        'small_train.de-en.de','small_train.de-en.en',
+        'dev.de-en.de', 'dev.de-en.en',
+        'test.de-en.de','test.de-en.en',
+        'de-en_vocab.de.pkl','de-en_vocab.en.pkl',
+    ],
+
+    'en-de_small':[
+       'train.de-en.en', 'train.de-en.de',
+       'small_train.de-en.en', 'small_train.de-en.de',
+       'dev.de-en.en', 'dev.de-en.de',
+       'test.de-en.en', 'test.de-en.de',
+       'de-en_vocab.en.pkl', 'de-en_vocab.de.pkl',
+    ],
+
+    'de-en_bpe':[
+       'train.de-en.bpe.25000.de', 'train.de-en.bpe.25000.en',
+        'small_train.de-en.bpe.25000.de', 'small_train.de-en.bpe.25000.en',
+        'dev.de-en.bpe.25000.de', 'dev.de-en.bpe.25000.en',
+        'test.de-en.bpe.25000.de', 'test.de-en.en',
+        'de-en_vocab.bpe.25000.pkl', 'de-en_vocab.bpe.25000.pkl',
+    ],
+
+    'en-de_small_bpe' :[
+       'train.de-en.bpe.25000.en', 'train.de-en.bpe.25000.de',
+       'small_train.de-en.bpe.25000.en', 'small_train.de-en.bpe.25000.de',
+       'dev.de-en.bpe.25000.en', 'dev.de-en.bpe.25000.de',
+       'test.de-en.bpe.25000.en', 'test.de-en.de',
+       'de-en_vocab.bpe.25000.pkl', 'de-en_vocab.bpe.25000.pkl',
+    ],
 
     'zh-en': [
         'zh-en.1.25M.zh', 'zh-en.1.25M.en',
