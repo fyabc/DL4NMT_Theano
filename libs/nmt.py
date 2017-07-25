@@ -473,9 +473,10 @@ Start Time = {}
                         bad_counter = 0
                         best_valid_cost = valid_cost
                         #dump the best model so far, including the immediate file
-                        message('Dump the the best model so far at uidx {}'.format(uidx))
-                        model.save_model(saveto, history_errs)
-                        dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto)
+                        if worker_id == 0:
+                            message('Dump the the best model so far at uidx {}'.format(uidx))
+                            model.save_model(saveto, history_errs)
+                            dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto)
                     else:
                         bad_counter += 1
                         if bad_counter >= fine_tune_patience:
