@@ -902,7 +902,7 @@ class NMTModel(object):
             if uidx != -1 else saveto
         np.savez(saveto_path, history_errs=history_errs,
                  uidx=uidx, **unzip(self.P))
-        save_options(self.O, uidx, saveto)
+        save_options(self.O, uidx, saveto_path)
 
     @staticmethod
     def get_input():
