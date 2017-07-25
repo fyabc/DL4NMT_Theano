@@ -487,7 +487,7 @@ Start Time = {}
                                     message('Learning rate decayed to {:.5f}, task completed'.format(lrate))
                                     return 1., 1., 1.
                             else:
-                                clip_shared.set_value(np.float32(clip_shared.get_value() * 0.2))
+                                clip_shared.set_value(np.float32(clip_shared.get_value() * 0.25))
                                 message('Discount clip value to {} at iteration {}'.format(clip_shared.get_value(), uidx))
                             finetune_cnt += 1
                             bad_counter = 0
