@@ -60,7 +60,7 @@ def main():
     print args
 
     bleus = {}
-    train1, train2, small1, small2, dev1, dev2, test1, test2, dic1, dic2 = Datasets[args.dataset]
+    train1, train2, small1, small2, dev1, dev2, dev3, test1, test2, dic1, dic2 = Datasets[args.dataset]
 
     for idx in xrange(args.start, args.end + 1):
         trans_model_file = '%s.iter%d.npz' % (os.path.splitext(args.model_prefix)[0], idx * args.interval)

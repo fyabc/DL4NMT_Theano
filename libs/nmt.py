@@ -85,7 +85,7 @@ def train(dim_word=100,  # word vector dimensionality
           saveto='model.npz',
           saveFreq=1000,  # save the parameters after every saveFreq updates
           validFreq=2500,
-          devBLEUFreq=20000,
+          dev_bleu_freq=20000,
           datasets=('/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.en.tok',
                     '/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.fr.tok'),
           valid_datasets=('./data/dev/dev_en.tok',
@@ -492,7 +492,7 @@ Start Time = {}
                             finetune_cnt += 1
                             bad_counter = 0
 
-            if np.mod(uidx, devBLEUFreq) == 0:
+            if np.mod(uidx, dev_bleu_freq) == 0:
                 new_bleu = translate_dev_get_bleu(model, f_init, f_next, trng, use_noise)
                 message('Dev BLEU = {:.2f} at uidx {}'.format(new_bleu, uidx))
 

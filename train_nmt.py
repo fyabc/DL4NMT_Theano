@@ -166,7 +166,7 @@ def main():
 
     # If dataset is not 'en-fr', old value of dataset options like 'args.train1' will be omitted
     if args.dataset != 'en-fr':
-        args.train1, args.train2, args.small1, args.small2, args.valid1, args.valid2, test1, test2, args.dic1, args.dic2 = \
+        args.train1, args.train2, args.small1, args.small2, args.valid1, args.valid2, valid3, test1, test2, args.dic1, args.dic2 = \
             Datasets[args.dataset]
 
     print 'Command line arguments:'
@@ -224,7 +224,8 @@ def main():
         datasets=('./data/train/{}'.format(args.train1),
                   './data/train/{}'.format(args.train2)),
         valid_datasets=('./data/dev/{}'.format(args.valid1),
-                        './data/dev/{}'.format(args.valid2)),
+                        './data/dev/{}'.format(args.valid2),
+                        './data/dev/{}'.format(valid3)),
         small_train_datasets=('./data/train/{}'.format(args.small1),
                               './data/train/{}'.format(args.small2)),
         vocab_filenames=('./data/dic/{}'.format(args.dic1),
@@ -270,7 +271,7 @@ def main():
         tgt_vocab_map_file= args.tgt_vocab_map_file,
 
         trg_attention_layer_id=args.trg_attention_layer_id,
-        devBLEUFreq= args.dev_bleu_freq,
+        dev_bleu_freq = args.dev_bleu_freq,
     )
 
 
