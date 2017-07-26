@@ -580,7 +580,8 @@ class NMTModel(object):
         logit_ctx = self.feed_forward(context_decoder, prefix='ff_logit_ctx', activation=linear)
         logit = T.tanh(logit_lstm + logit_prev + logit_ctx)
         if self.O['use_dropout']:
-            logit = self.dropout(logit, use_noise, trng)
+            logit = self.dropout(logit, use_noise, trng, self.O['use_dropout'])
+            
         logit = self.feed_forward(logit, prefix='ff_logit', activation=linear)
 
         # Compute the softmax probability
