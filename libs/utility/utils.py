@@ -563,7 +563,9 @@ def load_options(options, reload_=None, preload=None, maintain_vocab_size = Fals
 def save_options(options, iteration, saveto=None):
     saveto = options['saveto'] if saveto is None else saveto
 
-    save_filename = '{}.iter{}.npz.pkl'.format(os.path.splitext(saveto)[0], iteration)
+    save_filename = '{}.iter{}.npz.pkl'.format(os.path.splitext(saveto)[0], iteration) \
+        if iteration != -1 else '{}.pkl'.format(saveto)
+
     with open(save_filename, 'wb') as f:
         pkl.dump(options, f)
 

@@ -2,6 +2,8 @@
 # -*- encoding: utf-8 -*-
 
 import argparse
+import os
+import re
 import cPickle as pkl
 from pprint import pprint
 
@@ -33,7 +35,15 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
     batch_mode = batch_size > 0
 
     # load model model_options
-    with open('%s.pkl' % model, 'rb') as f:
+    option_file = '%s.pkl' % model
+    if not os.path.exists(option_file):
+        m = re.search("iter(\d+)\.npz", model)
+        if m:
+            uidx = int(m.group((1)))
+            option_file = '%s.iter%d.npz.pkl' % (os.path.splitext(model), uidx)
+    assert os.path.exists(option_file)
+
+    with open(option_file, 'rb') as f:
         options = DefaultOptions.copy()
         options.update(pkl.load(f))
 
