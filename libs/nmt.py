@@ -139,7 +139,7 @@ def train(dim_word=100,  # word vector dimensionality
           tgt_vocab_map_file = None,
 
           trg_attention_layer_id=None,
-          keep_dp_bug = False,
+          fix_dp_bug = False,
           ):
     model_options = locals().copy()
 

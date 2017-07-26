@@ -1317,7 +1317,7 @@ class NMTModel(object):
         logit_ctx = self.feed_forward(context_decoder, prefix='ff_logit_ctx', activation=linear)
         logit = T.tanh(logit_lstm + logit_prev + logit_ctx)  # n_timestep * n_sample * dim_word
         if self.O['use_dropout']:
-            dropout_rate = self.O['use_dropout'] if not self.O['keep_dp_bug'] else 0.5
+            dropout_rate = self.O['use_dropout'] if self.O['fix_dp_bug'] else 0.5
             logit = self.dropout(logit, use_noise, trng, dropout_rate)
         # n_timestep * n_sample * n_words
         logit = self.feed_forward(logit, prefix='ff_logit', activation=linear)
