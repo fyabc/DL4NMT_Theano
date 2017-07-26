@@ -138,6 +138,8 @@ def main():
                         help='Target attention layer id, default is None (not use target attention)')
     parser.add_argument('--fix_dp_bug', action="store_true", default=False, dest='fix_dp_bug',
                         help='Fix previous dropout bug, default to False, set to True')
+    parser.add_argument('--abandon_imm', action="store_true", default=False, dest='abandon_imm',
+                        help='Whether to load previous immediate params, default to True, set to False')
 
     args = parser.parse_args()
     print args
@@ -257,7 +259,7 @@ def main():
         unit_size=args.unit_size,
         cond_unit_size=args.cond_unit_size,
 
-        given_imm=True,
+        given_imm = not args.abandon_imm,
         dump_imm=True,
         shuffle_data=args.shuffle,
 
