@@ -40,7 +40,7 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
         m = re.search("iter(\d+)\.npz", model)
         if m:
             uidx = int(m.group((1)))
-            option_file = '%s.iter%d.npz.pkl' % (os.path.splitext(model), uidx)
+            option_file = '%s.iter%d.npz.pkl' % (os.path.splitext(model)[0], uidx)
     assert os.path.exists(option_file)
 
     with open(option_file, 'rb') as f:
