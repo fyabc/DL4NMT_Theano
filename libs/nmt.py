@@ -414,8 +414,8 @@ Start Time = {}
             if np.isnan(cost) or np.isinf(cost):
                 message('NaN detected')
                 sys.stdout.flush()
-                clip_shared.set_value(clip_shared.get_value() * 0.9)
-                message('Discount clip value to {:.4f} at iteration {}'.format(clip_shared.get_value(), uidx))
+                clip_shared.set_value(np.float32(clip_shared.get_value() * 0.9))
+                message('Discount clip value to {} at iteration {}'.format(clip_shared.get_value(), uidx))
 
                 #reload the best saved model
                 if not os.path.exists(saveto):
