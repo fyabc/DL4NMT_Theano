@@ -233,7 +233,7 @@ def translate_dev_get_bleu(model, f_init, f_next, trng, use_noise, **kwargs):
 
     # [NOTE]: Filenames here are with path prefix.
     dev1 = kwargs.pop('dev1', model.O['valid_datasets'][0])
-    dev2 = kwargs.pop('dev2', model.O['valid_datasets'][2])
+    dev2 = kwargs.pop('dev2', model.O['valid_datasets'][1])
     dic1 = kwargs.pop('dic1', model.O['vocab_filenames'][0])
     dic2 = kwargs.pop('dic2', model.O['vocab_filenames'][1])
 
