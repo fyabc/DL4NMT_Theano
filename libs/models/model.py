@@ -515,6 +515,11 @@ class NMTModel(object):
         trng = kwargs.pop('trng', RandomStreams(1234))
         use_noise = kwargs.pop('use_noise', theano.shared(np.float32(0.)))
         get_gates = kwargs.pop('get_gates', False)
+        dropout_rate = kwargs.pop('dropout', False)
+        if dropout_rate is not False:
+            dropout_params = [use_noise, trng, dropout_rate]
+        else:
+            dropout_params = None
 
         unit = self.O['unit']
 
@@ -535,7 +540,7 @@ class NMTModel(object):
         ctx, _ = self.encoder(
             src_embedding, src_embedding_r,
             x_mask if batch_mode else None, xr_mask if batch_mode else None,
-            dropout_params=None,
+            dropout_params=dropout_params,
         )
 
         # Get the input for decoder rnn initializer mlp
@@ -564,7 +569,7 @@ class NMTModel(object):
         hidden_decoder, context_decoder, _, kw_ret = self.decoder(
             emb, y_mask=None, init_state=init_state, context=ctx,
             x_mask=x_mask if batch_mode else None,
-            dropout_params=None, one_step=True, init_memory=init_memory,
+            dropout_params=dropout_params, one_step=True, init_memory=init_memory,
             get_gates=get_gates,
         )
 
