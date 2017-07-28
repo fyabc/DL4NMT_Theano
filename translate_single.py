@@ -46,7 +46,8 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
     with open(option_file, 'rb') as f:
         options = DefaultOptions.copy()
         options.update(pkl.load(f))
-
+        if 'fix_dp_bug' not in options:
+            options['fix_dp_bug'] = False
         print 'Options:'
         pprint(options)
 
