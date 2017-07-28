@@ -5,7 +5,7 @@ end=$4
 task=$5
 for fid in $(seq ${start} 10000 ${end})
 do
-    scp fetia@${ip}:~/fetia/DL4NMT_Theano/model/complete/${modelname}.iter${fid}.* model/complete
+    sshpass -p 'fetia' scp fetia@${ip}:~/fetia/DL4NMT_Theano/model/complete/${modelname}.iter${fid}.* model/complete
 done
 startdivide=$(expr ${start} / 10000)
 enddivide=$(expr ${end} / 10000)

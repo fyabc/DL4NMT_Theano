@@ -85,6 +85,8 @@ def main():
                         help='Connection type, '
                              'default is 2 (bidirectional only in first layer, other layers are forward);'
                              '1 is divided bidirectional GRU')
+    parser.add_argument('--max_epochs', action='store', default=100, type=int, dest='max_epochs',
+                        help='Maximum epoches, default is 100')
     parser.add_argument('--unit', action='store', metavar='unit', dest='unit', type=str, default='lstm',
                         help='The unit type, default is "lstm", can be set to "gru".')
     parser.add_argument('--attention', action='store', metavar='index', dest='attention_layer_id', type=int, default=0,
@@ -210,6 +212,7 @@ def main():
     from libs.nmt import train
 
     train(
+        max_epochs= args.max_epochs,
         saveto=args.model_file,
         preload=args.pre_load_file,
         reload_=args.reload,
