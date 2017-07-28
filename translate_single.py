@@ -60,7 +60,7 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
 
     model, _ = build_and_init_model(model, options=options, build=False, model_type=model_type)
 
-    f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise, batch_mode=batch_mode)
+    f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise, batch_mode=batch_mode, dropout=options['use_dropout'])
 
     if not batch_mode:
         word_dict, word_idict, word_idict_trg, input_ = load_translate_data(
