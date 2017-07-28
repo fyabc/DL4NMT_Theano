@@ -151,8 +151,8 @@ def gru_layer(P, state_below, O, prefix='gru', mask=None, **kwargs):
 
     kw_ret = {}
 
-    n_steps = state_below.shape[0]
-    n_samples = state_below.shape[1] if state_below.ndim == 3 else 1
+    n_steps = state_below.shape[0] if state_below.ndim == 3 else 1
+    n_samples = state_below.shape[1] if state_below.ndim == 3 else state_below.shape[0]
     if multi:
         dim = P[_p(prefix, 'Ux', layer_id)][0].shape[1]
     else:
@@ -360,11 +360,8 @@ def gru_cond_layer(P, state_below, O, prefix='gru', mask=None, context=None, one
         assert init_state, 'previous state must be provided'
 
     # Dimensions
-    n_steps = state_below.shape[0]
-    if state_below.ndim == 3:
-        n_samples = state_below.shape[1]
-    else:
-        n_samples = 1
+    n_steps = state_below.shape[0] if state_below.ndim == 3 else 1
+    n_samples = state_below.shape[1] if state_below.ndim == 3 else state_below.shape[0]
     if multi:
         dim = P[_p(prefix, 'Wcx', layer_id)][0].shape[1]
     else:
