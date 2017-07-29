@@ -1,4 +1,4 @@
-"""
+u"""
 Build a neural machine translation model with soft attention
 """
 
@@ -145,6 +145,7 @@ def train(dim_word=100,  # word vector dimensionality
 
           trg_attention_layer_id=None,
           fix_dp_bug = False,
+          io_buffer_size = 40,
           ):
     model_options = locals().copy()
 
@@ -214,19 +215,19 @@ Start Time = {}
         text_iterator = TextIterator(
             dataset_src, dataset_tgt,
             vocab_filenames[0], vocab_filenames[1],
-            batch_size,n_words_src, n_words,maxlen
+            batch_size,n_words_src, n_words,maxlen, k = io_buffer_size,
         )
 
     valid_iterator = TextIterator(
         valid_datasets[0], valid_datasets[1],
         vocab_filenames[0], vocab_filenames[1],
-        valid_batch_size, n_words_src, n_words,
+        valid_batch_size, n_words_src, n_words,k = io_buffer_size,
     )
 
     small_train_iterator = TextIterator(
         small_train_datasets[0], small_train_datasets[1],
         vocab_filenames[0], vocab_filenames[1],
-        valid_batch_size, n_words_src, n_words,
+        valid_batch_size, n_words_src, n_words, k = io_buffer_size,
     )
 
     print 'Building model'
@@ -362,7 +363,7 @@ Start Time = {}
         if shuffle_data:
             text_iterator = load_shuffle_text_iterator(
                 eidx, worker_id, text_iterator_list,
-                datasets, vocab_filenames, batch_size, maxlen, n_words_src, n_words,
+                datasets, vocab_filenames, batch_size, maxlen, n_words_src, n_words, buffer_size=io_buffer_size
             )
         n_samples = 0
         if dist_type == 'mpi_reduce':

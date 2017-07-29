@@ -725,7 +725,7 @@ def create_shuffle_data(datasets_orig, dataset_src, dataset_tgt):
 
 def load_shuffle_text_iterator(
         epoch, worker_id, text_iterator_list,
-        datasets, vocab_filenames, batch_size, maxlen, n_words_src, n_words,
+        datasets, vocab_filenames, batch_size, maxlen, n_words_src, n_words,buffer_size
 ):
     e = (epoch + worker_id) % ShuffleCycle
 
@@ -743,7 +743,7 @@ def load_shuffle_text_iterator(
         text_iterator_list[e] = TextIterator(
             dataset_src, dataset_tgt,
             vocab_filenames[0], vocab_filenames[1],
-            batch_size, n_words_src, n_words, maxlen
+            batch_size, n_words_src, n_words, maxlen, k = buffer_size,
         )
         message('Done')
         return text_iterator_list[e]

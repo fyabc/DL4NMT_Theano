@@ -18,7 +18,8 @@ class TextIterator:
                  batch_size=128,
                  n_words_source=-1,
                  n_words_target=-1,
-                 maxlen=1000000):
+                 maxlen=1000000,
+                 k = 40):
         self.source = fopen(source, 'r')
         self.target = fopen(target, 'r')
         with open(source_dict, 'rb') as f:
@@ -34,7 +35,7 @@ class TextIterator:
 
         self.source_buffer = []
         self.target_buffer = []
-        self.k = batch_size * 40
+        self.k = batch_size * k
 
         self.end_of_data = False
 
