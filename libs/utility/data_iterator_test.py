@@ -9,7 +9,7 @@ r_dic = {v:k for (k,v) in dic.iteritems()}
 if __name__ == '__main__':
     k = int(sys.argv[1])
     text_iterator_fren = TextIterator(
-                '../../data/train/tc_train_enfr_large_bpe.fr_0', '../../data/train/tc_train_enfr_large_bpe.en_0',
+                '../../data/train/tc_train_enfr_large_bpe.fr_00', '../../data/train/tc_train_enfr_large_bpe.en_00',
                 dic_file, dic_file,
                 64,36000, 36000,100, k = k
             )
