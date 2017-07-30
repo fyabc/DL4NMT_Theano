@@ -241,7 +241,7 @@ def translate_dev_get_bleu(model, f_init, f_next, trng, use_noise, **kwargs):
     translated_string = _translate_whole(
         model, f_init, f_next, trng,
         dic1, dic2, dev1,
-        k=2, batch_mode=True,
+        k=3, batch_mode=True,
     )
 
     use_noise.set_value(1.)
