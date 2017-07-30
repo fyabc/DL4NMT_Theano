@@ -543,6 +543,7 @@ def load_options(options, reload_=None, preload=None, maintain_vocab_size = Fals
     preload = options['preload'] if preload is None else preload
     dropout = options['use_dropout']
     valid_datasets = options['valid_datasets']
+    vocab_filenames = options['vocab_filenames']
 
     src_vocab_size = options['n_words_src']
     tgt_vocab_size = options['n_words']
@@ -559,6 +560,8 @@ def load_options(options, reload_=None, preload=None, maintain_vocab_size = Fals
         options['preload'] = preload
         options['use_dropout'] = dropout
         options['valid_datasets'] = valid_datasets
+        options['vocab_filenames'] = vocab_filenames
+
         if maintain_vocab_size:
             options['n_words_src'] = src_vocab_size
             options['n_words'] = tgt_vocab_size

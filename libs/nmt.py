@@ -183,10 +183,11 @@ Start Time = {}
     ))
 
     # Model options: load and save
-    message('Top options:')
-    pprint(model_options)
-    pprint(model_options, stream=get_logging_file())
-    message('Done')
+    if worker_id == 0:
+        message('Top options:')
+        pprint(model_options)
+        pprint(model_options, stream=get_logging_file())
+        message('Done')
     sys.stdout.flush()
 
     load_options(model_options, reload_, preload, src_vocab_map_file and tgt_vocab_map_file)
@@ -196,10 +197,11 @@ Start Time = {}
     if dist_type == 'mpi_reduce':
         model_options['cost_normalization'] = workers_cnt
 
-    message('Model options:')
-    pprint(model_options)
-    pprint(model_options, stream=get_logging_file())
-    message()
+    if worker_id == 0:
+        message('Model options:')
+        pprint(model_options)
+        pprint(model_options, stream=get_logging_file())
+        message()
 
     print 'Loading data'
     log('\n\n\nStart to prepare data\n@Current Time = {}'.format(time.time()))
@@ -250,8 +252,8 @@ Start Time = {}
         load_embedding(params, given_embedding)
         print 'Done'
 
-    print_params(params)
-
+    if worker_id == 0:
+        print_params(params)
     model.init_tparams(params)
 
     # Build model
