@@ -207,7 +207,7 @@ def get_bleu(ref_file, hyp_in=None, type_in='filename'):
         pl_output = pl_process.stdout.read()
     elif type_in == 'string':
         pl_process = subprocess.Popen(
-            'perl multi-bleu.perl {}\n'.format(ref_file), shell=True, stdin=subprocess.PIPE,
+            'perl scripts/moses/multi-bleu.perl {}\n'.format(ref_file), shell=True, stdin=subprocess.PIPE,
             stdout=subprocess.PIPE, stderr=open(os.devnull, 'w'))
         pl_output = pl_process.communicate(hyp_in)[0]
     else:
@@ -250,7 +250,7 @@ def translate_dev_get_bleu(model, f_init, f_next, trng, use_noise, **kwargs):
     # first de-truecase, then de-bpe
     if 'tc' in dataset:
         translated_string = subprocess.Popen(
-            'perl detruecase.perl',
+            'perl scripts/moses/detruecase.perl',
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=open(os.devnull, 'w'),
             shell=True,
         ).communicate(translated_string)[0]
