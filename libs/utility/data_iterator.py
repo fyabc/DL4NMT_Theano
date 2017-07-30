@@ -46,16 +46,9 @@ class TextIterator:
         self.source.seek(0)
         self.target.seek(0)
 
-    def next(self):
-        if self.end_of_data:
-            self.end_of_data = False
-            self.reset()
-            raise StopIteration
+    def _fill_buffer(self):
+        """fill buffer, if it's empty"""
 
-        source = []
-        target = []
-
-        # fill buffer, if it's empty
         assert len(self.source_buffer) == len(self.target_buffer), 'Buffer size mismatch!'
 
         if len(self.source_buffer) == 0:
@@ -85,6 +78,17 @@ class TextIterator:
             self.reset()
             raise StopIteration
 
+    def next(self):
+        if self.end_of_data:
+            self.end_of_data = False
+            self.reset()
+            raise StopIteration
+
+        source = []
+        target = []
+
+        self._fill_buffer()
+
         try:
             # actual work here
             while True:
@@ -92,7 +96,11 @@ class TextIterator:
                 try:
                     ss = self.source_buffer.pop()
                 except IndexError:
-                    break
+                    if len(source) <= 0 or len(target) <= 0:
+                        self._fill_buffer()
+                        ss = self.source_buffer.pop()
+                    else:
+                        break
                 ss = [self.source_dict.get(w, 1)
                       for w in ss]
                 if self.n_words_source > 0:
