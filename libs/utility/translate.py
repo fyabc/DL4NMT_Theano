@@ -184,7 +184,6 @@ def _translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target,
         all_sample = []
         for bidx, seqs in enumerate(all_src_blocks):
             all_sample.extend(translate_block(seqs, model, f_init, f_next, trng, k))
-            print(bidx, '/', m_block, 'Done')
 
         trans = seqs2words(all_sample, word_idict_trg)
 

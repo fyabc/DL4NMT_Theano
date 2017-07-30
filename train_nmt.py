@@ -144,6 +144,8 @@ def main():
                         help='Whether to load previous immediate params, default to True, set to False')
     parser.add_argument('--reader_buffer_size', action='store', default=40, type=int, dest='buffer_size',
                         help='The buffer size in data reader, default to 40')
+    parser.add_argument('--start_epoch', action='store', default=00, type=int, dest='start_epoch',
+                        help='The starting epoch, default to 0')
 
     args = parser.parse_args()
     print args
@@ -283,6 +285,7 @@ def main():
         dev_bleu_freq = args.dev_bleu_freq,
         fix_dp_bug= args.fix_dp_bug,
         io_buffer_size= args.buffer_size,
+        start_epoch= args.start_epoch,
     )
 
 

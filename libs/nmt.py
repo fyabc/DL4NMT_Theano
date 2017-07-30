@@ -146,6 +146,7 @@ def train(dim_word=100,  # word vector dimensionality
           trg_attention_layer_id=None,
           fix_dp_bug = False,
           io_buffer_size = 40,
+          start_epoch = 0,
           ):
     model_options = locals().copy()
 
@@ -333,7 +334,6 @@ Start Time = {}
     uidx = search_start_uidx(reload_, preload)
 
     epoch_n_batches = 0
-    start_epoch = 0
     pass_batches = 0
 
     print 'worker', worker_id, 'uidx', uidx, 'l_rate', lrate, 'ada_alpha', ada_alpha, 'n_batches', epoch_n_batches, 'start_epoch', start_epoch, 'pass_batches', pass_batches
