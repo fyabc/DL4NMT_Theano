@@ -303,6 +303,8 @@ class NMTModel(object):
     def __init__(self, options, given_params=None):
         # Dict of options
         self.O = options
+        if 'fix_dp_bug' not in options:
+            self.O['fix_dp_bug'] = False
 
         # Dict of parameters (Theano shared variables)
         self.P = OrderedDict() if given_params is None else given_params
