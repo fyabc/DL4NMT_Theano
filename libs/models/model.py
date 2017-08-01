@@ -305,7 +305,9 @@ class NMTModel(object):
         self.O = options
         if 'fix_dp_bug' not in options:
             self.O['fix_dp_bug'] = False
-
+        if 'cost_normalization' not in options:
+            self.O['cost_normalization'] = 1
+            
         # Dict of parameters (Theano shared variables)
         self.P = OrderedDict() if given_params is None else given_params
 
