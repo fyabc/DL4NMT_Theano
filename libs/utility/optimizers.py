@@ -2,7 +2,7 @@ import theano
 import theano.tensor as tensor
 import numpy
 
-from .utils import itemlist
+from .utils import itemlist, emb_para_names
 
 profile = False
 
@@ -120,25 +120,34 @@ def adadelta(lr, tparams, grads, inp, cost, **kwargs):
     g2 = kwargs.pop('g2', None)
     given_imm_data = kwargs.pop('given_imm_data', None)
     alpha = kwargs.pop('alpha', 0.95)
+    word_params_only = kwargs.pop('word_params_only', None)
 
     if g2 is None:
         outputs = cost
     else:
         outputs =[cost, g2]
 
-    zipped_grads = [theano.shared(p.get_value() * numpy.float32(0.),
-                                  name='%s_grad' % k)
-                    for k, p in tparams.iteritems()]
+    zipped_grads = [theano.shared(p.get_value() * numpy.float32(0.), name='%s_grad' % k) for k, p in tparams.iteritems() if k in emb_para_names] if word_params_only \
+        else [theano.shared(p.get_value() * numpy.float32(0.), name='%s_grad' % k) for k, p in tparams.iteritems()]
 
     if given_imm_data is not None:
         running_up2 = [theano.shared(value, name='%s_rup2' % k)
-                       for k, value in zip(tparams.iterkeys(), given_imm_data[0])]
+                       for k, value in zip(tparams.iterkeys(), given_imm_data[0]) if k in emb_para_names] if word_params_only \
+            else [theano.shared(value, name='%s_rup2' % k)
+                  for k, value in zip(tparams.iterkeys(), given_imm_data[0])]
         running_grads2 = [theano.shared(value, '%s_rgrad2' % k)
-                          for k, value in zip(tparams.iterkeys(), given_imm_data[1])]
+                          for k, value in zip(tparams.iterkeys(), given_imm_data[1]) if k in emb_para_names] if word_params_only \
+            else [theano.shared(value, '%s_rgrad2' % k)
+                  for k, value in zip(tparams.iterkeys(), given_imm_data[1])]
     else:
         running_up2 = [theano.shared(p.get_value() * numpy.float32(0.), name='%s_rup2' % k)
+                       for k, p in tparams.iteritems() if k in emb_para_names] if word_params_only \
+            else [theano.shared(p.get_value() * numpy.float32(0.), name='%s_rup2' % k)
                        for k, p in tparams.iteritems()]
+
         running_grads2 = [theano.shared(p.get_value() * numpy.float32(0.), name='%s_rgrad2' % k)
+                          for k, p in tparams.iteritems() if k in emb_para_names] if word_params_only \
+            else [theano.shared(p.get_value() * numpy.float32(0.), name='%s_rgrad2' % k)
                           for k, p in tparams.iteritems()]
 
     zgup = [(zg, g) for zg, g in zip(zipped_grads, grads)]
@@ -154,7 +163,7 @@ def adadelta(lr, tparams, grads, inp, cost, **kwargs):
                                      running_grads2)]
     ru2up = [(ru2, alpha * ru2 + (1 - alpha) * (ud ** 2))
              for ru2, ud in zip(running_up2, updir)]
-    param_up = [(p, p + lr * ud) for p, ud in zip(itemlist(tparams), updir)]
+    param_up = [(p, p + lr * ud) for p, ud in zip(itemlist(tparams, word_params_only), updir)]
 
     f_update = theano.function([lr], [], updates=rg2up + ru2up + param_up,
                                on_unused_input='ignore', profile=profile)

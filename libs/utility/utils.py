@@ -24,6 +24,7 @@ from .data_iterator import TextIterator
 
 _fp_log = None
 
+emb_para_names = {'Wemb','Wemb_dec', 'ff_logit_W', 'ff_logit_b'}
 
 def set_logging_file(logging_filename):
     path, filename = os.path.split(logging_filename)
@@ -83,9 +84,10 @@ def unzip(zipped):
     return new_params
 
 
-def itemlist(tparams):
+def itemlist(tparams, word_params_only = False):
     """Get the list of parameters: Note that tparams must be OrderedDict"""
-    return [vv for kk, vv in tparams.iteritems()]
+    return [vv for kk, vv in tparams.iteritems() if kk in emb_para_names] if word_params_only \
+        else [vv for vv, kk in tparams.iteritems()]
 
 
 def _p(*args, **kwargs):
@@ -809,4 +811,5 @@ __all__ = [
     'load_shuffle_text_iterator',
     'make_grads_clip_func',
     'adadelta_set_imm_data',
+    'emb_para_names',
 ]
