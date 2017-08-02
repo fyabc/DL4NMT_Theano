@@ -359,14 +359,14 @@ def apply_gradient_clipping(clip_c, grads, clip_shared=None):
         grads = new_grads
     return grads, g2
 
-def clip_grad_remove_nan(grads, clip_c_shared, mt_tparams):
+def clip_grad_remove_nan(grads, clip_c_shared, mt_tparams, word_params_only):
     g2 = 0.
     for g in grads:
         g2 += (g*g).sum()
     not_finite = tensor.or_(tensor.isnan(g2), tensor.isinf(g2))
     if clip_c_shared.get_value() > 0.:
         new_grads = []
-        for g, p in zip(grads, itemlist(mt_tparams)):
+        for g, p in zip(grads, itemlist(mt_tparams, word_params_only)):
             tmpg = tensor.switch(g2 > (clip_c_shared*clip_c_shared),
                                  g / tensor.sqrt(g2) * clip_c_shared,
                                  g)
@@ -376,9 +376,9 @@ def clip_grad_remove_nan(grads, clip_c_shared, mt_tparams):
     else:
         return grads, tensor.sqrt(g2)
 
-def make_grads_clip_func(grads_shared, mt_tparams, clip_c_shared):
+def make_grads_clip_func(grads_shared, mt_tparams, clip_c_shared, word_params_only):
 
-    new_grads, g2_sqrt = clip_grad_remove_nan(grads_shared, clip_c_shared, mt_tparams)
+    new_grads, g2_sqrt = clip_grad_remove_nan(grads_shared, clip_c_shared, mt_tparams, word_params_only)
 
     zgup = [(zg, g) for zg, g in zip(grads_shared, new_grads)]
     f_grads_clip = theano.function([], g2_sqrt, updates=zgup, on_unused_input='ignore', profile=profile)
