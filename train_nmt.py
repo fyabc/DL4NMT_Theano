@@ -148,6 +148,8 @@ def main():
                         help='The starting epoch, default to 0')
     parser.add_argument('--fix_rnn_weights', action="store_true", default=False, dest='fix_rnn_weights',
                         help='Fix rnn weights during training, default to False, set to True')
+    parser.add_argument('--use_LN', action="store_true", default=False, dest='use_LN',
+                        help='Use layer normalization in RNN, default to False, set to True')
 
     args = parser.parse_args()
     print args
@@ -289,6 +291,7 @@ def main():
         io_buffer_size= args.buffer_size,
         start_epoch= args.start_epoch,
         fix_rnn_weights= args.fix_rnn_weights,
+        use_LN = args.use_LN,
     )
 
 

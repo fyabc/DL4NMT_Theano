@@ -375,7 +375,7 @@ class NMTModel(object):
         # Decoder - pass through the decoder conditional gru with attention
         hidden_decoder, context_decoder, _, _ = self.decoder(
             tgt_embedding, y_mask, init_decoder_state, context, x_mask,
-            dropout_params=None,
+            dropout_params=None, use_LN = self.O['use_LN'],
         )
 
         return [x, x_mask, y, y_mask], hidden_decoder, context_decoder
@@ -1020,7 +1020,7 @@ class NMTModel(object):
         inputs.append((input_, input_r))
 
         layer_out = get_build(unit)(self.P, inputs[-1][0], self.O, prefix='encoder', mask=x_mask, layer_id=0,
-                                    dropout_params=dropout_params, get_gates=get_gates)
+                                    dropout_params=dropout_params, get_gates=get_gates, use_LN=self.O['use_LN'])
         h_last, kw_ret_layer = layer_out[0], layer_out[-1]
         if get_gates:
             kw_ret['input_gates_first'] = kw_ret_layer['input_gates']
@@ -1028,7 +1028,7 @@ class NMTModel(object):
             kw_ret['output_gates_first'] = kw_ret_layer['output_gates']
 
         layer_out_r = get_build(unit)(self.P, inputs[-1][1], self.O, prefix='encoder_r', mask=xr_mask,
-                                      layer_id=0, dropout_params=dropout_params, get_gates=get_gates)
+                                      layer_id=0, dropout_params=dropout_params, get_gates=get_gates, use_LN=self.O['use_LN'])
         h_last_r, kw_ret_layer = layer_out_r[0], layer_out_r[-1]
         if get_gates:
             kw_ret['input_gates_first_r'] = kw_ret_layer['input_gates']
@@ -1068,9 +1068,9 @@ class NMTModel(object):
                         x_mask_, xr_mask_ = xr_mask, x_mask
 
                 h_last = get_build(unit)(self.P, inputs[-1][0], self.O, prefix='encoder', mask=x_mask_,
-                                         layer_id=layer_id, dropout_params=dropout_params)[0]
+                                         layer_id=layer_id, dropout_params=dropout_params, use_LN=self.O['use_LN'])[0]
                 h_last_r = get_build(unit)(self.P, inputs[-1][1], self.O, prefix='encoder_r', mask=xr_mask_,
-                                           layer_id=layer_id, dropout_params=dropout_params)[0]
+                                           layer_id=layer_id, dropout_params=dropout_params, use_LN=self.O['use_LN'])[0]
 
                 outputs.append((h_last, h_last_r))
 
@@ -1109,7 +1109,7 @@ class NMTModel(object):
                 # FIXME: mask modified from None to x_mask
                 layer_out = get_build(self.O['unit'])(
                     self.P, inputs[-1], self.O, prefix='encoder', mask=x_mask_,
-                    layer_id=layer_id, dropout_params=dropout_params, get_gates=get_gates)
+                    layer_id=layer_id, dropout_params=dropout_params, get_gates=get_gates, use_LN=self.O['use_LN'])
                 h_last, kw_ret_layer = layer_out[0], layer_out[-1]
                 if get_gates:
                     kw_ret['input_gates'].append(kw_ret_layer['input_gates'])
@@ -1196,6 +1196,7 @@ class NMTModel(object):
                     context_mask=x_mask, one_step=one_step, init_state=init_state[layer_id],
                     dropout_params=dropout_params, layer_id=layer_id,
                     init_memory=init_memory[layer_id], unit_size=unit_size,
+                    use_LN=self.O['use_LN'],
                 )
 
                 context_decoder_list.append(context_decoder)
@@ -1234,7 +1235,7 @@ class NMTModel(object):
                 layer_out = get_build(unit)(
                     self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
                     dropout_params=dropout_params, one_step=one_step, init_state=init_state[layer_id], context=None,
-                    init_memory=init_memory[layer_id], get_gates=get_gates, unit_size=unit_size,
+                    init_memory=init_memory[layer_id], get_gates=get_gates, unit_size=unit_size,use_LN=self.O['use_LN'],
                 )
                 kw_ret_layer = layer_out[-1]
 
@@ -1267,7 +1268,7 @@ class NMTModel(object):
                 self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, context=context,
                 context_mask=x_mask, one_step=one_step, init_state=init_state[attention_layer_id],
                 dropout_params=dropout_params, layer_id=attention_layer_id, init_memory=init_memory[attention_layer_id],
-                get_gates=get_gates, unit_size=unit_size,
+                get_gates=get_gates, unit_size=unit_size,use_LN=self.O['use_LN'],
             )
 
             hiddens_without_dropout.append(kw_ret_att['hidden_without_dropout'])
@@ -1300,7 +1301,7 @@ class NMTModel(object):
                 layer_out = get_build(unit)(
                     self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
                     dropout_params=dropout_params, context=context_decoder, init_state=init_state[layer_id],
-                    one_step=one_step, init_memory=init_memory[layer_id], get_gates=get_gates, unit_size=unit_size,
+                    one_step=one_step, init_memory=init_memory[layer_id], get_gates=get_gates, unit_size=unit_size,use_LN=self.O['use_LN'],
                 )
                 kw_ret_layer = layer_out[-1]
 
