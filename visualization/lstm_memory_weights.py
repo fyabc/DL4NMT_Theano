@@ -50,11 +50,16 @@ OuterGates = Gates[3:]  # Outer gates, after tanh, (-1.0, 1.0)
 InnerGateLabels = '$i_t$', '$f_t$', '$o_t$'
 OuterGateLabels = '$h_t$', '$c_t$'
 
+FigureSize = (18, 10)
 FontSize = 20
 TextFontSize = 14
-InnerColorMap = cm.bwr
-OuterColorMap = cm.gray
 ScatterColors = ['b', 'r', 'y', 'g']
+
+
+def _config_figure():
+    figure = plt.gcf()
+    figure.set_tight_layout(True)
+    figure.set_size_inches(*FigureSize)
 
 
 def load_options(model_name):
@@ -358,12 +363,12 @@ def plot_values(results, args):
 
     # Image
     for layer_id, value_array in enumerate(inner_value_arrays):
-        plt.imshow(value_array, cmap=InnerColorMap, interpolation='none', vmin=0.0, vmax=1.0,
+        plt.imshow(value_array, cmap=args.cm_inner, interpolation='none', vmin=0.0, vmax=1.0,
                    extent=(-0.5, _size_i - 1 + 0.5,
                            n_gates * (layer_id + 1) + 1.5 - len(InnerGates), n_gates * (layer_id + 1) + 1.5))
     if not is_encoder:
         for layer_id, value_array in enumerate(outer_value_arrays):
-            plt.imshow(value_array, cmap=OuterColorMap, interpolation='none',
+            plt.imshow(value_array, cmap=args.cm_outer, interpolation='none',
                        extent=(-0.5, _size_o - 1 + 0.5,
                                n_gates * layer_id + 1.5, n_gates * (layer_id + 1) + 1.5 - len(InnerGates)))
 
@@ -378,6 +383,8 @@ def plot_values(results, args):
     plt.ylim(ymin=ymin - 0.5, ymax=ymax + 0.5)
 
     plt.grid()
+
+    _config_figure()
 
     plt.show()
     plt.savefig(args.saveto)
@@ -449,6 +456,8 @@ def plot_count(results, args):
         plt.subplot('1{}{}'.format(n_inner_gates, i + 1))
         _saturation_plot(gate_name)
 
+    _config_figure()
+
     plt.show()
     plt.savefig(args.saveto)
 
@@ -510,10 +519,14 @@ def main():
                         help='Dump translate result, default is %(default)s')
     parser.add_argument('-l', '--load', metavar='FILE', action='store', type=str, default=None, dest='load',
                         help='Load exist translate result, default is %(default)s')
-    parser.add_argument('-saveto', '--saveto', metavar='FILE', action='store', type=str, default='vis/lstm_weight.png', dest='saveto',
+    parser.add_argument('-saveto', '--saveto', metavar='FILE', action='store', type=str, default='vis/lstm_weight.pdf', dest='saveto',
                         help='The path to save plotted graph, default is %(default)s')
     parser.add_argument('-V', '--value', metavar='type', action='store', type=str, default='mean', dest='get_value',
                         help='How to get value, default is %(default)s, can be set to "mean", "random" or number')
+    parser.add_argument('-cm-inner', action='store', metavar='type', type=str, default='bwr', dest='cm_inner',
+                        help='Color map of inner gates, default is %(default)s')
+    parser.add_argument('-cm-outer', action='store', metavar='type', type=str, default='gray', dest='cm_outer',
+                        help='Color map of outer gates, default is %(default)s')
 
     args = parser.parse_args()
 
@@ -529,6 +542,9 @@ def main():
             args.target = os.path.join('data', 'dev', dataset[5])
         else:
             args.source = os.path.join('data', 'test', dataset[6])
+
+    args.cm_inner = eval('cm.{}'.format(args.cm_inner))
+    args.cm_outer = eval('cm.{}'.format(args.cm_outer))
 
     plt.rcParams['font.sans-serif'] = ['SimHei']  # 用来正常显示中文标签
     plt.rcParams['axes.unicode_minus'] = False  # 用来正常显示负号
