@@ -450,6 +450,7 @@ def plot_count(results, args):
         _saturation_plot(gate_name)
 
     plt.show()
+    plt.savefig(args.saveto)
 
 
 def real_main(model_name, dictionary, dictionary_target, source_file, args, k=5, normalize=False, chr_level=False):
