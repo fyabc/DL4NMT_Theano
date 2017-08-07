@@ -56,10 +56,10 @@ TextFontSize = 14
 ScatterColors = ['b', 'r', 'y', 'g']
 
 
-def _config_figure():
+def _config_figure(args):
     figure = plt.gcf()
     figure.set_tight_layout(True)
-    figure.set_size_inches(*FigureSize)
+    figure.set_size_inches(*args.figure_size)
 
 
 def load_options(model_name):
@@ -384,7 +384,7 @@ def plot_values(results, args):
 
     plt.grid()
 
-    _config_figure()
+    _config_figure(args)
 
     plt.show()
     plt.savefig(args.saveto)
@@ -456,7 +456,7 @@ def plot_count(results, args):
         plt.subplot('1{}{}'.format(n_inner_gates, i + 1))
         _saturation_plot(gate_name)
 
-    _config_figure()
+    _config_figure(args)
 
     plt.show()
     plt.savefig(args.saveto)
@@ -527,6 +527,8 @@ def main():
                         help='Color map of inner gates, default is %(default)s')
     parser.add_argument('-cm-outer', action='store', metavar='type', type=str, default='gray', dest='cm_outer',
                         help='Color map of outer gates, default is %(default)s')
+    parser.add_argument('-s', '-size', action='store', metavar='axb', type=str, default='30x10', dest='figure_size',
+                        help='Figure size, format is "axb" (inches), default is "%(default)s"')
 
     args = parser.parse_args()
 
@@ -545,6 +547,7 @@ def main():
 
     args.cm_inner = eval('cm.{}'.format(args.cm_inner))
     args.cm_outer = eval('cm.{}'.format(args.cm_outer))
+    args.figure_size = int(args.figure_size.split('x')[0]), int(args.figure_size.split('x')[1])
 
     plt.rcParams['font.sans-serif'] = ['SimHei']  # 用来正常显示中文标签
     plt.rcParams['axes.unicode_minus'] = False  # 用来正常显示负号
