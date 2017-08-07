@@ -21,6 +21,8 @@ from pprint import pprint
 
 import matplotlib.cm as cm
 import matplotlib.pyplot as plt
+plt.switch_backend('agg')
+
 import numpy as np
 import theano
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
@@ -378,6 +380,7 @@ def plot_values(results, args):
     plt.grid()
 
     plt.show()
+    plt.savefig(args.saveto)
 
 
 def plot_count(results, args):
@@ -506,6 +509,8 @@ def main():
                         help='Dump translate result, default is %(default)s')
     parser.add_argument('-l', '--load', metavar='FILE', action='store', type=str, default=None, dest='load',
                         help='Load exist translate result, default is %(default)s')
+    parser.add_argument('-saveto', '--saveto', metavar='FILE', action='store', type=str, default='vis/lstm_weight.png', dest='saveto',
+                        help='The path to save plotted graph, default is %(default)s')
     parser.add_argument('-V', '--value', metavar='type', action='store', type=str, default='mean', dest='get_value',
                         help='How to get value, default is %(default)s, can be set to "mean", "random" or number')
 
