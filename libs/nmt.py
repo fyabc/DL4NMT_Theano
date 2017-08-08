@@ -353,8 +353,7 @@ Start Time = {}
     best_valid_cost = validation(valid_iterator, f_cost, use_noise)
     small_train_cost = validation(small_train_iterator, f_cost, use_noise)
     best_bleu = translate_dev_get_bleu(model, f_init, f_next, trng, use_noise)
-    if worker_id == 0:
-        message('Initial Valid cost {:.5f} Small train cost {:.5f} Valid BLEU {:.2f}'.format(best_valid_cost, small_train_cost, best_bleu))
+    message('Worker id {}, Initial Valid cost {:.5f} Small train cost {:.5f} Valid BLEU {:.2f}'.format(worker_id, best_valid_cost, small_train_cost, best_bleu))
 
     commu_time_sum = 0.0
     cp_time_sum =0.0
