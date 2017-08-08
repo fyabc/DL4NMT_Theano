@@ -473,8 +473,7 @@ Start Time = {}
                 valid_cost = validation(valid_iterator, f_cost, use_noise)
                 small_train_cost = validation(small_train_iterator, f_cost, use_noise)
                 valid_bleu = translate_dev_get_bleu(model, f_init, f_next, trng, use_noise)
-                if worker_id == 0:
-                    message('Valid cost {:.5f} Small train cost {:.5f} Valid BLEU {:.2f}'.format(valid_cost, small_train_cost, valid_bleu))
+                message('Worker {} Valid cost {:.5f} Small train cost {:.5f} Valid BLEU {:.2f} Bad count {}'.format(worker_id, valid_cost, small_train_cost, valid_bleu, bad_counter))
                 sys.stdout.flush()
 
                 # Fine-tune based on dev cost
@@ -493,8 +492,8 @@ Start Time = {}
                             print 'Fine tune:',
                             if finetune_cnt % 2 == 0:
                                 lrate = np.float32(lrate * 0.5)
-                                message('Discount learning rate to {} at iteration {}'.format(lrate, uidx))
-                                if lrate <= 0.025:
+                                message('Discount learning rate to {} at iteration {} at workder {}'.format(lrate, uidx, worker_id))
+                                if lrate <= 0.08:
                                     message('Learning rate decayed to {:.5f}, task completed'.format(lrate))
                                     return 1., 1., 1.
                             else:
