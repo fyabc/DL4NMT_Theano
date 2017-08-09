@@ -544,6 +544,7 @@ def load_options(options, reload_=None, preload=None, maintain_vocab_size = Fals
     reload_ = options['reload_'] if reload_ is None else reload_
     preload = options['preload'] if preload is None else preload
     dropout = options['use_dropout']
+    fix_dp_bug = options['fix_dp_bug']
     valid_datasets = options['valid_datasets']
     vocab_filenames = options['vocab_filenames']
 
@@ -563,6 +564,7 @@ def load_options(options, reload_=None, preload=None, maintain_vocab_size = Fals
         options['use_dropout'] = dropout
         options['valid_datasets'] = valid_datasets
         options['vocab_filenames'] = vocab_filenames
+        options['fix_dp_bug'] = fix_dp_bug
 
         if maintain_vocab_size:
             options['n_words_src'] = src_vocab_size
@@ -615,7 +617,7 @@ def make_f_train(f_grad_shared, f_update):
 
 def get_adadelta_imm_data(optimizer, given_imm, preload):
     if given_imm:
-        # [NOTE] preload filename format: filename.iter10000.npz
+        # [NOTE] preload filename format: filename.iter10000.npz, or filename_latest.npz
         _real_filename = os.path.splitext(os.path.splitext(preload)[0])[0]
         given_imm_filename = ImmediateFilename.format(_real_filename)
 

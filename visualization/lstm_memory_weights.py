@@ -28,7 +28,7 @@ from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from libs.config import DefaultOptions
-from libs.models.model import build_and_init_model
+from libs.models import build_and_init_model
 from libs.utility.utils import prepare_data_x
 from libs.utility.translate import load_translate_data
 from libs.constants import Datasets

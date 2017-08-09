@@ -155,14 +155,14 @@ Datasets = {
     'zh-en': [
         'zh-en.1.25M.zh', 'zh-en.1.25M.en',
         'small_zh-en.1.25M.zh', 'small_zh-en.1.25M.en',
-        'Nist2003.chs.word.max50.snt', 'Nist2003.enu.word.max50.snt', '',
+        'Nist2003.chs.word.max50.snt', 'Nist2003.enu.word.max50.snt', 'Nist2003.enu.word.max50.snt',
         '','',
         'zh-en.1.25M.zh.pkl', 'zh-en.1.25M.en.pkl',
     ],
-    'zh-en_tc': [
+    'zh-en_tc_1.25m': [
         'tc_zh-en.1.25M.zh', 'tc_zh-en.1.25M.en',
         'small_tc_zh-en.1.25M.zh', 'small_tc_zh-en.1.25M.en',
-        'tc_Nist2003.chs.word.max50.snt', 'tc_Nist2003.enu.word.max50.snt', '',
+        'tc_Nist2003.chs.word.max50.snt', 'tc_Nist2003.enu.word.max50.snt', 'Nist2003.enu.word.max50.snt',
         '', '',
         'tc_zh-en.1.25M.zh.pkl', 'tc_zh-en.1.25M.en.pkl',
     ],
