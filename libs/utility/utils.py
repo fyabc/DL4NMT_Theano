@@ -615,7 +615,7 @@ def make_f_train(f_grad_shared, f_update):
 
 def get_adadelta_imm_data(optimizer, given_imm, preload):
     if given_imm:
-        # [NOTE] preload filename format: filename.iter10000.npz
+        # [NOTE] preload filename format: filename.iter10000.npz, or filename_latest.npz
         _real_filename = os.path.splitext(os.path.splitext(preload)[0])[0]
         given_imm_filename = ImmediateFilename.format(_real_filename)
 
