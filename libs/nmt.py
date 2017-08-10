@@ -350,6 +350,10 @@ Start Time = {}
         print 'Done'
         sys.stdout.flush()
 
+    #sync all model parameters if train from scratch
+    if reload_ and dist_type == 'mpi_reduce':
+        all_reduce_params_nccl(nccl_comm, model.P)
+
     best_valid_cost = validation(valid_iterator, f_cost, use_noise)
     small_train_cost = validation(small_train_iterator, f_cost, use_noise)
     best_bleu = translate_dev_get_bleu(model, f_init, f_next, trng, use_noise) if reload_ else 0
