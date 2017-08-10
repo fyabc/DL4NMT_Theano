@@ -351,7 +351,7 @@ Start Time = {}
         sys.stdout.flush()
 
     #sync all model parameters if train from scratch
-    if reload_ and dist_type == 'mpi_reduce':
+    if not reload_ and dist_type == 'mpi_reduce':
         all_reduce_params_nccl(nccl_comm, model.P)
 
     best_valid_cost = validation(valid_iterator, f_cost, use_noise)
