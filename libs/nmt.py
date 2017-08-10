@@ -352,7 +352,9 @@ Start Time = {}
 
     #sync all model parameters if train from scratch
     if not reload_ and dist_type == 'mpi_reduce':
-        all_reduce_params_nccl(nccl_comm, model.P)
+        all_reduce_params_nccl(nccl_comm, itemlist(model.P))
+        for t_value in itemlist(model.P):
+            t_value.set_value(t_value.get_value() / workers_cnt)
 
     best_valid_cost = validation(valid_iterator, f_cost, use_noise)
     small_train_cost = validation(small_train_iterator, f_cost, use_noise)
