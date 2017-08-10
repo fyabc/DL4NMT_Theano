@@ -52,7 +52,8 @@ class TextIterator:
         assert len(self.source_buffer) == len(self.target_buffer), 'Buffer size mismatch!'
 
         if len(self.source_buffer) == 0:
-            for k_ in xrange(self.k):
+            #for k_ in xrange(self.k):
+            while len(self.source_buffer) < self.k:
                 ss = self.source.readline()
                 if ss == "":
                     break
@@ -60,8 +61,13 @@ class TextIterator:
                 if tt == "":
                     break
 
-                self.source_buffer.append(ss.strip().split())
-                self.target_buffer.append(tt.strip().split())
+                ss = ss.strip().split()
+                tt = tt.strip().split()
+                if len(ss) > self.maxlen or len(tt) > self.maxlen:
+                    continue
+
+                self.source_buffer.append(ss)
+                self.target_buffer.append(tt)
 
             # sort by target buffer
             tlen = numpy.array([len(t) for t in self.target_buffer])
@@ -114,7 +120,7 @@ class TextIterator:
                     tt = [w if w < self.n_words_target else 1 for w in tt]
 
                 if len(ss) > self.maxlen or len(tt) > self.maxlen:
-                    continue
+                    continue #should be useless now
 
                 source.append(ss)
                 target.append(tt)
