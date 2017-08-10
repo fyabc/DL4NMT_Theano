@@ -514,7 +514,7 @@ Start Time = {}
                 estop = True
                 break
 
-        print 'Seen {} samples'.format(n_samples)
+        print 'Seen {} samples in worker {}'.format(n_samples, worker_id)
 
         if estop:
             break
