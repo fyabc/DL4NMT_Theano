@@ -423,7 +423,8 @@ class TrgAttnNMTModel(NMTModel):
         trng, use_noise, probs = self.get_word_probability_(hidden_decoder, context_decoder, context_trg_prev,
                                                             tgt_embedding, trng=trng, use_noise=use_noise)
 
-        cost = self.build_cost(y, y_mask, probs)
+        test_cost = self.build_cost(y, y_mask, probs)
+        cost = test_cost / self.O['cost_normalization']  # cost used to derive gradient in training
 
         # Plot computation graph
         if self.O['plot_graph'] is not None:
@@ -439,7 +440,7 @@ class TrgAttnNMTModel(NMTModel):
             # Unused now
             self.x, self.x_mask, self.y, self.y_mask = x, x_mask, y, y_mask
 
-        return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost, context_mean
+        return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost, test_cost, context_mean
 
     def build_sampler(self, **kwargs):
         """Build a sampler.
