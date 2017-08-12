@@ -87,7 +87,7 @@ def unzip(zipped):
 def itemlist(tparams, word_params_only = False):
     """Get the list of parameters: Note that tparams must be OrderedDict"""
     return [vv for kk, vv in tparams.iteritems() if kk in emb_para_names] if word_params_only \
-        else [vv for vv, kk in tparams.iteritems()]
+        else [vv for kk, vv in tparams.iteritems()]
 
 
 def _p(*args, **kwargs):

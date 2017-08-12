@@ -148,6 +148,7 @@ def train(dim_word=100,  # word vector dimensionality
           io_buffer_size = 40,
           start_epoch = 0,
           fix_rnn_weights = False,
+          use_LN = False,
           ):
     model_options = locals().copy()
 
