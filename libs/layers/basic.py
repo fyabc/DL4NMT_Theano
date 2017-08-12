@@ -110,6 +110,22 @@ def _attention(h1, projected_context_, context_, W_comb_att, U_att, c_tt, contex
     return ctx_, alpha
 
 
+def _attention_trg(h1, decoded_h,
+                   Wh_trgatt, U_trgatt, b_trgatt, v_trgatt, c_trgatt,
+                   current_step, trg_mask=None):
+    decoded_h_ = decoded_h[:(current_step + 1)]
+    pstate_trg = T.dot(h1, Wh_trgatt) + T.dot(decoded_h_, U_trgatt) + b_trgatt
+
+    pstate_trg = T.dot(T.tanh(pstate_trg), v_trgatt) + c_trgatt
+    pstate_trg = pstate_trg.reshape([pstate_trg.shape[0], pstate_trg.shape[1]])
+    exp_pstate_trg = T.exp(pstate_trg)
+    if trg_mask:
+        exp_pstate_trg *= trg_mask[:(current_step+1)]
+    alpha_trg = exp_pstate_trg / exp_pstate_trg.sum(axis=0, keepdims=True)
+    ctx_trg_ = (decoded_h_ * alpha_trg[:, :, None]).sum(axis=0)
+    return ctx_trg_, alpha_trg
+
+
 __all__ = [
     '_slice',
     'tanh',
@@ -120,4 +136,5 @@ __all__ = [
     'param_init_feed_forward',
     'feed_forward',
     '_attention',
+    '_attention_trg',
 ]
