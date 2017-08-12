@@ -147,6 +147,7 @@ def train(dim_word=100,  # word vector dimensionality
           fix_dp_bug = False,
           io_buffer_size = 40,
           start_epoch = 0,
+          fix_rnn_weights = False,
           ):
     model_options = locals().copy()
 
@@ -294,12 +295,12 @@ Start Time = {}
         print 'Done'
 
     print 'Computing gradient...',
-    grads = tensor.grad(cost, wrt=itemlist(model.P))
+    grads = tensor.grad(cost, wrt=itemlist(model.P, fix_rnn_weights))
 
     clip_shared = theano.shared(np.array(clip_c, dtype=fX), name='clip_shared')
 
     if dist_type != 'mpi_reduce': #build grads clip into computational graph
-        grads, g2 = clip_grad_remove_nan(grads, clip_shared, model.P)
+        grads, g2 = clip_grad_remove_nan(grads, clip_shared, model.P, fix_rnn_weights)
     else: #do the grads clip after gradients aggregation
         g2 = None
 
@@ -310,11 +311,11 @@ Start Time = {}
     given_imm_data = get_adadelta_imm_data(optimizer, given_imm, preload)
 
     f_grad_shared, f_update, grads_shared, imm_shared = Optimizers[optimizer](
-        lr, model.P, grads, inps, cost, g2=g2, given_imm_data=given_imm_data, alpha = ada_alpha)
+        lr, model.P, grads, inps, cost, g2=g2, given_imm_data=given_imm_data, alpha = ada_alpha, word_params_only = fix_rnn_weights)
     print 'Done'
 
     if dist_type == 'mpi_reduce':
-        f_grads_clip = make_grads_clip_func(grads_shared = grads_shared, mt_tparams= model.P, clip_c_shared = clip_shared)
+        f_grads_clip = make_grads_clip_func(grads_shared = grads_shared, mt_tparams= model.P, clip_c_shared = clip_shared, word_params_only= fix_rnn_weights)
 
     print 'Optimization'
     log('Preparation Done\n@Current Time = {}'.format(time.time()))

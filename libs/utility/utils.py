@@ -24,6 +24,7 @@ from .data_iterator import TextIterator
 
 _fp_log = None
 
+emb_para_names = {'Wemb','Wemb_dec', 'ff_logit_W', 'ff_logit_b'}
 
 def set_logging_file(logging_filename):
     path, filename = os.path.split(logging_filename)
@@ -83,9 +84,10 @@ def unzip(zipped):
     return new_params
 
 
-def itemlist(tparams):
+def itemlist(tparams, word_params_only = False):
     """Get the list of parameters: Note that tparams must be OrderedDict"""
-    return [vv for kk, vv in tparams.iteritems()]
+    return [vv for kk, vv in tparams.iteritems() if kk in emb_para_names] if word_params_only \
+        else [vv for vv, kk in tparams.iteritems()]
 
 
 def _p(*args, **kwargs):
@@ -357,14 +359,14 @@ def apply_gradient_clipping(clip_c, grads, clip_shared=None):
         grads = new_grads
     return grads, g2
 
-def clip_grad_remove_nan(grads, clip_c_shared, mt_tparams):
+def clip_grad_remove_nan(grads, clip_c_shared, mt_tparams, word_params_only):
     g2 = 0.
     for g in grads:
         g2 += (g*g).sum()
     not_finite = tensor.or_(tensor.isnan(g2), tensor.isinf(g2))
     if clip_c_shared.get_value() > 0.:
         new_grads = []
-        for g, p in zip(grads, itemlist(mt_tparams)):
+        for g, p in zip(grads, itemlist(mt_tparams, word_params_only)):
             tmpg = tensor.switch(g2 > (clip_c_shared*clip_c_shared),
                                  g / tensor.sqrt(g2) * clip_c_shared,
                                  g)
@@ -374,9 +376,9 @@ def clip_grad_remove_nan(grads, clip_c_shared, mt_tparams):
     else:
         return grads, tensor.sqrt(g2)
 
-def make_grads_clip_func(grads_shared, mt_tparams, clip_c_shared):
+def make_grads_clip_func(grads_shared, mt_tparams, clip_c_shared, word_params_only):
 
-    new_grads, g2_sqrt = clip_grad_remove_nan(grads_shared, clip_c_shared, mt_tparams)
+    new_grads, g2_sqrt = clip_grad_remove_nan(grads_shared, clip_c_shared, mt_tparams, word_params_only)
 
     zgup = [(zg, g) for zg, g in zip(grads_shared, new_grads)]
     f_grads_clip = theano.function([], g2_sqrt, updates=zgup, on_unused_input='ignore', profile=profile)
@@ -811,4 +813,5 @@ __all__ = [
     'load_shuffle_text_iterator',
     'make_grads_clip_func',
     'adadelta_set_imm_data',
+    'emb_para_names',
 ]

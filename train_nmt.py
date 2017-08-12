@@ -146,6 +146,8 @@ def main():
                         help='The buffer size in data reader, default to 40')
     parser.add_argument('--start_epoch', action='store', default=00, type=int, dest='start_epoch',
                         help='The starting epoch, default to 0')
+    parser.add_argument('--fix_rnn_weights', action="store_true", default=False, dest='fix_rnn_weights',
+                        help='Fix rnn weights during training, default to False, set to True')
 
     args = parser.parse_args()
     print args
@@ -286,6 +288,7 @@ def main():
         fix_dp_bug= args.fix_dp_bug,
         io_buffer_size= args.buffer_size,
         start_epoch= args.start_epoch,
+        fix_rnn_weights= args.fix_rnn_weights,
     )
 
 
