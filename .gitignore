@@ -97,6 +97,9 @@ data/
 # model
 model/
 
+# visualization
+vis/
+
 # log
 log/
 
