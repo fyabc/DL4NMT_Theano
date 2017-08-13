@@ -462,7 +462,7 @@ def prepare_data(seqs_x, seqs_y, maxlen=None, seqs_y_hat_scores = None):
     if seqs_y_hat_scores:
         for idx, [length_y, y_score] in enumerate(zip(lengths_y, seqs_y_hat_scores)):
             assert y_score.size == length_y + 1, 'Inconsistent length %d, %d' % (length_y, y_score.size)
-            #y_hat_scores[:length_y + 1, idx] = y_score[:length_y + 1]
+            y_hat_scores[:length_y + 1, idx] = y_score
 
     if not seqs_y_hat_scores:
         return x, x_mask, y, y_mask
