@@ -421,16 +421,22 @@ def prepare_data(seqs_x, seqs_y, maxlen=None, seqs_y_hat_scores = None):
         new_seqs_y = []
         new_lengths_x = []
         new_lengths_y = []
-        for l_x, s_x, l_y, s_y in zip(lengths_x, seqs_x, lengths_y, seqs_y):
+        new_seqs_y_hat_scores = []
+        for id, [l_x, s_x, l_y, s_y] in enumerate(zip(lengths_x, seqs_x, lengths_y, seqs_y)):
             if l_x < maxlen and l_y < maxlen:
                 new_seqs_x.append(s_x)
                 new_lengths_x.append(l_x)
                 new_seqs_y.append(s_y)
                 new_lengths_y.append(l_y)
+                if seqs_y_hat_scores:
+                    new_seqs_y_hat_scores.append(seqs_y_hat_scores[id])
+
         lengths_x = new_lengths_x
         seqs_x = new_seqs_x
         lengths_y = new_lengths_y
         seqs_y = new_seqs_y
+        if seqs_y_hat_scores:
+            seqs_y_hat_scores = new_seqs_y_hat_scores
 
         if len(lengths_x) < 1 or len(lengths_y) < 1:
             return None, None, None, None if not seqs_y_hat_scores \
@@ -455,8 +461,8 @@ def prepare_data(seqs_x, seqs_y, maxlen=None, seqs_y_hat_scores = None):
 
     if seqs_y_hat_scores:
         for idx, [length_y, y_score] in enumerate(zip(lengths_y, seqs_y_hat_scores)):
-            assert y_score.size == length_y + 1
-            y_hat_scores[:length_y + 1, idx] = y_score
+            assert y_score.size == length_y + 1, 'Inconsistent length %d, %d' % (length_y, y_score.size)
+            #y_hat_scores[:length_y + 1, idx] = y_score[:length_y + 1]
 
     if not seqs_y_hat_scores:
         return x, x_mask, y, y_mask

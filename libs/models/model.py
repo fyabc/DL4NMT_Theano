@@ -940,7 +940,7 @@ class NMTModel(object):
 
         batch_sample, batch_sample_score = self.gen_batch_sample(
             x, x_mask,
-            k=k, maxlen=200, eos_id=0,
+            k=k, maxlen=2000, eos_id=0,
             stochastic=stochastic,
         )
         assert len(batch_sample) == len(batch_sample_score)
@@ -1484,6 +1484,9 @@ class NMTModel(object):
                     baseline_score /= (k_cand + 1)
                     tgt_samples_rewards.append(rewards[choice_idx] - baseline_score)
 
+        for tgt_sample, tgt_sample_score in zip(tgt_samples, tgt_samples_rewards):
+            assert len(tgt_sample) == tgt_sample_score.size - 1, \
+                'Inconsistent length %d, %d' % (len(tgt_sample), tgt_sample_score.size)
         return tgt_samples, tgt_samples_rewards
 
 __all__ = [
