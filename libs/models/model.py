@@ -309,7 +309,8 @@ class NMTModel(object):
             self.O['cost_normalization'] = 1
         if 'use_LN' not in options:
             self.O['use_LN'] = False
-            
+        self.O['cost_type'] = options.get('cost_type', 'mle')
+
         # Dict of parameters (Theano shared variables)
         self.P = OrderedDict() if given_params is None else given_params
 
@@ -318,6 +319,10 @@ class NMTModel(object):
 
         # Instance of ParameterInitializer, init the parameters.
         self.initializer = ParameterInitializer(options)
+
+        self.f_init = None
+        self.f_next = None
+        self.trng = None
 
     def input_to_context(self, given_input=None, **kwargs):
         """Build the part of the model that from input to context vector.
@@ -395,11 +400,11 @@ class NMTModel(object):
 
         opt_ret = {}
 
-        trng = RandomStreams(1234)
+        self.trng = RandomStreams(1234)
         use_noise = theano.shared(np.float32(0.))
 
         if dropout_rate is not False:
-            dropout_params = [use_noise, trng, dropout_rate]
+            dropout_params = [use_noise, self.trng, dropout_rate]
         else:
             dropout_params = None
 
@@ -426,9 +431,12 @@ class NMTModel(object):
             dropout_params=dropout_params, one_step=False,
         )
 
-        trng, use_noise, probs = self.get_word_probability(hidden_decoder, context_decoder, tgt_embedding,
-                                                           trng=trng, use_noise=use_noise)
-        test_cost = self.build_cost(y, y_mask, probs)
+        use_noise, probs = self.get_word_probability(hidden_decoder, context_decoder, tgt_embedding, use_noise=use_noise)
+
+        y_hat_reward = T.matrix('y_hat_reward', dtype=fX) if 'rl' in self.O['cost_type'] else None
+
+        test_cost = self.build_cost(y, y_mask, probs, y_hat_scores=y_hat_reward)
+
         cost =  test_cost / self.O['cost_normalization'] #cost used to derive gradient in training
 
         # Plot computation graph
@@ -445,7 +453,7 @@ class NMTModel(object):
             # Unused now
             self.x, self.x_mask, self.y, self.y_mask = x, x_mask, y, y_mask
 
-        return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost, test_cost, context_mean
+        return self.trng, use_noise, x, x_mask, y, y_mask, y_hat_reward, opt_ret, cost, test_cost, context_mean
 
     def build_context(self, **kwargs):
         """Build function to get encoder context (or encoder gates).
@@ -518,12 +526,12 @@ class NMTModel(object):
         """
 
         batch_mode = kwargs.pop('batch_mode', False)
-        trng = kwargs.pop('trng', RandomStreams(1234))
+        self.trng = kwargs.pop('trng', RandomStreams(1234)) if self.trng == None else self.trng
         use_noise = kwargs.pop('use_noise', theano.shared(np.float32(0.)))
         get_gates = kwargs.pop('get_gates', False)
         dropout_rate = kwargs.pop('dropout', False)
         if dropout_rate is not False:
-            dropout_params = [use_noise, trng, dropout_rate]
+            dropout_params = [use_noise, self.trng, dropout_rate]
         else:
             dropout_params = None
 
@@ -558,7 +566,7 @@ class NMTModel(object):
         if batch_mode:
             inps.append(x_mask)
         outs = [init_state, ctx]
-        f_init = theano.function(inps, outs, name='f_init', profile=profile)
+        self.f_init = theano.function(inps, outs, name='f_init', profile=profile)
         print('Done')
 
         # x: 1 x 1
@@ -592,7 +600,7 @@ class NMTModel(object):
         logit = T.tanh(logit_lstm + logit_prev + logit_ctx)
         if self.O['use_dropout']:
             dropout_rate = self.O['use_dropout'] if self.O['fix_dp_bug'] else 0.5
-            logit = self.dropout(logit, use_noise, trng, dropout_rate)
+            logit = self.dropout(logit, use_noise,self.trng, dropout_rate)
 
         logit = self.feed_forward(logit, prefix='ff_logit', activation=linear)
 
@@ -600,7 +608,7 @@ class NMTModel(object):
         next_probs = T.nnet.softmax(logit)
 
         # Sample from softmax distribution to get the sample
-        next_sample = trng.multinomial(pvals=next_probs).argmax(1)
+        next_sample = self.trng.multinomial(pvals=next_probs).argmax(1)
 
         # Compile a function to do the whole thing above, next word probability,
         # sampled word for the next target, next hidden state to be used
@@ -621,12 +629,10 @@ class NMTModel(object):
                 kw_ret['forget_gates_att'],
                 kw_ret['output_gates_att'],
             ])
-        f_next = theano.function(inps, outs, name='f_next', profile=profile)
+        self.f_next = theano.function(inps, outs, name='f_next', profile=profile)
         print('Done')
 
-        return f_init, f_next
-
-    def gen_sample(self, f_init, f_next, x, trng=None, k=1, maxlen=30,
+    def gen_sample(self, x, k=1, maxlen=30,
                    stochastic=True, argmax=False, **kwargs):
         """Generate sample, either with stochastic sampling or beam search. Note that,
 
@@ -666,7 +672,7 @@ class NMTModel(object):
         hyp_states = []
 
         # get initial state of decoder rnn and encoder context
-        ret = f_init(x)
+        ret = self.f_init(x)
         next_state, ctx0 = ret[0], ret[1]
         next_w = -1 * np.ones((1,), dtype='int64')  # bos indicator
         next_state = np.tile(next_state[None, :, :], (self.O['n_decoder_layers'], 1, 1))
@@ -678,7 +684,7 @@ class NMTModel(object):
             if 'lstm' in unit:
                 inps.append(next_memory)
 
-            ret = f_next(*inps)
+            ret = self.f_next(*inps)
             next_p, next_w, next_state = ret[0], ret[1], ret[2]
             if 'lstm' in unit:
                 next_memory = ret[3]
@@ -765,18 +771,20 @@ class NMTModel(object):
             return sample, sample_score, kw_ret
         return sample, sample_score
 
-    def gen_batch_sample(self, f_init, f_next, x, x_mask, trng=None, k=1, maxlen=30, eos_id=0, **kwargs):
+    def gen_batch_sample(self, x, x_mask, k=1, maxlen=30, eos_id=0, **kwargs):
         """
         Only used for Batch Beam Search;
         Do not Support Stochastic Sampling
         """
 
         kw_ret = {}
-        have_kw_ret = bool(kwargs)
+        have_kw_ret = kwargs.pop('have_kw_ret', False)
 
         ret_memory = kwargs.pop('ret_memory', False)
         if ret_memory:
             kw_ret['memory'] = []
+
+        stochastic = kwargs.pop('stochastic', False)
 
         unit = self.O['unit']
 
@@ -791,13 +799,16 @@ class NMTModel(object):
         batch_hyp_scores = [np.zeros(ii, dtype=fX) for ii in lives_k]
 
         # get initial state of decoder rnn and encoder context
-        ret = f_init(x, x_mask)
+        ret = self.f_init(x, x_mask)
         next_state, ctx0 = ret[0], ret[1]
+        #initial_batch_sample_size = (batch_size * k) if stochastic else batch_size
+
         next_w = np.array([-1] * batch_size, dtype='int64')  # bos indicator
         next_state = np.tile(next_state[None, :, :], (self.O['n_decoder_layers'], 1, 1))
-        next_memory = np.zeros((self.O['n_decoder_layers'], next_state.shape[1], next_state.shape[2]), dtype=fX)
+        next_memory = np.zeros((self.O['n_decoder_layers'], next_state.shape[1], next_state.shape[2]), dtype=fX) #n_decoders * batch_size * n_dim
 
         for ii in xrange(maxlen):
+            #prepaire encoder ctx and x_mask
             ctx = np.repeat(ctx0, lives_k, axis=1)
             x_extend_masks = np.repeat(x_mask, lives_k, axis=1)
             cursor_start, cursor_end = 0, lives_k[0]
@@ -813,7 +824,7 @@ class NMTModel(object):
             if 'lstm' in unit:
                 inps.append(next_memory)
 
-            ret = f_next(*inps)
+            ret = self.f_next(*inps)
 
             if 'lstm' in unit:
                 next_memory = ret[3]
@@ -825,40 +836,50 @@ class NMTModel(object):
             next_state_list = []
             next_memory_list = []
 
-            next_p, next_state = ret[0], ret[2]
+            next_p, next_w, next_state = ret[0], ret[1], ret[2] # next_w: n_live_hypes, next_p: n_live_hypes * voc_size
             cursor_start, cursor_end = 0, lives_k[0]
-
             for jj in xrange(batch_size):
                 if cursor_start == cursor_end:
                     if jj < batch_size - 1:
                         cursor_end += lives_k[jj + 1]
                     continue
                 index_range = range(cursor_start, cursor_end)
-                cand_scores = batch_hyp_scores[jj][:, None] - np.log(next_p[index_range, :])
-                cand_flat = cand_scores.flatten()
-
-                try:
-                    from bottleneck import argpartition as part_sort
-                    ranks_flat = part_sort(cand_flat, kth=k - deads_k[jj] - 1)[:k - deads_k[jj]]
-                except ImportError:
-                    from bottleneck import argpartsort as part_sort
-                    ranks_flat = part_sort(cand_flat, k - deads_k[jj])[:k - deads_k[jj]]
-
-                voc_size = next_p.shape[1]
-                trans_indices = ranks_flat / voc_size
-                word_indices = ranks_flat % voc_size
-                costs = cand_flat[ranks_flat]
-
                 new_hyp_samples = []
-                new_hyp_scores = np.zeros(k - deads_k[jj]).astype('float32')
+                new_hyp_scores = []
                 new_hyp_states = []
                 new_hyp_memories = []
+                voc_size = next_p.shape[1]
 
-                for idx, [ti, wi] in enumerate(zip(trans_indices, word_indices)):
-                    new_hyp_samples.append(batch_hyp_samples[jj][ti] + [wi])
-                    new_hyp_scores[idx] = copy.copy(costs[idx])
-                    new_hyp_states.append(copy.copy(next_state[:, cursor_start + ti, :]))
-                    new_hyp_memories.append(copy.copy(next_memory[:, cursor_start + ti, :]))
+                if not stochastic: #beam search, find top k
+                    cand_scores = batch_hyp_scores[jj][:, None] - np.log(next_p[index_range, :])
+                    cand_flat = cand_scores.flatten()
+
+                    try:
+                        from bottleneck import argpartition as part_sort
+                        ranks_flat = part_sort(cand_flat, kth=k - deads_k[jj] - 1)[:k - deads_k[jj]]
+                    except ImportError:
+                        from bottleneck import argpartsort as part_sort
+                        ranks_flat = part_sort(cand_flat, k - deads_k[jj])[:k - deads_k[jj]]
+
+                    trans_indices = ranks_flat / voc_size #previous hyp index
+                    word_indices = ranks_flat % voc_size #current word index
+                    costs = cand_flat[ranks_flat]
+                    for idx, [ti, wi] in enumerate(zip(trans_indices, word_indices)):
+                        new_hyp_samples.append(batch_hyp_samples[jj][ti] + [wi])
+                        new_hyp_scores.append(copy.copy(costs[idx]))
+                        new_hyp_states.append(copy.copy(next_state[:, cursor_start + ti, :]))
+                        new_hyp_memories.append(copy.copy(next_memory[:, cursor_start + ti, :]))
+                else:
+                    if ii == 0:
+                        next_ws = np.random.choice(voc_size, k, p=next_p[jj, :])
+                    for idx in xrange(lives_k[jj]):
+                        if ii != 0:
+                            next_ws = [next_w[cursor_start + idx]]
+                        for word in next_ws:
+                            new_hyp_samples.append(batch_hyp_samples[jj][idx] + [word])
+                            new_hyp_scores.append(batch_hyp_scores[jj][idx] - np.log(next_p[cursor_start + idx, word]))
+                            new_hyp_states.append(copy.copy(next_state[:, cursor_start + idx, :]))
+                            new_hyp_memories.append(copy.copy(next_memory[:, cursor_start + idx, :]))
 
                 # check the finished samples
                 new_live_k = 0
@@ -899,15 +920,31 @@ class NMTModel(object):
                 break
 
         # dump every remaining one
-        for jj in xrange(batch_size):
-            if lives_k[jj] > 0:
-                for idx in xrange(lives_k[jj]):
-                    sample[jj].append(batch_hyp_samples[jj][idx])
-                    sample_score[jj].append(batch_hyp_scores[jj][idx])
+        if not stochastic:
+            for jj in xrange(batch_size):
+                if lives_k[jj] > 0:
+                    for idx in xrange(lives_k[jj]):
+                        sample[jj].append(batch_hyp_samples[jj][idx])
+                        sample_score[jj].append(batch_hyp_scores[jj][idx])
 
         if have_kw_ret:
             return sample, sample_score, kw_ret
         return sample, sample_score
+
+    def translate_block_core(self, input_, k, stochastic=False):
+        """Translate for batch sampler.
+
+        :return output: a list of word indices
+        """
+        x, x_mask = prepare_data_x(input_, maxlen=None, pad_eos=True, pad_sos=False)
+
+        batch_sample, batch_sample_score = self.gen_batch_sample(
+            x, x_mask,
+            k=k, maxlen=200, eos_id=0,
+            stochastic=stochastic,
+        )
+        assert len(batch_sample) == len(batch_sample_score)
+        return batch_sample, batch_sample_score
 
     def save_model(self, saveto, history_errs, uidx = -1):
         saveto_path = '{}.iter{}.npz'.format(
@@ -1322,7 +1359,6 @@ class NMTModel(object):
     def get_word_probability(self, hidden_decoder, context_decoder, tgt_embedding, **kwargs):
         """Compute word probabilities."""
 
-        trng = kwargs.pop('trng', RandomStreams(1234))
         use_noise = kwargs.pop('use_noise', theano.shared(np.float32(0.)))
 
         logit_lstm = self.feed_forward(hidden_decoder, prefix='ff_logit_lstm', activation=linear)
@@ -1331,21 +1367,23 @@ class NMTModel(object):
         logit = T.tanh(logit_lstm + logit_prev + logit_ctx)  # n_timestep * n_sample * dim_word
         if self.O['use_dropout']:
             dropout_rate = self.O['use_dropout'] if self.O['fix_dp_bug'] else 0.5
-            logit = self.dropout(logit, use_noise, trng, dropout_rate)
+            logit = self.dropout(logit, use_noise,self.trng, dropout_rate)
         # n_timestep * n_sample * n_words
         logit = self.feed_forward(logit, prefix='ff_logit', activation=linear)
         logit_shp = logit.shape
         probs = T.nnet.softmax(logit.reshape([logit_shp[0] * logit_shp[1],
                                               logit_shp[2]]))
 
-        return trng, use_noise, probs
+        return use_noise, probs
 
-    def build_cost(self, y, y_mask, probs):
+    def build_cost(self, y, y_mask, probs, y_hat_scores = None):
         """Build the cost from probabilities and target."""
 
         y_flat = y.flatten()
         y_flat_idx = T.arange(y_flat.shape[0]) * self.O['n_words'] + y_flat
         cost = -T.log(probs.flatten()[y_flat_idx])
+        if y_hat_scores:
+            cost = cost * y_hat_scores.flatten()
         cost = cost.reshape([y.shape[0], y.shape[1]])
         cost = (cost * y_mask).sum(0)
 
@@ -1387,6 +1425,66 @@ class NMTModel(object):
             if k in self.P:
                 self.P[k].set_value(v)
 
+    def get_rl_reward(self, src_block, tgt_block, **kwargs):
+        """
+        Get rl reward (bleu_based) for data
+        :param src_block: list of word indices in src sentences, length = batch_size
+        :param tgt_block: list of word indices in tgt sentences, length = batch_size
+        :return: tgt_samples, a list of translated sententes for x
+                 tgt_samples_rewards, a list of np array for corresponding y_hat;
+                 for instant reward: each np array element is the accumulated reward for each token;
+                 for terminal reward: each list element is the final bleu reward
+        """
+        EOS_ID = 0
+        batch_size = kwargs.pop('batch_size', 32)
+        k_cand = kwargs.pop('k_cand', 3)
+
+        all_src_blocks = []
+        all_tgt_blocks = []
+        all_num = len(src_block)
+        m_block = (all_num + batch_size - 1) // batch_size
+        for idx in xrange(m_block):
+            all_src_blocks.append(src_block[batch_size * idx: batch_size * (idx + 1)])
+            all_tgt_blocks.append(tgt_block[batch_size * idx: batch_size * (idx + 1)])
+
+        tgt_samples = []
+        tgt_samples_rewards = []
+
+        for src_, tgt_ in zip(all_src_blocks, all_tgt_blocks):
+            beam1_samples, beam1_sample_scores = self.translate_block_core(input_= src_, k = 1, stochastic=False)
+            beamk_samples, beamk_sample_scores = self.translate_block_core(input_= src_, k = k_cand, stochastic= False) #defulat k = 3
+            small_batch_size = len(src_)
+            for data_id in xrange(small_batch_size):
+                rewards = []
+                y_hats = []
+                y = np.array(tgt_[data_id] + [EOS_ID], dtype=np.int) #need append eos
+                choice_idx = np.random.choice(k_cand + 1)
+                for _k in xrange(k_cand + 1):
+                    y_hat = beamk_samples[data_id][_k] if _k < k_cand else beam1_samples[data_id][0]
+                    y_hats.append(y_hat)
+                    bleu_reward = _bleu(y, y_hat)[0][:, -1].copy() # shape:len(y_hat)
+                    if self.O['cost_type'] == 'rl_terminal':
+                        rewards.append(bleu_reward[-1]) #use final bleu
+                    else:
+                        bleu_reward[1:] = bleu_reward[1:] - bleu_reward[:-1] #delta reward
+                        future_rewards = bleu_reward[::-1].cumsum(axis=0)[::-1]
+                        rewards.append(future_rewards)
+
+                tgt_samples.append(y_hats[choice_idx][:-1]) #the chosen tgt samples for src, remove eos
+                choice_len = len(y_hats[choice_idx])
+                if self.O['cost_type'] == 'rl_terminal':
+                    baseline_score = np.array(rewards, dtype=np.float32).mean()
+                    tgt_samples_rewards.append((rewards[choice_idx] - baseline_score) * np.ones(choice_len, dtype= np.float32))
+                else:
+                    baseline_score = np.zeros(choice_len)
+                    for _k in xrange(k_cand + 1):
+                        reshaped_idxs = [int(x * 1.0 / choice_len * len(y_hats[_k])) for x in xrange(choice_len)]
+                        rewards[_k] = [rewards[_k][new_idx] for new_idx in reshaped_idxs]
+                        baseline_score += rewards[_k]
+                    baseline_score /= (k_cand + 1)
+                    tgt_samples_rewards.append(rewards[choice_idx] - baseline_score)
+
+        return tgt_samples, tgt_samples_rewards
 
 __all__ = [
     'NMTModel',

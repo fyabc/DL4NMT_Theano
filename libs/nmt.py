@@ -50,19 +50,24 @@ def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True, norma
     return np.array(probs)
 
 
-def validation(iterator, f_cost, use_noise):
+def validation(model, iterator, f_cost, use_noise):
     orig_noise = use_noise.get_value()
     use_noise.set_value(0.)
 
     valid_cost = 0.0
     valid_count = 0
     for x, y in iterator:
-        x, x_mask, y, y_mask = prepare_data(x, y, maxlen=None)
+        if model.O['cost_type'] == 'mle':
+            x, x_mask, y, y_mask = prepare_data(x, y)
+            if x is None:
+                continue
+            valid_cost += f_cost(x, x_mask, y, y_mask) * x_mask.shape[1]
+        else: # when in RL mode, the valid loss is in fact samples, not exact expectations
+            y_hats, y_hat_rewards = model.get_rl_reward(x, y)
+            x, x_mask, y, y_mask, y_costs = prepare_data(x, y_hats, seqs_y_hat_scores=y_hat_rewards)
+            valid_cost += f_cost(x, x_mask, y, y_mask, y_costs) * x_mask.shape[1]
 
-        if x is None:
-            continue
 
-        valid_cost += f_cost(x, x_mask, y, y_mask) * x_mask.shape[1]
         valid_count += x_mask.shape[1]
 
     use_noise.set_value(orig_noise)
@@ -149,6 +154,7 @@ def train(dim_word=100,  # word vector dimensionality
           start_epoch = 0,
           fix_rnn_weights = False,
           use_LN = False,
+          cost_type = 'mle',
           ):
     model_options = locals().copy()
 
@@ -261,13 +267,14 @@ Start Time = {}
 
     # Build model
     trng, use_noise, \
-        x, x_mask, y, y_mask, \
+        x, x_mask, y, y_mask, y_hat_reward,\
         opt_ret, \
         cost, test_cost, x_emb = model.build_model()
-    inps = [x, x_mask, y, y_mask]
+
+    inps = [x, x_mask, y, y_mask] + ([y_hat_reward] if 'rl' in cost_type else [])
 
     print 'Building sampler'
-    f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise, batch_mode=True)
+    model.build_sampler(trng=trng, use_noise=use_noise, batch_mode=True)
 
     # before any regularizer
     print 'Building f_log_probs...',
@@ -352,10 +359,14 @@ Start Time = {}
         print 'Done'
         sys.stdout.flush()
 
-    best_valid_cost = validation(valid_iterator, f_cost, use_noise)
-    small_train_cost = validation(small_train_iterator, f_cost, use_noise)
-    best_bleu = translate_dev_get_bleu(model, f_init, f_next, trng, use_noise) if reload_ else 0
-    message('Worker id {}, Initial Valid cost {:.5f} Small train cost {:.5f} Valid BLEU {:.2f}'.format(worker_id, best_valid_cost, small_train_cost, best_bleu))
+    best_bleu = translate_dev_get_bleu(model, trng, use_noise) if reload_ else 0
+    if cost_type == 'mle':
+        best_valid_cost = validation(model, valid_iterator, f_cost, use_noise)
+        small_train_cost = validation(model, small_train_iterator, f_cost, use_noise)
+        message('Worker id {}, Initial Valid cost {:.5f} Small train cost {:.5f} Valid BLEU {:.2f}'.
+                format(worker_id, best_valid_cost, small_train_cost, best_bleu))
+    else:
+        message('Worker id {}, Initial Valid BLEU {:.2f}'.format(worker_id, best_bleu))
 
     commu_time_sum = 0.0
     cp_time_sum =0.0
@@ -381,21 +392,27 @@ Start Time = {}
             uidx += 1
             use_noise.set_value(1.)
 
-            x, x_mask, y, y_mask = prepare_data(x, y, maxlen=maxlen)
+            if cost_type == 'mle':
+                x, x_mask, y, y_mask = prepare_data(x, y, maxlen=maxlen)
 
-            if x is None:
-                print 'Minibatch with zero sample under length ', maxlen
-                uidx -= 1
-                continue
+                if x is None:
+                    print 'Minibatch with zero sample under length ', maxlen
+                    uidx -= 1
+                    continue
+            else:
+                y_hats, y_hat_rewards = model.get_rl_reward(x, y)
+                x, x_mask, y, y_mask, y_costs = prepare_data(x, y_hats, maxlen=maxlen, seqs_y_hat_scores= y_hat_rewards)
 
             effective_uidx = uidx - start_uidx
             ud_start = time.time()
 
             # compute cost, grads
             if dist_type != 'mpi_reduce':
-                cost, g2_value = f_grad_shared(x, x_mask, y, y_mask)
+                cost, g2_value = f_grad_shared(x, x_mask, y, y_mask) if cost_type == 'mle' \
+                    else f_grad_shared(x, x_mask, y, y_mask, y_costs)
             else:
-                cost = f_grad_shared(x, x_mask, y, y_mask)
+                cost = f_grad_shared(x, x_mask, y, y_mask) if cost_type == 'mle' \
+                    else f_grad_shared(x, x_mask, y, y_mask, y_costs)
 
             if dist_type == 'mpi_reduce':
                 reduce_start = time.time()
@@ -472,10 +489,16 @@ Start Time = {}
                 dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto_imm_path)
 
             if np.mod(uidx, validFreq) == 0:
-                valid_cost = validation(valid_iterator, f_cost, use_noise)
-                small_train_cost = validation(small_train_iterator, f_cost, use_noise)
-                valid_bleu = translate_dev_get_bleu(model, f_init, f_next, trng, use_noise)
-                message('Worker {} Valid cost {:.5f} Small train cost {:.5f} Valid BLEU {:.2f} Bad count {}'.format(worker_id, valid_cost, small_train_cost, valid_bleu, bad_counter))
+                valid_bleu = translate_dev_get_bleu(model, trng, use_noise)
+                if cost_type == 'mle':
+                    valid_cost = validation(model, valid_iterator, f_cost, use_noise)
+                    small_train_cost = validation(model, small_train_iterator, f_cost, use_noise)
+                    message('Worker {} Valid cost {:.5f} Small train cost {:.5f} Valid BLEU {:.2f} Bad count {}'.
+                            format(worker_id, valid_cost, small_train_cost, valid_bleu, bad_counter))
+                else:
+                    message('Worker {} Valid BLEU {:.2f} Bad count {}'.
+                            format(worker_id,  valid_bleu, bad_counter))
+
                 sys.stdout.flush()
 
                 # Fine-tune based on dev cost

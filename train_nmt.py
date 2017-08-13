@@ -87,6 +87,8 @@ def main():
                              '1 is divided bidirectional GRU')
     parser.add_argument('--max_epochs', action='store', default=100, type=int, dest='max_epochs',
                         help='Maximum epoches, default is 100')
+    parser.add_argument('--cost_type', action='store', metavar='costtype', dest='cost_type', type=str, default='mle',
+                        help='The cost type in training, default is "mle", can be set to "rl_terminal" and "rl_immediate".')
     parser.add_argument('--unit', action='store', metavar='unit', dest='unit', type=str, default='lstm',
                         help='The unit type, default is "lstm", can be set to "gru".')
     parser.add_argument('--attention', action='store', metavar='index', dest='attention_layer_id', type=int, default=0,
@@ -292,6 +294,7 @@ def main():
         start_epoch= args.start_epoch,
         fix_rnn_weights= args.fix_rnn_weights,
         use_LN = args.use_LN,
+        cost_type= args.cost_type
     )
 
 

@@ -111,3 +111,7 @@ translated/
 
 # Command line argument files
 /arguments/
+
+# test files
+rl_sample_test.py
+libs/utility/bleu_test.py

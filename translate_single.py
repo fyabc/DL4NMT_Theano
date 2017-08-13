@@ -25,9 +25,9 @@ def translate_model_single(input_, model_name, options, k, normalize):
     model, _ = build_and_init_model(model_name, options=options, build=False)
 
     # word index
-    f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise)
+    model.build_sampler(trng=trng, use_noise=use_noise)
 
-    return translate(input_, model, f_init, f_next, trng, k, normalize)
+    return translate(input_, model, trng, k, normalize)
 
 
 def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
@@ -60,7 +60,7 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
 
     model, _ = build_and_init_model(model, options=options, build=False, model_type=model_type)
 
-    f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise, batch_mode=batch_mode, dropout=options['use_dropout'])
+    model.build_sampler(trng=trng, use_noise=use_noise, batch_mode=batch_mode, dropout=options['use_dropout'])
 
     if not batch_mode:
         word_dict, word_idict, word_idict_trg, input_ = load_translate_data(
@@ -70,7 +70,7 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
 
         print 'Translating ', source_file, '...'
         trans = seqs2words(
-            translate(input_, model, f_init, f_next, trng, k, normalize),
+            translate(input_, model, k, normalize),
             word_idict_trg,
         )
     else:
@@ -82,7 +82,7 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
         print 'Translating ', source_file, '...'
         all_sample = []
         for bidx, seqs in enumerate(all_src_blocks):
-            all_sample.extend(translate_block(seqs, model, f_init, f_next, trng, k))
+            all_sample.extend(translate_block(seqs, model, k))
             print bidx, '/', m_block, 'Done'
 
         trans = seqs2words(all_sample, word_idict_trg)
