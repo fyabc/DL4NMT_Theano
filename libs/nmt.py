@@ -368,6 +368,12 @@ Start Time = {}
     else:
         message('Worker id {}, Initial Valid BLEU {:.2f}'.format(worker_id, best_bleu))
 
+    #sync all model parameters if train from scratch
+    if not reload_ and dist_type == 'mpi_reduce':
+        all_reduce_params_nccl(nccl_comm, itemlist(model.P))
+        for t_value in itemlist(model.P):
+            t_value.set_value(t_value.get_value() / workers_cnt)
+
     commu_time_sum = 0.0
     cp_time_sum =0.0
     reduce_time_sum = 0.0
@@ -533,7 +539,7 @@ Start Time = {}
                 estop = True
                 break
 
-        print 'Seen {} samples'.format(n_samples)
+        print 'Seen {} samples in worker {}'.format(n_samples, worker_id)
 
         if estop:
             break
