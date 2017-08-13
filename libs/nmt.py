@@ -359,7 +359,7 @@ Start Time = {}
         print 'Done'
         sys.stdout.flush()
 
-    best_bleu = translate_dev_get_bleu(model, trng, use_noise) if reload_ else 0
+    best_bleu = translate_dev_get_bleu(model, use_noise) if reload_ else 0
     if cost_type == 'mle':
         best_valid_cost = validation(model, valid_iterator, f_cost, use_noise)
         small_train_cost = validation(model, small_train_iterator, f_cost, use_noise)
@@ -489,7 +489,7 @@ Start Time = {}
                 dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto_imm_path)
 
             if np.mod(uidx, validFreq) == 0:
-                valid_bleu = translate_dev_get_bleu(model, trng, use_noise)
+                valid_bleu = translate_dev_get_bleu(model, use_noise)
                 if cost_type == 'mle':
                     valid_cost = validation(model, valid_iterator, f_cost, use_noise)
                     small_train_cost = validation(model, small_train_iterator, f_cost, use_noise)

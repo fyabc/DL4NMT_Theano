@@ -606,7 +606,8 @@ def check_options(options):
 
     if options['reload_']:
         assert os.path.exists(options['preload'])
-
+    assert options['cost_type'] in {'mle', 'rl_terminal', 'rl_immediate'}, \
+        'Must set cost_type to "mle" or "rl_terminal" or "rl_immediate"'
 
 def search_start_uidx(reload_, preload):
     if not reload_:

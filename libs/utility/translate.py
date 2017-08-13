@@ -145,7 +145,7 @@ def seqs2words(caps, word_idict_trg):
     return capsw
 
 
-def _translate_whole(model, trng, dictionary, dictionary_target, source_file,
+def _translate_whole(model, dictionary, dictionary_target, source_file,
                      k=5, normalize=False, chr_level=False, **kwargs):
     n_words_src = kwargs.pop('n_words_src', model.O['n_words_src'])
     batch_mode = kwargs.pop('batch_mode', False)
@@ -159,7 +159,7 @@ def _translate_whole(model, trng, dictionary, dictionary_target, source_file,
         )
 
         trans = seqs2words(
-            translate(input_, model, trng, k, normalize),
+            translate(input_, model, k, normalize),
             word_idict_trg,
         )
 
@@ -173,7 +173,7 @@ def _translate_whole(model, trng, dictionary, dictionary_target, source_file,
 
         all_sample = []
         for bidx, seqs in enumerate(all_src_blocks):
-            all_sample.extend(translate_block(seqs, model, trng, k))
+            all_sample.extend(translate_block(seqs, model, k))
 
         trans = seqs2words(all_sample, word_idict_trg)
 
@@ -217,7 +217,7 @@ def de_bpe(input_str):
     return re.sub(r'(@@ )|(@@ ?$)', '', input_str)
 
 
-def translate_dev_get_bleu(model, trng, use_noise, **kwargs):
+def translate_dev_get_bleu(model, use_noise, **kwargs):
     dataset = kwargs.pop('dataset', model.O['task'])
 
     # [NOTE]: Filenames here are with path prefix.
@@ -229,7 +229,7 @@ def translate_dev_get_bleu(model, trng, use_noise, **kwargs):
     use_noise.set_value(0.)
 
     translated_string = _translate_whole(
-        model, trng,
+        model,
         dic1, dic2, dev1,
         k=3, batch_mode=True,
     )
