@@ -59,6 +59,18 @@ def attention_layer(context_mask, et, ht_1, We_att, Wh_att, Wb_att, U_att, Ub_at
     ctx_t = (et * alpha[:, :, None]).sum(0)
     return ctx_t
 
+def layer_normalization_layer(z, alpha, beta, eps=1e-6):
+    '''
+    refer to https://arxiv.org/pdf/1607.06450.pdf, Eqn.(15) ~ Eqn.(22)
+    :param z: (..., dim)
+    :param alpha: (dim,)
+    :param beta: (dim,)
+    :return: normalized matrix
+    '''
+    mu_ = z.mean(axis=-1, keepdims=True)
+    var_ = T.var(z, axis=-1, keepdims=True)
+    return ((z - mu_) / T.sqrt(var_ + eps)) * alpha + beta
+
 
 def param_init_feed_forward(O, params, prefix='ff', nin=None, nout=None,
                             orthogonal=True):
@@ -103,6 +115,7 @@ __all__ = [
     'tanh',
     'linear',
     'dropout_layer',
+    'layer_normalization_layer',
     'attention_layer',
     'param_init_feed_forward',
     'feed_forward',

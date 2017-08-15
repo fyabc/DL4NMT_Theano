@@ -14,16 +14,18 @@ import random
 import gzip
 import sys
 import time
-
+from collections import defaultdict
 import theano
 import theano.tensor as tensor
 import numpy as np
+import math
 
 from ..constants import *
 from .data_iterator import TextIterator
 
 _fp_log = None
 
+emb_para_names = {'Wemb','Wemb_dec', 'ff_logit_W', 'ff_logit_b'}
 
 def set_logging_file(logging_filename):
     path, filename = os.path.split(logging_filename)
@@ -83,9 +85,10 @@ def unzip(zipped):
     return new_params
 
 
-def itemlist(tparams):
+def itemlist(tparams, word_params_only = False):
     """Get the list of parameters: Note that tparams must be OrderedDict"""
-    return [vv for kk, vv in tparams.iteritems()]
+    return [vv for kk, vv in tparams.iteritems() if kk in emb_para_names] if word_params_only \
+        else [vv for kk, vv in tparams.iteritems()]
 
 
 def _p(*args, **kwargs):
@@ -357,14 +360,14 @@ def apply_gradient_clipping(clip_c, grads, clip_shared=None):
         grads = new_grads
     return grads, g2
 
-def clip_grad_remove_nan(grads, clip_c_shared, mt_tparams):
+def clip_grad_remove_nan(grads, clip_c_shared, mt_tparams, word_params_only):
     g2 = 0.
     for g in grads:
         g2 += (g*g).sum()
     not_finite = tensor.or_(tensor.isnan(g2), tensor.isinf(g2))
     if clip_c_shared.get_value() > 0.:
         new_grads = []
-        for g, p in zip(grads, itemlist(mt_tparams)):
+        for g, p in zip(grads, itemlist(mt_tparams, word_params_only)):
             tmpg = tensor.switch(g2 > (clip_c_shared*clip_c_shared),
                                  g / tensor.sqrt(g2) * clip_c_shared,
                                  g)
@@ -374,9 +377,9 @@ def clip_grad_remove_nan(grads, clip_c_shared, mt_tparams):
     else:
         return grads, tensor.sqrt(g2)
 
-def make_grads_clip_func(grads_shared, mt_tparams, clip_c_shared):
+def make_grads_clip_func(grads_shared, mt_tparams, clip_c_shared, word_params_only):
 
-    new_grads, g2_sqrt = clip_grad_remove_nan(grads_shared, clip_c_shared, mt_tparams)
+    new_grads, g2_sqrt = clip_grad_remove_nan(grads_shared, clip_c_shared, mt_tparams, word_params_only)
 
     zgup = [(zg, g) for zg, g in zip(grads_shared, new_grads)]
     f_grads_clip = theano.function([], g2_sqrt, updates=zgup, on_unused_input='ignore', profile=profile)
@@ -408,7 +411,7 @@ def regularize_alpha_weights(cost, alpha_c, model_options, x_mask, y_mask, opt_r
 
 
 # batch preparation
-def prepare_data(seqs_x, seqs_y, maxlen=None):
+def prepare_data(seqs_x, seqs_y, maxlen=None, seqs_y_hat_scores = None):
     # x: a list of sentences
     lengths_x = [len(s) for s in seqs_x]
     lengths_y = [len(s) for s in seqs_y]
@@ -418,19 +421,26 @@ def prepare_data(seqs_x, seqs_y, maxlen=None):
         new_seqs_y = []
         new_lengths_x = []
         new_lengths_y = []
-        for l_x, s_x, l_y, s_y in zip(lengths_x, seqs_x, lengths_y, seqs_y):
+        new_seqs_y_hat_scores = []
+        for id, [l_x, s_x, l_y, s_y] in enumerate(zip(lengths_x, seqs_x, lengths_y, seqs_y)):
             if l_x < maxlen and l_y < maxlen:
                 new_seqs_x.append(s_x)
                 new_lengths_x.append(l_x)
                 new_seqs_y.append(s_y)
                 new_lengths_y.append(l_y)
+                if seqs_y_hat_scores:
+                    new_seqs_y_hat_scores.append(seqs_y_hat_scores[id])
+
         lengths_x = new_lengths_x
         seqs_x = new_seqs_x
         lengths_y = new_lengths_y
         seqs_y = new_seqs_y
+        if seqs_y_hat_scores:
+            seqs_y_hat_scores = new_seqs_y_hat_scores
 
         if len(lengths_x) < 1 or len(lengths_y) < 1:
-            return None, None, None, None
+            return None, None, None, None if not seqs_y_hat_scores \
+                else None, None, None, None, None
 
     n_samples = len(seqs_x)
     maxlen_x = np.max(lengths_x) + 1
@@ -440,13 +450,24 @@ def prepare_data(seqs_x, seqs_y, maxlen=None):
     y = np.zeros((maxlen_y, n_samples)).astype('int64')
     x_mask = np.zeros((maxlen_x, n_samples)).astype('float32')
     y_mask = np.zeros((maxlen_y, n_samples)).astype('float32')
+    if seqs_y_hat_scores:
+        y_hat_scores = np.zeros((maxlen_y, n_samples)).astype('float32')
+
     for idx, [s_x, s_y] in enumerate(zip(seqs_x, seqs_y)):
         x[:lengths_x[idx], idx] = s_x
         x_mask[:lengths_x[idx] + 1, idx] = 1.
         y[:lengths_y[idx], idx] = s_y
         y_mask[:lengths_y[idx] + 1, idx] = 1.
 
-    return x, x_mask, y, y_mask
+    if seqs_y_hat_scores:
+        for idx, [length_y, y_score] in enumerate(zip(lengths_y, seqs_y_hat_scores)):
+            assert y_score.size == length_y + 1, 'Inconsistent length %d, %d' % (length_y, y_score.size)
+            y_hat_scores[:length_y + 1, idx] = y_score
+
+    if not seqs_y_hat_scores:
+        return x, x_mask, y, y_mask
+    else:
+        return x, x_mask, y, y_mask, y_hat_scores
 
 
 def prepare_data_x(seqs_x, maxlen=None, pad_eos=True, pad_sos=False, n_word=30000):
@@ -548,6 +569,7 @@ def load_options(options, reload_=None, preload=None, maintain_vocab_size = Fals
 
     src_vocab_size = options['n_words_src']
     tgt_vocab_size = options['n_words']
+    cost_type = options['cost_type']
 
     if reload_ and os.path.exists(preload):
         print('Reloading model options')
@@ -563,6 +585,7 @@ def load_options(options, reload_=None, preload=None, maintain_vocab_size = Fals
         options['valid_datasets'] = valid_datasets
         options['vocab_filenames'] = vocab_filenames
         options['fix_dp_bug'] = fix_dp_bug
+        options['cost_type'] = cost_type
 
         if maintain_vocab_size:
             options['n_words_src'] = src_vocab_size
@@ -589,7 +612,8 @@ def check_options(options):
 
     if options['reload_']:
         assert os.path.exists(options['preload'])
-
+    assert options['cost_type'] in {'mle', 'rl_terminal', 'rl_immediate'}, \
+        'Must set cost_type to "mle" or "rl_terminal" or "rl_immediate"'
 
 def search_start_uidx(reload_, preload):
     if not reload_:
@@ -770,6 +794,68 @@ def get_epoch_batch_cnt(dataset_src, dataset_tgt, vocab_filenames, batch_size, m
         n_batches += 1
     return n_batches
 
+def _bleu(y, y_hat, n=4):
+    """ BLEU score between the reference sequence y
+    and y_hat for each partial sequence ranging
+    from the first input token to the last
+
+    Parameters
+    ----------
+    y : vector
+        The reference matrix with dimensions of number
+        of words (rows) by batch size (columns)
+    y_hat : vector
+        The predicted matrix with same dimensions
+    n : integer
+        highest n-gram order in the Bleu sense
+        (e.g Bleu-4)
+
+    Returns
+    -------
+    results : vector (len y_hat)
+        Bleu scores for each partial sequence
+        y_hat_1..T from T = 1 to len(y_hat)
+    """
+    bleu_scores = np.zeros((len(y_hat), n))
+
+    # count reference ngrams
+    ref_counts = defaultdict(int)
+    for k in xrange(1, n+1):
+        for i in xrange(len(y) - k + 1):
+            ref_counts[tuple(y[i:i + k])] += 1
+
+    # for each partial sequence, 1) compute addition to # of correct
+    # 2) apply brevity penalty
+    # ngrams, magic stability numbers from pycocoeval
+    ref_len = len(y)
+    pred_counts = defaultdict(int)
+    correct = np.zeros(4)
+    for i in xrange(1, len(y_hat) + 1):
+        for k in xrange(i, max(-1, i - n), -1):
+            # print i, k
+            ngram = tuple(y_hat[k-1:i])
+            # UNK token hack. Must work for both indices
+            # and words. Very ugly, I know.
+            if 1 in ngram or 'UNK' in ngram:
+                continue
+            pred_counts[ngram] += 1
+            if pred_counts[ngram] <= ref_counts.get(ngram, 0):
+                correct[len(ngram)-1] += 1
+
+        # compute partial bleu score
+        bleu = 1.
+        for j in xrange(n):
+            possible = max(0, i - j)
+            bleu *= float(correct[j] + 1.) / (possible + 1.)
+            bleu_scores[i - 1, j] = bleu ** (1./(j+1))
+
+        # brevity penalty
+        if i < ref_len:
+            ratio = (i + 1e-15)/(ref_len + 1e-9)
+            bleu_scores[i - 1, :] *= math.exp(1 - 1/ratio)
+
+    return bleu_scores.astype('float32'), correct, pred_counts, ref_counts
+
 __all__ = [
     'set_logging_file',
     'get_logging_file',
@@ -811,4 +897,6 @@ __all__ = [
     'load_shuffle_text_iterator',
     'make_grads_clip_func',
     'adadelta_set_imm_data',
+    'emb_para_names',
+    '_bleu',
 ]

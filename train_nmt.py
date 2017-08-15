@@ -87,6 +87,8 @@ def main():
                              '1 is divided bidirectional GRU')
     parser.add_argument('--max_epochs', action='store', default=100, type=int, dest='max_epochs',
                         help='Maximum epoches, default is 100')
+    parser.add_argument('--cost_type', action='store', metavar='costtype', dest='cost_type', type=str, default='mle',
+                        help='The cost type in training, default is "mle", can be set to "rl_terminal" and "rl_immediate".')
     parser.add_argument('--unit', action='store', metavar='unit', dest='unit', type=str, default='lstm',
                         help='The unit type, default is "lstm", can be set to "gru".')
     parser.add_argument('--attention', action='store', metavar='index', dest='attention_layer_id', type=int, default=0,
@@ -146,6 +148,10 @@ def main():
                         help='The buffer size in data reader, default to 40')
     parser.add_argument('--start_epoch', action='store', default=00, type=int, dest='start_epoch',
                         help='The starting epoch, default to 0')
+    parser.add_argument('--fix_rnn_weights', action="store_true", default=False, dest='fix_rnn_weights',
+                        help='Fix rnn weights during training, default to False, set to True')
+    parser.add_argument('--use_LN', action="store_true", default=False, dest='use_LN',
+                        help='Use layer normalization in RNN, default to False, set to True')
 
     args = parser.parse_args()
     print args
@@ -286,6 +292,9 @@ def main():
         fix_dp_bug= args.fix_dp_bug,
         io_buffer_size= args.buffer_size,
         start_epoch= args.start_epoch,
+        fix_rnn_weights= args.fix_rnn_weights,
+        use_LN = args.use_LN,
+        cost_type= args.cost_type
     )
 
 

@@ -14,13 +14,12 @@ from .utils import prepare_data_x
 __author__ = 'fyabc'
 
 
-def translate(input_, model, f_init, f_next, trng, k, normalize):
+def translate(input_, model, k, normalize):
     def _trans(seq):
         # sample given an input sequence and obtain scores
         sample, score = model.gen_sample(
-            f_init, f_next,
             np.array(seq).reshape([len(seq), 1]),
-            trng=trng, k=k, maxlen=200,
+            k=k, maxlen=200,
             stochastic=False, argmax=False,
         )
 
@@ -38,26 +37,17 @@ def translate(input_, model, f_init, f_next, trng, k, normalize):
 
     return output
 
-
-def translate_block(input_, model, f_init, f_next, trng, k):
+def translate_block(input_, model, k, stochastic = False):
     """Translate for batch sampler.
 
     :return output: a list of word indices
     """
-    x, x_mask = prepare_data_x(input_, maxlen=None, pad_eos=True, pad_sos=False)
 
-    batch_sample, batch_sample_score = model.gen_batch_sample(
-        f_init, f_next, x, x_mask, trng,
-        k=k, maxlen=200, eos_id=0,
-    )
-    assert len(batch_sample) == len(batch_sample_score)
-
+    batch_sample, batch_sample_score = model.translate_block_core(input_, k, stochastic)
     output = []
 
     for sample, sample_score in zip(batch_sample, batch_sample_score):
         score = sample_score / np.array([len(s) for s in sample])
-        # sidx = np.argsort(score)
-        # output.append([sample[ii] for ii in sidx])
         output.append(sample[np.argmin(score)])
 
     return output
@@ -155,7 +145,7 @@ def seqs2words(caps, word_idict_trg):
     return capsw
 
 
-def _translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target, source_file,
+def _translate_whole(model, dictionary, dictionary_target, source_file,
                      k=5, normalize=False, chr_level=False, **kwargs):
     n_words_src = kwargs.pop('n_words_src', model.O['n_words_src'])
     batch_mode = kwargs.pop('batch_mode', False)
@@ -169,7 +159,7 @@ def _translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target,
         )
 
         trans = seqs2words(
-            translate(input_, model, f_init, f_next, trng, k, normalize),
+            translate(input_, model, k, normalize),
             word_idict_trg,
         )
 
@@ -183,7 +173,7 @@ def _translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target,
 
         all_sample = []
         for bidx, seqs in enumerate(all_src_blocks):
-            all_sample.extend(translate_block(seqs, model, f_init, f_next, trng, k))
+            all_sample.extend(translate_block(seqs, model, k))
 
         trans = seqs2words(all_sample, word_idict_trg)
 
@@ -227,7 +217,7 @@ def de_bpe(input_str):
     return re.sub(r'(@@ )|(@@ ?$)', '', input_str)
 
 
-def translate_dev_get_bleu(model, f_init, f_next, trng, use_noise, **kwargs):
+def translate_dev_get_bleu(model, use_noise, **kwargs):
     dataset = kwargs.pop('dataset', model.O['task'])
 
     # [NOTE]: Filenames here are with path prefix.
@@ -239,7 +229,7 @@ def translate_dev_get_bleu(model, f_init, f_next, trng, use_noise, **kwargs):
     use_noise.set_value(0.)
 
     translated_string = _translate_whole(
-        model, f_init, f_next, trng,
+        model,
         dic1, dic2, dev1,
         k=3, batch_mode=True,
     )

@@ -6,7 +6,7 @@ import theano
 from theano import tensor as T
 
 from ..constants import fX, profile
-from .basic import _slice, _attention, dropout_layer
+from .basic import _slice, _attention, dropout_layer, layer_normalization_layer
 from ..utility.utils import _p, normal_weight, orthogonal_weight
 
 __author__ = 'fyabc'
@@ -22,6 +22,7 @@ def param_init_lstm(O, params, prefix='lstm', nin=None, dim=None, **kwargs):
     context_dim = kwargs.pop('context_dim', None)
     multi = 'multi' in O.get('unit', 'lstm')
     unit_size = kwargs.pop('unit_size', O.get('unit_size', 2))
+    use_layer_normalization = O.get('use_LN', False)
 
     if not multi:
         params[_p(prefix, 'W', layer_id)] = np.concatenate([
@@ -72,8 +73,18 @@ def param_init_lstm(O, params, prefix='lstm', nin=None, dim=None, **kwargs):
                 normal_weight(context_dim, dim),
             ], axis=1) for _ in xrange(unit_size)], axis=0)
 
-    return params
+    if use_layer_normalization:
+        params[_p(prefix, 'alpha_h', layer_id)] = np.ones((4*dim,),dtype='float32')
+        params[_p(prefix, 'beta_h', layer_id)] = np.zeros((4*dim,), dtype='float32')
+        params[_p(prefix, 'alpha_x', layer_id)] = np.ones((4*dim,),dtype='float32')
+        params[_p(prefix, 'beta_x', layer_id)] = np.zeros((4*dim,), dtype='float32')
+        params[_p(prefix, 'alpha_c', layer_id)] = np.ones((dim,), dtype='float32')
+        params[_p(prefix, 'beta_c', layer_id)] = np.zeros((dim,), dtype='float32')
+        if context_dim is not None:
+            params[_p(prefix, 'alpha_ctx', layer_id)] = np.ones((4*dim,),dtype='float32')
+            params[_p(prefix, 'beta_ctx', layer_id)] = np.zeros((4*dim,), dtype='float32')
 
+    return params
 
 def _lstm_step_kernel(preact, mask_, h_, c_, _dim):
     i = T.nnet.sigmoid(_slice(preact, 0, _dim))
@@ -90,6 +101,20 @@ def _lstm_step_kernel(preact, mask_, h_, c_, _dim):
     return i, f, o, c, h
 
 
+def _ln_lstm_step_kernel(preact, mask_, h_, c_, _dim, alpha_, beta_):
+    i = T.nnet.sigmoid(_slice(preact, 0, _dim))
+    f = T.nnet.sigmoid(_slice(preact, 1, _dim))
+    o = T.nnet.sigmoid(_slice(preact, 2, _dim))
+    c = T.tanh(_slice(preact, 3, _dim))
+
+    c = f * c_ + i * c
+    c = mask_[:, None] * c + (1. - mask_)[:, None] * c_
+
+    h = o * T.tanh(layer_normalization_layer(c, alpha_, beta_))
+    h = mask_[:, None] * h + (1. - mask_)[:, None] * h_
+
+    return i, f, o, c, h
+
 def _lstm_step_slice(
         mask_, x_,
         h_, c_,
@@ -100,6 +125,17 @@ def _lstm_step_slice(
     i, f, o, c, h = _lstm_step_kernel(preact, mask_, h_, c_, _dim)
     return h, c
 
+
+def _ln_lstm_step_slice(
+        mask_, x_,
+        h_, c_,
+        U, alpha_h, beta_h, alpha_x, beta_x, alpha_c, beta_c, input_bias):
+    _dim = U.shape[1] // 4
+
+    zh = layer_normalization_layer(T.dot(h_, U), alpha_h, beta_h)
+    zx = layer_normalization_layer(x_, alpha_x, beta_x)
+    i, f, o, c, h = _ln_lstm_step_kernel(zh + zx + input_bias, mask_, h_, c_, _dim, alpha_c, beta_c)
+    return h, c
 
 def _lstm_step_slice_gates(
         mask_, x_,
@@ -122,6 +158,17 @@ def _lstm_step_slice_attention(
     i, f, o, c, h = _lstm_step_kernel(preact, mask_, h_, c_, _dim)
     return h, c
 
+def _ln_lstm_step_slice_attention(
+        mask_, x_, context,
+        h_, c_,
+        U, Wc, alpha_h, beta_h, alpha_x, beta_x, alpha_ctx, beta_ctx, alpha_c, beta_c, input_bias):
+    _dim = U.shape[1] // 4
+    preact = layer_normalization_layer(T.dot(h_, U), alpha_h, beta_h) + \
+             layer_normalization_layer(x_, alpha_x, beta_x) + \
+             layer_normalization_layer(T.dot(context, Wc), alpha_ctx, beta_ctx) + input_bias
+
+    i, f, o, c, h = _ln_lstm_step_kernel(preact, mask_, h_, c_, _dim, alpha_c, beta_c)
+    return h, c
 
 def _lstm_step_slice_attention_gates(
         mask_, x_, context,
@@ -152,6 +199,7 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
     unit_size = kwargs.pop('unit_size', O.get('unit_size', 2))
     # FIXME: multi-gru/lstm do NOT support get_gates now
     get_gates = kwargs.pop('get_gates', False)
+    use_LN = kwargs.pop('use_LN', False)
 
     kw_ret = {}
 
@@ -170,7 +218,11 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
             for j in range(unit_size)
         ], axis=-1)
     else:
-        state_below = T.dot(state_below, P[_p(prefix, 'W', layer_id)]) + P[_p(prefix, 'b', layer_id)]
+        if use_LN:
+            # Warning: the P[_p(prefix, 'b', layer_id)] would be used as input_bias in lstm cell
+            state_below = T.dot(state_below, P[_p(prefix, 'W', layer_id)])
+        else:
+            state_below = T.dot(state_below, P[_p(prefix, 'W', layer_id)]) + P[_p(prefix, 'b', layer_id)]
 
     def _step_slice(mask_, x_, h_, c_, U):
         h_tmp = h_
@@ -201,10 +253,22 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
     if context is None:
         seqs = [mask, state_below]
         shared_vars = [P[_p(prefix, 'U', layer_id)]]
+        if use_LN:
+            shared_vars += [
+                    P[_p(prefix, 'alpha_h', layer_id)],
+                    P[_p(prefix, 'beta_h', layer_id)],
+                    P[_p(prefix, 'alpha_x', layer_id)],
+                    P[_p(prefix, 'beta_x', layer_id)],
+                    P[_p(prefix, 'alpha_c', layer_id)],
+                    P[_p(prefix, 'beta_c', layer_id)],
+                    P[_p(prefix, 'b', layer_id)]
+                ]
         if multi:
             _step = _step_slice
         else:
-            if get_gates:
+            if use_LN:
+                _step = _ln_lstm_step_slice
+            elif get_gates:
                 _step = _lstm_step_slice_gates
             else:
                 _step = _lstm_step_slice
@@ -212,7 +276,20 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
         seqs = [mask, state_below, context]
         shared_vars = [P[_p(prefix, 'U', layer_id)],
                        P[_p(prefix, 'Wc', layer_id)]]
-        if multi:
+        if use_LN:
+            shared_vars += [
+                P[_p(prefix, 'alpha_h', layer_id)],
+                P[_p(prefix, 'beta_h', layer_id)],
+                P[_p(prefix, 'alpha_x', layer_id)],
+                P[_p(prefix, 'beta_x', layer_id)],
+                P[_p(prefix, 'alpha_ctx', layer_id)],
+                P[_p(prefix, 'beta_ctx', layer_id)],
+                P[_p(prefix, 'alpha_c', layer_id)],
+                P[_p(prefix, 'beta_c', layer_id)],
+                P[_p(prefix, 'b', layer_id)]
+            ]
+            _step =_ln_lstm_step_slice_attention
+        elif multi:
             _step = _step_slice_attention
         else:
             if get_gates:
@@ -265,6 +342,7 @@ def param_init_lstm_cond(O, params, prefix='lstm_cond', nin=None, dim=None, dimc
     layer_id = kwargs.pop('layer_id', 0)
     multi = 'multi' in O.get('unit', 'lstm_cond')
     unit_size = kwargs.pop('unit_size', O.get('cond_unit_size', 2))
+    use_layer_normalization = O.get('use_LN', False)
 
     if not multi:
         params[_p(prefix, 'W', layer_id)] = np.concatenate([
@@ -331,6 +409,21 @@ def param_init_lstm_cond(O, params, prefix='lstm_cond', nin=None, dim=None, dimc
     params[_p(prefix, 'U_att', layer_id)] = normal_weight(dimctx, 1)
     params[_p(prefix, 'c_tt', layer_id)] = np.zeros((1,), dtype=fX)
 
+    if use_layer_normalization:
+        params[_p(prefix, 'alpha_h', layer_id)] = np.ones((4 * dim,), dtype='float32')
+        params[_p(prefix, 'beta_h', layer_id)] = np.zeros((4 * dim,), dtype='float32')
+        params[_p(prefix, 'alpha_x', layer_id)] = np.ones((4 * dim,), dtype='float32')
+        params[_p(prefix, 'beta_x', layer_id)] = np.zeros((4 * dim,), dtype='float32')
+        params[_p(prefix, 'alpha_c', layer_id)] = np.ones((dim,), dtype='float32')
+        params[_p(prefix, 'beta_c', layer_id)] = np.zeros((dim,), dtype='float32')
+
+        params[_p(prefix, 'alpha_h2', layer_id)] = np.ones((4 * dim,), dtype='float32')
+        params[_p(prefix, 'beta_h2', layer_id)] = np.zeros((4 * dim,), dtype='float32')
+        params[_p(prefix, 'alpha_ctx', layer_id)] = np.ones((4 * dim,), dtype='float32')
+        params[_p(prefix, 'beta_ctx', layer_id)] = np.zeros((4 * dim,), dtype='float32')
+        params[_p(prefix, 'alpha_c2', layer_id)] = np.ones((dim,), dtype='float32')
+        params[_p(prefix, 'beta_c2', layer_id)] = np.zeros((dim,), dtype='float32')
+
     return params
 
 
@@ -346,6 +439,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
     unit_size = kwargs.pop('unit_size', O.get('cond_unit_size', 2))
     # FIXME: multi-gru/lstm do NOT support get_gates now
     get_gates = kwargs.pop('get_gates', False)
+    use_LN = kwargs.pop('use_LN', False)
 
     kw_ret = {}
 
@@ -374,13 +468,17 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
     projected_context = T.dot(context, P[_p(prefix, 'Wc_att', layer_id)]) + P[_p(prefix, 'b_att', layer_id)]
 
     # Projected x
-    if multi:
-        state_below = T.concatenate([
-            T.dot(state_below, P[_p(prefix, 'W', layer_id)][j]) + P[_p(prefix, 'b', layer_id)][j]
-            for j in range(unit_size)
-        ], axis=-1)
+    if use_LN:
+        state_below = T.dot(state_below, P[_p(prefix, 'W', layer_id)])
+        # Warning:  still, ``P[_p(prefix, 'b', layer_id)]'' will be thrown to layer normalization parts
     else:
-        state_below = T.dot(state_below, P[_p(prefix, 'W', layer_id)]) + P[_p(prefix, 'b', layer_id)]
+        if multi:
+            state_below = T.concatenate([
+                T.dot(state_below, P[_p(prefix, 'W', layer_id)][j]) + P[_p(prefix, 'b', layer_id)][j]
+                for j in range(unit_size)
+            ], axis=-1)
+        else:
+            state_below = T.dot(state_below, P[_p(prefix, 'W', layer_id)]) + P[_p(prefix, 'b', layer_id)]
 
     def _one_step_attention_slice(mask_, h1, c1, ctx_, Wc, U_nl, b_nl):
         preact2 = T.dot(h1, U_nl) + b_nl + T.dot(ctx_, Wc)
@@ -401,6 +499,27 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
 
         return h2, c2
 
+    def _ln_attention_slice(mask_, h1, c1, ctx_, Wc, U_nl, b_nl,
+                                  alpha_h, beta_h, alpha_ctx, beta_ctx, alpha_c, beta_c):
+        preact2 = layer_normalization_layer(T.dot(h1, U_nl), alpha_h, beta_h) + b_nl + \
+                  layer_normalization_layer(T.dot(ctx_, Wc), alpha_ctx, beta_ctx)
+
+        i2 = T.nnet.sigmoid(_slice(preact2, 0, dim))
+        f2 = T.nnet.sigmoid(_slice(preact2, 1, dim))
+        o2 = T.nnet.sigmoid(_slice(preact2, 2, dim))
+        c2 = T.tanh(_slice(preact2, 3, dim))
+
+        c2 = f2 * c1 + i2 * c2
+        c2 = mask_[:, None] * c2 + (1. - mask_)[:, None] * c1
+
+        h2 = o2 * T.tanh(layer_normalization_layer(c2, alpha_c, beta_c))
+        h2 = mask_[:, None] * h2 + (1. - mask_)[:, None] * h1
+
+        if get_gates:
+            return h2, c2, i2, f2, o2
+
+        return h2, c2
+
     def _step_slice(mask_, x_,
                     h_, c_, ctx_, alpha_,
                     projected_context_, context_,
@@ -413,6 +532,25 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
 
         # LSTM 2 (with attention)
         h2, c2 = _one_step_attention_slice(mask_, h1, c1, ctx_, Wc, U_nl, b_nl)
+
+        return h2, c2, ctx_, alpha.T
+
+    def _ln_step_slice(mask_, x_,
+                       h_, c_, ctx_, alpha_,
+                       projected_context_, context_,
+                       U, Wc, W_comb_att, U_att, c_tt, U_nl, b_nl,
+                       alpha_h, beta_h, alpha_x, beta_x, alpha_c, beta_c, input_bias,
+                       alpha_h2, beta_h2, alpha_ctx, beta_ctx, alpha_c2, beta_c2):
+        # LSTM 1
+        h1, c1 = _ln_lstm_step_slice(mask_, x_, h_, c_, U,
+                                     alpha_h, beta_h, alpha_x, beta_x, alpha_c, beta_c, input_bias)
+
+        # Attention
+        ctx_, alpha = _attention(h1, projected_context_, context_, W_comb_att, U_att, c_tt, context_mask=context_mask)
+
+        # LSTM 2 (with attention)
+        h2, c2 = _ln_attention_slice(mask_, h1, c1, ctx_, Wc, U_nl, b_nl,
+                                           alpha_h2, beta_h2, alpha_ctx, beta_ctx, alpha_c2, beta_c2)
 
         return h2, c2, ctx_, alpha.T
 
@@ -460,7 +598,9 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
 
     # Prepare scan arguments
     seqs = [mask, state_below]
-    if multi:
+    if use_LN:
+        _step = _ln_step_slice
+    elif multi:
         _step = _multi_step_slice
     else:
         if get_gates:
@@ -486,6 +626,22 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
         P[_p(prefix, 'b_nl', layer_id)],
     ]
 
+    if use_LN:
+        shared_vars += [
+            P[_p(prefix, 'alpha_h', layer_id)],
+            P[_p(prefix, 'beta_h', layer_id)],
+            P[_p(prefix, 'alpha_x', layer_id)],
+            P[_p(prefix, 'beta_x', layer_id)],
+            P[_p(prefix, 'alpha_c', layer_id)],
+            P[_p(prefix, 'beta_c', layer_id)],
+            P[_p(prefix, 'b', layer_id)],
+            P[_p(prefix, 'alpha_h2', layer_id)],
+            P[_p(prefix, 'beta_h2', layer_id)],
+            P[_p(prefix, 'alpha_ctx', layer_id)],
+            P[_p(prefix, 'beta_ctx', layer_id)],
+            P[_p(prefix, 'alpha_c2', layer_id)],
+            P[_p(prefix, 'beta_c2', layer_id)],
+        ]
     if one_step:
         result = _step(*(seqs + init_states + [projected_context, context] + shared_vars))
     else:
