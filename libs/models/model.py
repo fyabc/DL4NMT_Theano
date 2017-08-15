@@ -947,16 +947,38 @@ class NMTModel(object):
         This method is to speed up inference.
         """
 
+        unit = self.O['unit']
+
+        live_k = 1
+        dead_k = 0
+
         next_state, ctx0 = self.sampler_init_outs[0], self.sampler_init_outs[1]
         next_w = T.alloc(np.int64(-1), 1)   # bos indicator
         next_state = T.tile(next_state[None, :, :], (self.O['n_decoder_layers'], 1, 1))
         next_memory = T.zeros((self.O['n_decoder_layers'], next_state.shape[1], next_state.shape[2]), dtype=fX)
+
+        if 'lstm' not in unit:
+            y, ctx, init_state = self.sampler_next_inps
+        else:
+            y, ctx, init_state, init_memory = self.sampler_next_inps
 
         def _sample_step():
             # todo: scan for the sentence
             pass
 
         # todo
+
+        outputs, _ = theano.scan(
+            _sample_step,
+            # todo:
+            sequences=None,
+            outputs_info=None,
+            non_sequences=None,
+            name='f_sampler',
+            n_steps=None,
+            profile=profile,
+            strict=True,
+        )
 
     def gen_batch_sample_theano(self):
         """Theano version of gen_batch_sample.
