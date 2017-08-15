@@ -542,6 +542,8 @@ class NMTModel(object):
 
         if batch_mode:
             x_mask = T.matrix('x_mask', dtype=fX)
+        else:
+            x_mask = None
 
         def _symbolic_f_init(x, x_mask):
             xr = x[::-1]
