@@ -524,6 +524,7 @@ class NMTModel(object):
             dropout_params = [use_noise, trng, dropout_rate]
         else:
             dropout_params = None
+        theano_sampler = kwargs.pop('theano_sampler', False)
 
         unit = self.O['unit']
 
@@ -557,6 +558,10 @@ class NMTModel(object):
             inps.append(x_mask)
         outs = [init_state, ctx]
         f_init = theano.function(inps, outs, name='f_init', profile=profile)
+
+        if theano_sampler:
+            self.sampler_init_inps = inps
+            self.sampler_init_outs = outs
         print('Done')
 
         # x: 1 x 1
@@ -620,6 +625,11 @@ class NMTModel(object):
                 kw_ret['output_gates_att'],
             ])
         f_next = theano.function(inps, outs, name='f_next', profile=profile)
+
+        if theano_sampler:
+            self.sampler_next_inps = inps
+            self.sampler_next_outs = outs
+
         print('Done')
 
         return f_init, f_next
@@ -906,6 +916,31 @@ class NMTModel(object):
         if have_kw_ret:
             return sample, sample_score, kw_ret
         return sample, sample_score
+
+    def gen_sample_theano(self):
+        """Theano version of gen_sample.
+
+        This method is to speed up inference.
+        """
+
+        next_state, ctx0 = self.sampler_init_outs[0], self.sampler_init_outs[1]
+        next_w = T.alloc(np.int64(-1), 1)   # bos indicator
+        next_state = T.tile(next_state[None, :, :], (self.O['n_decoder_layers'], 1, 1))
+        next_memory = T.zeros((self.O['n_decoder_layers'], next_state.shape[1], next_state.shape[2]), dtype=fX)
+
+        def _sample_step():
+            # todo: scan for the sentence
+            pass
+
+        # todo
+
+    def gen_batch_sample_theano(self):
+        """Theano version of gen_batch_sample.
+
+        This method is to speed up inference.
+        """
+
+        # todo: use self.sampler_init_inps and other variables to build computing graph.
 
     def save_model(self, saveto, history_errs, uidx = -1):
         saveto_path = '{}.iter{}.npz'.format(
