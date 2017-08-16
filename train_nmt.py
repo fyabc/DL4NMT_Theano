@@ -150,6 +150,8 @@ def main():
                         help='Fix rnn weights during training, default to False, set to True')
     parser.add_argument('--use_LN', action="store_true", default=False, dest='use_LN',
                         help='Use layer normalization in RNN, default to False, set to True')
+    parser.add_argument('--densly_connected', action="store_true", defalut=False, dest='densly_connected',
+                        help='Whether to use densly connected network architecture')
 
     args = parser.parse_args()
     print args
@@ -292,6 +294,7 @@ def main():
         start_epoch= args.start_epoch,
         fix_rnn_weights= args.fix_rnn_weights,
         use_LN = args.use_LN,
+        densly_connected = args.densly_connected,
     )
 
 

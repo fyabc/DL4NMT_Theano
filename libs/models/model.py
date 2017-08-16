@@ -1001,6 +1001,7 @@ class NMTModel(object):
         n_layers = self.O['n_encoder_layers']
         residual = self.O['residual_enc']
         use_zigzag = self.O['use_zigzag']
+        densly_connected = self.O['densly_connected']
         # FIXME: Add get_gates for only common mode (bidirectional only at first layer) here.
         get_gates = kwargs.pop('get_gates', False)
 
@@ -1042,39 +1043,61 @@ class NMTModel(object):
             outputs.append((h_last, h_last_r))
 
             # Other layers (bidirectional)
-            for layer_id in xrange(1, n_layers):
-                if layer_id == 1:
-                    inputs.append(outputs[-1])
-                else:
-                    if residual == 'layer_wise':
-                        # output of layer before + input of layer before
-                        inputs.append((
-                            outputs[-1][0] + inputs[-1][0],
-                            outputs[-1][1] + inputs[-1][1],
-                        ))
-                    elif residual == 'last' and layer_id == n_layers - 1:
-                        # only for last layer:
-                        # output of layer before + mean of inputs of all layers before (except layer 0)
-                        inputs.append((
-                            outputs[-1][0] + average([inputs[i][0] for i in xrange(1, len(inputs))]),
-                            outputs[-1][1] + average([inputs[i][1] for i in xrange(1, len(inputs))]),
-                        ))
-                    else:
+            if densly_connected:
+                concat_feat = concatenate([input_, h_last], axis=input_.ndim - 1)
+                concat_feat_r = concatenate([input_r, h_last_r], axis=input_r.ndim - 1)
+                for layer_id in xrange(1, n_layers):
+                    inputs.append((concat_feat, concat_feat_r))
+
+                    # Zig-zag
+                    x_mask_, xr_mask_ = x_mask, xr_mask
+                    if use_zigzag:
+                        inputs[-1] = (inputs[-1][0][::-1], inputs[-1][1][::-1])
+                        if layer_id % 2 == 1:
+                            x_mask_, xr_mask_ = xr_mask, x_mask
+
+                    h_last = get_build(unit)(self.P, inputs[-1][0], self.O, prefix='encoder', mask=x_mask_,
+                        layer_id=layer_id, dropout_params=dropout_params)[0]
+                    h_last_r = get_build(unit)(self.P, inputs[-1][1], self.O, prefix='encoder_r', mask=xr_mask_,
+                        layer_id=layer_id, dropout_params=dropout_params)[0]
+                    
+                    concat_feat = concatenate([concat_feat, h_last], axis = concat_feat.ndim - 1)
+                    concat_feat_r = concatenate([concat_feat_r, h_last_r], axis = concat_feat_r.ndim - 1)
+                    outputs.append((h_last, h_last_r))
+            else:
+                for layer_id in xrange(1, n_layers):
+                    if layer_id == 1:
                         inputs.append(outputs[-1])
+                    else:
+                        if residual == 'layer_wise':
+                            # output of layer before + input of layer before
+                            inputs.append((
+                                outputs[-1][0] + inputs[-1][0],
+                                outputs[-1][1] + inputs[-1][1],
+                            ))
+                        elif residual == 'last' and layer_id == n_layers - 1:
+                            # only for last layer:
+                            # output of layer before + mean of inputs of all layers before (except layer 0)
+                            inputs.append((
+                                outputs[-1][0] + average([inputs[i][0] for i in xrange(1, len(inputs))]),
+                                outputs[-1][1] + average([inputs[i][1] for i in xrange(1, len(inputs))]),
+                            ))
+                        else:
+                            inputs.append(outputs[-1])
 
-                # Zig-zag
-                x_mask_, xr_mask_ = x_mask, xr_mask
-                if use_zigzag:
-                    inputs[-1] = (inputs[-1][0][::-1], inputs[-1][1][::-1])
-                    if layer_id % 2 == 1:
-                        x_mask_, xr_mask_ = xr_mask, x_mask
+                    # Zig-zag
+                    x_mask_, xr_mask_ = x_mask, xr_mask
+                    if use_zigzag:
+                        inputs[-1] = (inputs[-1][0][::-1], inputs[-1][1][::-1])
+                        if layer_id % 2 == 1:
+                            x_mask_, xr_mask_ = xr_mask, x_mask
 
-                h_last = get_build(unit)(self.P, inputs[-1][0], self.O, prefix='encoder', mask=x_mask_,
-                                         layer_id=layer_id, dropout_params=dropout_params, use_LN=self.O['use_LN'])[0]
-                h_last_r = get_build(unit)(self.P, inputs[-1][1], self.O, prefix='encoder_r', mask=xr_mask_,
-                                           layer_id=layer_id, dropout_params=dropout_params, use_LN=self.O['use_LN'])[0]
+                    h_last = get_build(unit)(self.P, inputs[-1][0], self.O, prefix='encoder', mask=x_mask_,
+                                             layer_id=layer_id, dropout_params=dropout_params, use_LN=self.O['use_LN'])[0]
+                    h_last_r = get_build(unit)(self.P, inputs[-1][1], self.O, prefix='encoder_r', mask=xr_mask_,
+                                               layer_id=layer_id, dropout_params=dropout_params, use_LN=self.O['use_LN'])[0]
 
-                outputs.append((h_last, h_last_r))
+                    outputs.append((h_last, h_last_r))
 
             # Context will be the concatenation of forward and backward RNNs
             if use_zigzag and n_layers % 2 == 0:
@@ -1088,37 +1111,62 @@ class NMTModel(object):
             outputs.append(h_last)
 
             # Other layers (forward)
-            for layer_id in xrange(1, n_layers):
-                if layer_id == 1:
-                    inputs.append(outputs[-1])
-                else:
-                    if residual == 'layer_wise':
-                        # output of layer before + input of layer before
-                        inputs.append(outputs[-1] + inputs[-1])
-                    elif residual == 'last' and layer_id == n_layers - 1:
-                        # only for last layer:
-                        # output of layer before + mean of inputs of all layers before (except layer 0)
-                        inputs.append(outputs[-1] + average(inputs[1:]))
-                    else:
+            if densly_connected:
+                concat_feat = concatenate([input_, input_r[::-1]], axis=input_.ndim - 1)
+                concat_feat = concatenate([concat_feat, h_last], axis=concat_feaat.ndim - 1)
+
+                for layer_id in xrange(1, n_layers):
+                    inputs.append(concat_feat)
+                    x_mask_ = x_mask
+                    if use_zigzag:
+                        inputs[-1] = inputs[-1][::-1]
+                        if layer_id % 2 == 1:
+                            x_mask_ = xr_mask
+                
+                    layer_out = get_build(self.O['unit'])(
+                        self.P, inputs[-1], self.O, prefix='encoder', mask=x_mask_,
+                        layer_id=layer_id, dropout_params=dropout_params, get_gates=get_gates)
+                    h_last, kw_ret_layer = layer_out[0], layer_out[-1]
+                    if get_gates:
+                        kw_ret['input_gates'].append(kw_ret_layer['input_gates'])
+                        kw_ret['forget_gates'].append(kw_ret_layer['forget_gates'])
+                        kw_ret['output_gates'].append(kw_ret_layer['output_gates'])
+                
+                    outputs.append(h_last)
+                    concat_feat = concatenate([concat_feat, h_last], axis = concat_feat.ndim - 1)
+
+            else:
+                for layer_id in xrange(1, n_layers):
+                    if layer_id == 1:
                         inputs.append(outputs[-1])
+                    else:
+                        if residual == 'layer_wise':
+                            # output of layer before + input of layer before
+                            inputs.append(outputs[-1] + inputs[-1])
+                        elif residual == 'last' and layer_id == n_layers - 1:
+                            # only for last layer:
+                            # output of layer before + mean of inputs of all layers before (except layer 0)
+                            inputs.append(outputs[-1] + average(inputs[1:]))
+                        else:
+                            inputs.append(outputs[-1])
 
-                x_mask_ = x_mask
-                if use_zigzag:
-                    inputs[-1] = inputs[-1][::-1]
-                    if layer_id % 2 == 1:
-                        x_mask_ = xr_mask
+                    x_mask_ = x_mask
+                    if use_zigzag:
+                        inputs[-1] = inputs[-1][::-1]
+                        if layer_id % 2 == 1:
+                            x_mask_ = xr_mask
 
-                # FIXME: mask modified from None to x_mask
-                layer_out = get_build(self.O['unit'])(
-                    self.P, inputs[-1], self.O, prefix='encoder', mask=x_mask_,
-                    layer_id=layer_id, dropout_params=dropout_params, get_gates=get_gates, use_LN=self.O['use_LN'])
-                h_last, kw_ret_layer = layer_out[0], layer_out[-1]
-                if get_gates:
-                    kw_ret['input_gates'].append(kw_ret_layer['input_gates'])
-                    kw_ret['forget_gates'].append(kw_ret_layer['forget_gates'])
-                    kw_ret['output_gates'].append(kw_ret_layer['output_gates'])
+                    # FIXME: mask modified from None to x_mask
+                    layer_out = get_build(self.O['unit'])(
+                        self.P, inputs[-1], self.O, prefix='encoder', mask=x_mask_,
+                        layer_id=layer_id, dropout_params=dropout_params, get_gates=get_gates, use_LN=self.O['use_LN'])
+                    h_last, kw_ret_layer = layer_out[0], layer_out[-1]
+                    if get_gates:
+                        kw_ret['input_gates'].append(kw_ret_layer['input_gates'])
+                        kw_ret['forget_gates'].append(kw_ret_layer['forget_gates'])
+                        kw_ret['output_gates'].append(kw_ret_layer['output_gates'])
 
-                outputs.append(h_last)
+                    outputs.append(h_last)
 
             # Zig-zag
             if use_zigzag and n_layers % 2 == 0:
@@ -1142,6 +1190,7 @@ class NMTModel(object):
         residual = self.O['residual_dec']
         all_att = self.O['decoder_all_attention']
         avg_ctx = self.O['average_context']
+        densly_connected = self.O['densly_connected']
         # FIXME: Add get_gates for only common mode (one attention) here.
         get_gates = kwargs.pop('get_gates', False)
 
@@ -1177,37 +1226,57 @@ class NMTModel(object):
             context_decoder = None
             alpha_decoder = None
 
-            for layer_id in xrange(0, n_layers):
-                # [NOTE] Do not add residual on layer 0 and 1
-                if layer_id == 0:
-                    inputs.append(tgt_embedding)
-                elif layer_id == 1:
-                    inputs.append(outputs[-1])
-                else:
-                    if residual == 'layer_wise':
-                        inputs.append(outputs[-1] + inputs[-1])
-                    elif residual == 'last' and layer_id == n_layers - 1:
-                        # only for last layer:
-                        # output of layer before + mean of inputs of all layers before (except layer 0)
-                        inputs.append(outputs[-1] + average(inputs[1:]))
-                    else:
+            if densly_connected:
+                concat_feat = tgt_embedding
+                for layer_id in xrange(0, n_layers):
+                    inputs.append(concat_feat)
+                    hidden_decoder, context_decoder, alpha_decoder, kw_ret_att = get_build(unit + '_cond')(
+                        self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, context=context,
+                        context_mask=x_mask, one_step=one_step, init_state=init_state[layer_id],
+                        dropout_params=dropout_params, layer_id=layer_id,
+                        init_memory=init_memory[layer_id], unit_size=unit_size,
+                    )
+
+                    context_decoder_list.append(context_decoder)
+
+                    hiddens_without_dropout.append(kw_ret_att['hidden_without_dropout'])
+                    if 'lstm' in unit:
+                        memory_outputs.append(kw_ret_att['memory_output'])
+
+                    outputs.append(hidden_decoder)
+                    concat_feat = concatenate([concat_feat, outputs[-1]], axis = concat_feat.ndim-1)
+            else:
+                for layer_id in xrange(0, n_layers):
+                    # [NOTE] Do not add residual on layer 0 and 1
+                    if layer_id == 0:
+                        inputs.append(tgt_embedding)
+                    elif layer_id == 1:
                         inputs.append(outputs[-1])
+                    else:
+                        if residual == 'layer_wise':
+                            inputs.append(outputs[-1] + inputs[-1])
+                        elif residual == 'last' and layer_id == n_layers - 1:
+                            # only for last layer:
+                            # output of layer before + mean of inputs of all layers before (except layer 0)
+                            inputs.append(outputs[-1] + average(inputs[1:]))
+                        else:
+                            inputs.append(outputs[-1])
 
-                hidden_decoder, context_decoder, alpha_decoder, kw_ret_att = get_build(unit + '_cond')(
-                    self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, context=context,
-                    context_mask=x_mask, one_step=one_step, init_state=init_state[layer_id],
-                    dropout_params=dropout_params, layer_id=layer_id,
-                    init_memory=init_memory[layer_id], unit_size=unit_size,
-                    use_LN=self.O['use_LN'],
-                )
+                    hidden_decoder, context_decoder, alpha_decoder, kw_ret_att = get_build(unit + '_cond')(
+                        self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, context=context,
+                        context_mask=x_mask, one_step=one_step, init_state=init_state[layer_id],
+                        dropout_params=dropout_params, layer_id=layer_id,
+                        init_memory=init_memory[layer_id], unit_size=unit_size,
+                        use_LN=self.O['use_LN'],
+                    )
 
-                context_decoder_list.append(context_decoder)
+                    context_decoder_list.append(context_decoder)
 
-                hiddens_without_dropout.append(kw_ret_att['hidden_without_dropout'])
-                if 'lstm' in unit:
-                    memory_outputs.append(kw_ret_att['memory_output'])
+                    hiddens_without_dropout.append(kw_ret_att['hidden_without_dropout'])
+                    if 'lstm' in unit:
+                        memory_outputs.append(kw_ret_att['memory_output'])
 
-                outputs.append(hidden_decoder)
+                    outputs.append(hidden_decoder)
 
             if avg_ctx:
                 ctx_output = T.mean(T.stack(context_decoder_list, axis=0), axis=0)
@@ -1216,106 +1285,176 @@ class NMTModel(object):
             return outputs[-1], ctx_output, alpha_decoder, kw_ret
 
         else:
-            # Layers before attention layer
-            for layer_id in xrange(0, attention_layer_id):
-                # [NOTE] Do not add residual on layer 0 and 1
-                if layer_id == 0:
-                    inputs.append(tgt_embedding)
-                elif layer_id == 1:
-                    inputs.append(outputs[-1])
-                else:
-                    if residual == 'layer_wise':
-                        # output of layer before + input of layer before
-                        inputs.append(outputs[-1] + inputs[-1])
-                    elif residual == 'last' and layer_id == n_layers - 1:
-                        # only for last layer:
-                        # output of layer before + mean of inputs of all layers before (except layer 0)
-                        inputs.append(outputs[-1] + average(inputs[1:]))
-                    else:
-                        inputs.append(outputs[-1])
+            if densly_connected:
+                # Layers before attention layer
+                concat_feat = tgt_embedding
+                for layer_id in xrange(0, attention_layer_id):
+                    inputs.append(concat_feat)
+                    layer_out = get_build(unit)(
+                        self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
+                        dropout_params=dropout_params, one_step=one_step, init_state=init_state[layer_id], context=None,
+                        init_memory=init_memory[layer_id], get_gates=get_gates, unit_size=unit_size,
+                    )
+                    kw_ret_layer = layer_out[-1]
 
-                layer_out = get_build(unit)(
-                    self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
-                    dropout_params=dropout_params, one_step=one_step, init_state=init_state[layer_id], context=None,
-                    init_memory=init_memory[layer_id], get_gates=get_gates, unit_size=unit_size,use_LN=self.O['use_LN'],
-                )
-                kw_ret_layer = layer_out[-1]
+                    hiddens_without_dropout.append(kw_ret_layer['hidden_without_dropout'])
+                    if 'lstm' in unit:
+                        memory_outputs.append(layer_out[1])
+                    if get_gates:
+                        kw_ret['input_gates'].append(kw_ret_layer['input_gates'])
+                        kw_ret['forget_gates'].append(kw_ret_layer['forget_gates'])
+                        kw_ret['output_gates'].append(kw_ret_layer['output_gates'])
 
-                hiddens_without_dropout.append(kw_ret_layer['hidden_without_dropout'])
+                    outputs.append(layer_out[0])
+                    concat_feat = concatenate([concat_feat, outputs[-1]], axis = concat_feat.ndim - 1)
+
+                # Attention layer
+                inputs.append(concat_feat)
+
+                hidden_decoder, context_decoder, alpha_decoder, kw_ret_att = get_build(unit + '_cond')(
+                    self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, context=context,
+                    context_mask=x_mask, one_step=one_step, init_state=init_state[attention_layer_id],
+                    dropout_params=dropout_params, layer_id=attention_layer_id, init_memory=init_memory[attention_layer_id],
+                    get_gates=get_gates, unit_size=unit_size,
+                )   
+
+                hiddens_without_dropout.append(kw_ret_att['hidden_without_dropout'])
                 if 'lstm' in unit:
-                    memory_outputs.append(layer_out[1])
+                    memory_outputs.append(kw_ret_att['memory_output'])
                 if get_gates:
-                    kw_ret['input_gates'].append(kw_ret_layer['input_gates'])
-                    kw_ret['forget_gates'].append(kw_ret_layer['forget_gates'])
-                    kw_ret['output_gates'].append(kw_ret_layer['output_gates'])
+                    kw_ret['input_gates'].append(kw_ret_att['input_gates'])
+                    kw_ret['forget_gates'].append(kw_ret_att['forget_gates'])
+                    kw_ret['output_gates'].append(kw_ret_att['output_gates'])
+                    kw_ret['input_gates_att'] = kw_ret_att['input_gates_att']
+                    kw_ret['forget_gates_att'] = kw_ret_att['forget_gates_att']
+                    kw_ret['output_gates_att'] = kw_ret_att['output_gates_att']
 
-                outputs.append(layer_out[0])
+                outputs.append(hidden_decoder)
+                concat_feat = concatenate([concat_feat, outputs[-1]], axis = concat_feat.ndim - 1)
 
-            # Attention layer
-            if attention_layer_id == 0:
-                inputs.append(tgt_embedding)
-            elif attention_layer_id == 1:
-                inputs.append(outputs[-1])
+                # Layers after attention layer
+                for layer_id in xrange(attention_layer_id + 1, n_layers):
+                    inputs.append(concat_feat)
+
+                    layer_out = get_build(unit)(
+                        self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
+                        dropout_params=dropout_params, context=context_decoder, init_state=init_state[layer_id],
+                        one_step=one_step, init_memory=init_memory[layer_id], get_gates=get_gates, unit_size=unit_size,
+                    )
+                    kw_ret_layer = layer_out[-1]
+
+                    hiddens_without_dropout.append(kw_ret_layer['hidden_without_dropout'])
+                    if 'lstm' in unit:
+                        memory_outputs.append(layer_out[1])
+                    if get_gates:
+                        kw_ret['input_gates'].append(kw_ret_layer['input_gates'])
+                        kw_ret['forget_gates'].append(kw_ret_layer['forget_gates'])
+                        kw_ret['output_gates'].append(kw_ret_layer['output_gates'])
+
+                    outputs.append(layer_out[0])
+                    concat_feat = concatenate([concat_feat, outputs[-1]], axis = concat_feat.ndim - 1)
+
             else:
-                if residual == 'layer_wise':
-                    inputs.append(outputs[-1] + inputs[-1])
-                elif residual == 'last' and attention_layer_id == n_layers - 1:
-                    # only for last layer:
-                    # output of layer before + mean of inputs of all layers before (except layer 0)
-                    inputs.append(outputs[-1] + average(inputs[1:]))
-                else:
-                    inputs.append(outputs[-1])
+                # Layers before attention layer
+                for layer_id in xrange(0, attention_layer_id):
+                    # [NOTE] Do not add residual on layer 0 and 1
+                    if layer_id == 0:
+                        inputs.append(tgt_embedding)
+                    elif layer_id == 1:
+                        inputs.append(outputs[-1])
+                    else:
+                        if residual == 'layer_wise':
+                            # output of layer before + input of layer before
+                            inputs.append(outputs[-1] + inputs[-1])
+                        elif residual == 'last' and layer_id == n_layers - 1:
+                            # only for last layer:
+                            # output of layer before + mean of inputs of all layers before (except layer 0)
+                            inputs.append(outputs[-1] + average(inputs[1:]))
+                        else:
+                            inputs.append(outputs[-1])
 
-            hidden_decoder, context_decoder, alpha_decoder, kw_ret_att = get_build(unit + '_cond')(
-                self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, context=context,
-                context_mask=x_mask, one_step=one_step, init_state=init_state[attention_layer_id],
-                dropout_params=dropout_params, layer_id=attention_layer_id, init_memory=init_memory[attention_layer_id],
-                get_gates=get_gates, unit_size=unit_size,use_LN=self.O['use_LN'],
-            )
+                    layer_out = get_build(unit)(
+                        self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
+                        dropout_params=dropout_params, one_step=one_step, init_state=init_state[layer_id], context=None,
+                        init_memory=init_memory[layer_id], get_gates=get_gates, unit_size=unit_size,use_LN=self.O['use_LN'],
+                    )
+                    kw_ret_layer = layer_out[-1]
 
-            hiddens_without_dropout.append(kw_ret_att['hidden_without_dropout'])
-            if 'lstm' in unit:
-                memory_outputs.append(kw_ret_att['memory_output'])
-            if get_gates:
-                kw_ret['input_gates'].append(kw_ret_att['input_gates'])
-                kw_ret['forget_gates'].append(kw_ret_att['forget_gates'])
-                kw_ret['output_gates'].append(kw_ret_att['output_gates'])
-                kw_ret['input_gates_att'] = kw_ret_att['input_gates_att']
-                kw_ret['forget_gates_att'] = kw_ret_att['forget_gates_att']
-                kw_ret['output_gates_att'] = kw_ret_att['output_gates_att']
+                    hiddens_without_dropout.append(kw_ret_layer['hidden_without_dropout'])
+                    if 'lstm' in unit:
+                        memory_outputs.append(layer_out[1])
+                    if get_gates:
+                        kw_ret['input_gates'].append(kw_ret_layer['input_gates'])
+                        kw_ret['forget_gates'].append(kw_ret_layer['forget_gates'])
+                        kw_ret['output_gates'].append(kw_ret_layer['output_gates'])
 
-            outputs.append(hidden_decoder)
+                    outputs.append(layer_out[0])
 
-            # Layers after attention layer
-            for layer_id in xrange(attention_layer_id + 1, n_layers):
-                if layer_id <= 1:
+                # Attention layer
+                if attention_layer_id == 0:
+                    inputs.append(tgt_embedding)
+                elif attention_layer_id == 1:
                     inputs.append(outputs[-1])
                 else:
                     if residual == 'layer_wise':
                         inputs.append(outputs[-1] + inputs[-1])
-                    elif residual == 'last' and layer_id == n_layers - 1:
+                    elif residual == 'last' and attention_layer_id == n_layers - 1:
                         # only for last layer:
                         # output of layer before + mean of inputs of all layers before (except layer 0)
                         inputs.append(outputs[-1] + average(inputs[1:]))
                     else:
                         inputs.append(outputs[-1])
 
-                layer_out = get_build(unit)(
-                    self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
-                    dropout_params=dropout_params, context=context_decoder, init_state=init_state[layer_id],
-                    one_step=one_step, init_memory=init_memory[layer_id], get_gates=get_gates, unit_size=unit_size,use_LN=self.O['use_LN'],
+                hidden_decoder, context_decoder, alpha_decoder, kw_ret_att = get_build(unit + '_cond')(
+                    self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, context=context,
+                    context_mask=x_mask, one_step=one_step, init_state=init_state[attention_layer_id],
+                    dropout_params=dropout_params, layer_id=attention_layer_id, init_memory=init_memory[attention_layer_id],
+                    get_gates=get_gates, unit_size=unit_size,use_LN=self.O['use_LN'],
                 )
-                kw_ret_layer = layer_out[-1]
 
-                hiddens_without_dropout.append(kw_ret_layer['hidden_without_dropout'])
+                hiddens_without_dropout.append(kw_ret_att['hidden_without_dropout'])
                 if 'lstm' in unit:
-                    memory_outputs.append(layer_out[1])
+                    memory_outputs.append(kw_ret_att['memory_output'])
                 if get_gates:
-                    kw_ret['input_gates'].append(kw_ret_layer['input_gates'])
-                    kw_ret['forget_gates'].append(kw_ret_layer['forget_gates'])
-                    kw_ret['output_gates'].append(kw_ret_layer['output_gates'])
+                    kw_ret['input_gates'].append(kw_ret_att['input_gates'])
+                    kw_ret['forget_gates'].append(kw_ret_att['forget_gates'])
+                    kw_ret['output_gates'].append(kw_ret_att['output_gates'])
+                    kw_ret['input_gates_att'] = kw_ret_att['input_gates_att']
+                    kw_ret['forget_gates_att'] = kw_ret_att['forget_gates_att']
+                    kw_ret['output_gates_att'] = kw_ret_att['output_gates_att']
 
-                outputs.append(layer_out[0])
+                outputs.append(hidden_decoder)
+
+                # Layers after attention layer
+                for layer_id in xrange(attention_layer_id + 1, n_layers):
+                    if layer_id <= 1:
+                        inputs.append(outputs[-1])
+                    else:
+                        if residual == 'layer_wise':
+                            inputs.append(outputs[-1] + inputs[-1])
+                        elif residual == 'last' and layer_id == n_layers - 1:
+                            # only for last layer:
+                            # output of layer before + mean of inputs of all layers before (except layer 0)
+                            inputs.append(outputs[-1] + average(inputs[1:]))
+                        else:
+                            inputs.append(outputs[-1])
+
+                    layer_out = get_build(unit)(
+                        self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
+                        dropout_params=dropout_params, context=context_decoder, init_state=init_state[layer_id],
+                        one_step=one_step, init_memory=init_memory[layer_id], get_gates=get_gates, unit_size=unit_size,use_LN=self.O['use_LN'],
+                    )
+                    kw_ret_layer = layer_out[-1]
+
+                    hiddens_without_dropout.append(kw_ret_layer['hidden_without_dropout'])
+                    if 'lstm' in unit:
+                        memory_outputs.append(layer_out[1])
+                    if get_gates:
+                        kw_ret['input_gates'].append(kw_ret_layer['input_gates'])
+                        kw_ret['forget_gates'].append(kw_ret_layer['forget_gates'])
+                        kw_ret['output_gates'].append(kw_ret_layer['output_gates'])
+
+                    outputs.append(layer_out[0])
 
             return outputs[-1], context_decoder, alpha_decoder, kw_ret
 
