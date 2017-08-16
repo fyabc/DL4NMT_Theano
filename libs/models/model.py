@@ -122,7 +122,7 @@ class ParameterInitializer(object):
                 # Attention layer
                 np_parameters = get_init(unit + '_cond')(
                     self.O, np_parameters, prefix='decoder',
-                    nin=self.O['dim_word'] + layer_id * self.O['dim'],
+                    nin=self.O['dim_word'] + attention_layer_id * self.O['dim'],
                     dim=self.O['dim'], dimctx=context_dim, layer_id=attention_layer_id, unit_size=unit_size)
 
                 # Layers after attention layer
@@ -1161,7 +1161,7 @@ class NMTModel(object):
             # Other layers (forward)
             if densely_connected:
                 concat_feat = concatenate([input_, input_r[::-1]], axis=input_.ndim - 1)
-                concat_feat = concatenate([concat_feat, h_last], axis=concat_feaat.ndim - 1)
+                concat_feat = concatenate([concat_feat, h_last], axis=concat_feat.ndim - 1)
 
                 for layer_id in xrange(1, n_layers):
                     x_mask_ = x_mask

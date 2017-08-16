@@ -150,7 +150,7 @@ def main():
                         help='Fix rnn weights during training, default to False, set to True')
     parser.add_argument('--use_LN', action="store_true", default=False, dest='use_LN',
                         help='Use layer normalization in RNN, default to False, set to True')
-    parser.add_argument('-d','--densely_connected', action="store_true", defalut=False, dest='densely_connected',
+    parser.add_argument('--dense', action="store_true", default=False, dest='densely_connected',
                         help='Use densely connected network architecture, default to False, set to True')
 
     args = parser.parse_args()
