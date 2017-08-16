@@ -38,14 +38,14 @@ class ParameterInitializer(object):
 
     def init_encoder(self, np_parameters):
         if self.O['encoder_many_bidirectional']:
-            if self.O['densly_connected']:
+            if self.O['densely_connected']:
                 for layer_id in xrange(self.O['n_encoder_layers']):
                     n_in = self.O['dim_word'] + layer_id * self.O['dim']
                     np_parameters = get_init(self.O['unit'])(self.O, np_parameters, prefix='encoder', nin=n_in,
                                                              dim=self.O['dim'], layer_id=layer_id)
                     np_parameters = get_init(self.O['unit'])(self.O, np_parameters, prefix='encoder_r', nin=n_in,
                                                              dim=self.O['dim'], layer_id=layer_id)
-            else: # Not densly connected
+            else: # Not densely connected
                 for layer_id in xrange(self.O['n_encoder_layers']):
                     n_in = self.O['dim_word'] if layer_id == 0 else self.O['dim']
                     np_parameters = get_init(self.O['unit'])(self.O, np_parameters, prefix='encoder', nin=n_in,
@@ -53,7 +53,7 @@ class ParameterInitializer(object):
                     np_parameters = get_init(self.O['unit'])(self.O, np_parameters, prefix='encoder_r', nin=n_in,
                                                              dim=self.O['dim'], layer_id=layer_id)
         else: # Only first layer is bidirectional
-            if self.O['densly_connected']:
+            if self.O['densely_connected']:
                 for layer_id in xrange(self.O['n_encoder_layers']):
                     if layer_id == 0:
                         n_in = self.O['dim_word']
@@ -88,8 +88,8 @@ class ParameterInitializer(object):
         avg_ctx = self.O['average_context']
         unit = self.O['unit']
         unit_size = self.O['cond_unit_size']
-        densly_connected = self.O['densly_connected']
-        if densly_connected:
+        densely_connected = self.O['densely_connected']
+        if densely_connected:
             context_dim = 2 * (self.O['dim_word'] + self.O['n_encoder_layers'] * self.O['dim'])
         else:
             context_dim = 2 * self.O['dim']
@@ -99,20 +99,20 @@ class ParameterInitializer(object):
 
         if all_att:
             # All decoder layers have attention.
-            if densly_connected:
+            if densely_connected:
                 for layer_id in xrange(0, n_layers):
                     np_parameters = get_init(unit + '_cond')(
                         self.O, np_parameters, prefix='decoder',
                         nin=self.O['dim_word'] + layer_id * self.O['dim'],
                         dim=self.O['dim'], dimctx=context_dim, layer_id=layer_id, unit_size=unit_size)
-            else: # Not densly connected
+            else: # Not densely connected
                 for layer_id in xrange(0, n_layers):
                     np_parameters = get_init(unit + '_cond')(
                         self.O, np_parameters, prefix='decoder',
                         nin=self.O['dim_word'] if layer_id == 0 else self.O['dim'],
                         dim=self.O['dim'], dimctx=context_dim, layer_id=layer_id, unit_size=unit_size)
         else: # Not all attention
-            if densly_connected:
+            if densely_connected:
                 # Layers before attention layer
                 for layer_id in xrange(0, attention_layer_id):
                     np_parameters = get_init(unit)(
@@ -131,7 +131,7 @@ class ParameterInitializer(object):
                         self.O, np_parameters, prefix='decoder', nin=self.O['dim_word'] + layer_id * self.O['dim'],
                         dim=self.O['dim'], layer_id=layer_id, context_dim=context_dim, unit_size=unit_size)
 
-            else: # Not densly connected
+            else: # Not densely connected
                 # Layers before attention layer
                 for layer_id in xrange(0, attention_layer_id):
                     np_parameters = get_init(unit)(
@@ -246,7 +246,7 @@ class ParameterInitializer(object):
         np_parameters = self.init_decoder(np_parameters)
 
         # Readout
-        if self.O['densly_connected']:
+        if self.O['densely_connected']:
             context_dim = 2 * (self.O['dim_word'] + self.O['n_encoder_layers'] * self.O['dim'])
         else:
             context_dim = 2 * self.O['dim']
@@ -1055,7 +1055,7 @@ class NMTModel(object):
         n_layers = self.O['n_encoder_layers']
         residual = self.O['residual_enc']
         use_zigzag = self.O['use_zigzag']
-        densly_connected = self.O['densly_connected']
+        densely_connected = self.O['densely_connected']
         # FIXME: Add get_gates for only common mode (bidirectional only at first layer) here.
         get_gates = kwargs.pop('get_gates', False)
 
@@ -1092,7 +1092,7 @@ class NMTModel(object):
 
         if self.O['encoder_many_bidirectional']:
             # Other layers (bidirectional)
-            if densly_connected:
+            if densely_connected:
                 concat_feat = concatenate([input_, h_last], axis=input_.ndim - 1)
                 concat_feat_r = concatenate([input_r, h_last_r], axis=input_r.ndim - 1)
                 for layer_id in xrange(1, n_layers):
@@ -1112,7 +1112,7 @@ class NMTModel(object):
                     concat_feat = concatenate([concat_feat, h_last], axis = concat_feat.ndim - 1)
                     concat_feat_r = concatenate([concat_feat_r, h_last_r], axis = concat_feat_r.ndim - 1)
                 output = (concat_feat, concat_feat_r)
-            else: # Not densly connected
+            else: # Not densely connected
                 inputs = [(input_, input_r)]
                 outputs = [(h_last, h_last_r)]
                 for layer_id in xrange(1, n_layers):
@@ -1159,7 +1159,7 @@ class NMTModel(object):
             h_last = concatenate([h_last, h_last_r[::-1]], axis=h_last.ndim - 1)
 
             # Other layers (forward)
-            if densly_connected:
+            if densely_connected:
                 concat_feat = concatenate([input_, input_r[::-1]], axis=input_.ndim - 1)
                 concat_feat = concatenate([concat_feat, h_last], axis=concat_feaat.ndim - 1)
 
@@ -1181,7 +1181,7 @@ class NMTModel(object):
                 
                     concat_feat = concatenate([concat_feat, h_last], axis = concat_feat.ndim - 1)
                 output = concat_feat
-            else: # Not densly connected
+            else: # Not densely connected
                 inputs = [(input_, input_r)]
                 outputs = [h_last]
                 for layer_id in xrange(1, n_layers):
@@ -1238,7 +1238,7 @@ class NMTModel(object):
         residual = self.O['residual_dec']
         all_att = self.O['decoder_all_attention']
         avg_ctx = self.O['average_context']
-        densly_connected = self.O['densly_connected']
+        densely_connected = self.O['densely_connected']
         # FIXME: Add get_gates for only common mode (one attention) here.
         get_gates = kwargs.pop('get_gates', False)
 
@@ -1274,7 +1274,7 @@ class NMTModel(object):
             context_decoder = None
             alpha_decoder = None
 
-            if densly_connected:
+            if densely_connected:
                 concat_feat = tgt_embedding
                 for layer_id in xrange(0, n_layers):
                     hidden_decoder, context_decoder, alpha_decoder, kw_ret_att = get_build(unit + '_cond')(
@@ -1292,7 +1292,7 @@ class NMTModel(object):
 
                     concat_feat = concatenate([concat_feat, hidden_decoder], axis = concat_feat.ndim-1)
                 output = concat_feat
-            else: # Not densly connected
+            else: # Not densely connected
                 for layer_id in xrange(0, n_layers):
                     # [NOTE] Do not add residual on layer 0 and 1
                     if layer_id == 0:
@@ -1332,7 +1332,7 @@ class NMTModel(object):
             return output, ctx_output, alpha_decoder, kw_ret
 
         else: # Not all attention
-            if densly_connected:
+            if densely_connected:
                 # Layers before attention layer
                 concat_feat = tgt_embedding
                 for layer_id in xrange(0, attention_layer_id):
@@ -1395,7 +1395,7 @@ class NMTModel(object):
                     concat_feat = concatenate([concat_feat, layer_out[0]], axis = concat_feat.ndim - 1)
                 output = concat_feat
 
-            else: # Not densly connected
+            else: # Not densely connected
                 # Layers before attention layer
                 for layer_id in xrange(0, attention_layer_id):
                     # [NOTE] Do not add residual on layer 0 and 1
