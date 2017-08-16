@@ -754,6 +754,11 @@ class TrgAttnNMTModel(NMTModel):
         # get initial state of decoder rnn and encoder context
         ret = f_init(x, x_mask)
         next_state, ctx0 = ret[0], ret[1]
+
+        print(next_state.shape)
+
+        decoded_h_all = np.zeros((2, next_state.shape[0], self.O['dim']), dtype='float32')
+        decoded_h_all[0] = next_state
         next_w = np.array([-1] * batch_size, dtype='int64')  # bos indicator
         next_state = np.tile(next_state[None, :, :], (self.O['n_decoder_layers'], 1, 1))
         next_memory = np.zeros((self.O['n_decoder_layers'], next_state.shape[1], next_state.shape[2]), dtype=fX)
@@ -770,10 +775,11 @@ class TrgAttnNMTModel(NMTModel):
                     cursor_start = cursor_end
                     cursor_end += lives_k[jj + 1]
 
-            inps = [next_w, ctx, x_extend_masks, next_state]
+            inps = [next_w, ctx, x_extend_masks, next_state, decoded_h_all, ii]
             if 'lstm' in unit:
                 inps.append(next_memory)
 
+            # todo: fix the Missing Input Error of next line.
             ret = f_next(*inps)
 
             if 'lstm' in unit:
