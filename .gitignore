@@ -100,6 +100,9 @@ model/
 # log
 log/
 
+# gcr caller
+caller/
+
 # translated files
 translated/
 
@@ -111,3 +114,7 @@ translated/
 
 # Command line argument files
 /arguments/
+
+# gcr wrapper
+wrapper.bat
+worker.bat
