@@ -779,7 +779,6 @@ class TrgAttnNMTModel(NMTModel):
             if 'lstm' in unit:
                 inps.append(next_memory)
 
-            # todo: fix the Missing Input Error of next line.
             ret = f_next(*inps)
 
             if 'lstm' in unit:
