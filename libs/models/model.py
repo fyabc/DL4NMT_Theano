@@ -1380,7 +1380,7 @@ class NMTModel(object):
                 # Layers after attention layer
                 for layer_id in xrange(attention_layer_id + 1, n_layers):
                     layer_out = get_build(unit)(
-                        self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
+                        self.P, concat_feat, self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
                         dropout_params=dropout_params, context=context_decoder, init_state=init_state[layer_id],
                         one_step=one_step, init_memory=init_memory[layer_id], get_gates=get_gates, unit_size=unit_size,
                     )
