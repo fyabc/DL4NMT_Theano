@@ -248,10 +248,12 @@ class ParameterInitializer(object):
         # Readout
         if self.O['densely_connected']:
             context_dim = 2 * (self.O['dim_word'] + self.O['n_encoder_layers'] * self.O['dim'])
+            nin = self.O['dim_word'] + self.O['n_decoder_layers'] * self.O['dim']
         else:
             context_dim = 2 * self.O['dim']
+            nin = self.O['dim']
         
-        np_parameters = self.init_feed_forward(np_parameters, prefix='ff_logit_lstm', nin=self.O['dim'],
+        np_parameters = self.init_feed_forward(np_parameters, prefix='ff_logit_lstm', nin=nin,
                                                nout=self.O['dim_word'], orthogonal=False)
         np_parameters = self.init_feed_forward(np_parameters, prefix='ff_logit_prev', nin=self.O['dim_word'],
                                                nout=self.O['dim_word'], orthogonal=False)
