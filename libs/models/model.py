@@ -652,12 +652,48 @@ class NMTModel(object):
             self.f_next = theano.function(inps, outs, name='f_next', profile=profile)
             print('Done')
         else:
-            live_k = 1
-            dead_k = 0
+            k = T.iscalar('k')
 
-            ctx_tiled = T.tile(ctx, [live_k, 1])
             # Build the sample process into computation graph.
-            def _sample_step(w, state):
+            def _sample_step(w, state, live_k, dead_k, hyp_scores, hyp_samples):
+                ctx_tiled = T.tile(ctx, [live_k, 1])
+
+                next_p, next_w, next_state, _, _ = _symbolic_f_next(
+                    w, ctx_tiled, None, state, None)
+
+                if get_gates:
+                    pass
+
+                cand_scores = hyp_scores[:, None] - T.log(next_p)
+                cand_flat = cand_scores.flatten()
+                ranks_flat = cand_flat.argsort()[:(k - dead_k)]
+
+                voc_size = next_p.shape[1]
+                trans_indices = ranks_flat / voc_size
+                word_indices = ranks_flat % voc_size
+                costs = cand_flat[ranks_flat]
+
+                # todo
+                pass
+
+            def _sample_step_lstm(w, state, memory, live_k, dead_k, hyp_scores, hyp_samples):
+                ctx_tiled = T.tile(ctx, [live_k, 1])
+
+                next_p, next_w, next_state, next_memory, _ = _symbolic_f_next(
+                    w, ctx_tiled, None, state, memory)
+
+                if get_gates:
+                    pass
+
+                cand_scores = hyp_scores[:, None] - T.log(next_p)
+                cand_flat = cand_scores.flatten()
+                ranks_flat = cand_flat.argsort()[:(k - dead_k)]
+
+                voc_size = next_p.shape[1]
+                trans_indices = ranks_flat / voc_size
+                word_indices = ranks_flat % voc_size
+                costs = cand_flat[ranks_flat]
+
                 # todo
                 pass
 
