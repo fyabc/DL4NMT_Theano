@@ -107,7 +107,7 @@ Datasets = {
     'en-de-s2s_bpe': [
         'train.tok.clean.bpe.32000.en', 'train.tok.clean.bpe.32000.de',
         'small_train.tok.clean.bpe.32000.en', 'small_train.tok.clean.bpe.32000.de',
-        'newstest2013.tok.bpe.32000.en', 'newstest2013.tok.bpe.32000.de', '',
+        'newstest2013.tok.bpe.32000.en', 'newstest2013.tok.bpe.32000.de', 'dev_de.tok',
         'newstest2014.tok.bpe.32000.en', 'test_en-de.de.tok',
         'vocab.bpe.32000.pkl', 'vocab.bpe.32000.pkl',
     ],
