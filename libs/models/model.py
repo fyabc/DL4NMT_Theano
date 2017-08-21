@@ -772,9 +772,15 @@ class NMTModel(object):
         return sample, sample_score
 
     def gen_batch_sample(self, x, x_mask, k=1, maxlen=30, eos_id=0, **kwargs):
+        #FIXME: Not implement GRU and plain RNN, but it is easy
         """
-        Only used for Batch Beam Search;
-        Do not Support Stochastic Sampling
+        Generate translation results in batch mode.
+        :param x: np array, with shape n_times * n_samples * dim, where dim is word embedding size
+        :param x_mask: np 0-1 array, with shape n_times * n_samples
+        :param k: beam size in beam search mode, or random samples number (per source sentence) in stochastic mode
+        :param kwargs: some other configs, such as `stochastic', specifying whether use stochastic mode or beam search mode
+        :return sample: [[]], storing all the k translations for every source sentence in x
+        :return sample_score: same as sample, but the likelihood scores
         """
 
         kw_ret = {}
@@ -823,6 +829,8 @@ class NMTModel(object):
             inps = [next_w, ctx, x_extend_masks, next_state]
             if 'lstm' in unit:
                 inps.append(next_memory)
+            else:
+                raise NotImplementedError, 'Only support LSTM in batch mode'
 
             ret = self.f_next(*inps)
 
