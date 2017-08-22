@@ -134,8 +134,8 @@ def main():
                                            'each line is in the form physical_gpu_id\\theano_id')
     parser.add_argument('--ft_patience', action='store', metavar='N', dest='fine_tune_patience', type=int, default=-1,
                         help='Fine tune patience, default is %(default)s, set 8 to enable it')
-    parser.add_argument('--ft_type', action = 'store', metavar ='type', dest = 'finetune_type', type = str, default= None,
-                        help = 'Fine tune by what measure, default is "cost", can be set to "bleu"')
+    parser.add_argument('--ft_type', action = 'store', metavar ='type', dest = 'finetune_type', type = str, default= 'bleu',
+                        help = 'Fine tune by what measure, default is "bleu", can be set to "cost"')
 
     parser.add_argument('--valid_freq', action='store', metavar='N', dest='valid_freq', type=int, default=5000,
                         help='Validation frequency, default is 5000')
