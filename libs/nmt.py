@@ -139,6 +139,7 @@ def train(dim_word=100,  # word vector dimensionality
           task='en-fr',
 
           fine_tune_patience=8,
+          fine_tune_type = 'cost',
           nccl = False,
           src_vocab_map_file = None,
           tgt_vocab_map_file = None,
@@ -147,6 +148,7 @@ def train(dim_word=100,  # word vector dimensionality
           fix_dp_bug = False,
           io_buffer_size = 40,
           start_epoch = 0,
+          start_from_histo_data = False,
           ):
     model_options = locals().copy()
 
@@ -368,6 +370,19 @@ Start Time = {}
     start_time = time.time()
     finetune_cnt = 0
 
+    if start_from_histo_data:
+        if uidx != 0:
+            epoch_n_batches = get_epoch_batch_cnt(dataset_src, dataset_tgt, vocab_filenames, batch_size, maxlen, n_words_src, n_words) \
+                if worker_id == 0 else None
+        else:
+            epoch_n_batches = 1 #avoid heavy data IO
+
+        if dist_type == 'mpi_reduce':
+            epoch_n_batches = mpi_communicator.bcast(epoch_n_batches, root = 0)
+
+        start_epoch = start_epoch + uidx / epoch_n_batches
+        pass_batches = uidx % epoch_n_batches
+
     for eidx in xrange(start_epoch, max_epochs):
         if shuffle_data:
             text_iterator = load_shuffle_text_iterator(
@@ -482,11 +497,26 @@ Start Time = {}
                 message('Worker {} Valid cost {:.5f} Small train cost {:.5f} Valid BLEU {:.2f} Bad count {}'.format(worker_id, valid_cost, small_train_cost, valid_bleu, bad_counter))
                 sys.stdout.flush()
 
-                # Fine-tune based on dev cost
+                # Fine-tune based on dev cost or bleu
                 if fine_tune_patience > 0:
+                    better_perf = False
                     if valid_bleu > best_bleu:
-                        bad_counter = 0
+                        if fine_tune_type != 'cost':
+                            bad_counter = 0
+                            better_perf = True
                         best_bleu = valid_bleu
+                    if valid_cost < best_valid_cost:
+                        if fine_tune_type == 'cost':
+                            bad_counter = 0
+                            better_perf = True
+                        best_valid_cost = valid_cost
+
+                    if better_perf:
+                        #safe sync before dump to make sure the models are the same on every worker
+                        if dist_type == 'mpi_reduce':
+                            all_reduce_params_nccl(nccl_comm, itemlist(model.P))
+                            for t_value in itemlist(model.P):
+                                t_value.set_value(t_value.get_value() / workers_cnt)
                         #dump the best model so far, including the immediate file
                         if worker_id == 0:
                             message('Dump the the best model so far at uidx {}'.format(uidx))
@@ -497,9 +527,9 @@ Start Time = {}
                         if bad_counter >= fine_tune_patience:
                             print 'Fine tune:',
                             if finetune_cnt % 2 == 0:
-                                lrate = np.float32(lrate * 0.5)
+                                lrate = np.float32(lrate * 0.1)
                                 message('Discount learning rate to {} at iteration {} at workder {}'.format(lrate, uidx, worker_id))
-                                if lrate <= 0.08:
+                                if lrate <= 0.05:
                                     message('Learning rate decayed to {:.5f}, task completed'.format(lrate))
                                     return 1., 1., 1.
                             else:
