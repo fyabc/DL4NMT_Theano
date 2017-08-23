@@ -363,13 +363,16 @@ Start Time = {}
     best_bleu = translate_dev_get_bleu(model, f_init, f_next, trng, use_noise) if reload_ else 0
     message('Worker id {}, Initial Valid cost {:.5f} Small train cost {:.5f} Valid BLEU {:.2f}'.format(worker_id, best_valid_cost, small_train_cost, best_bleu))
 
+    best_bleu = 0
+    best_valid_cost = 1e5 #do not let initial state affect the training process
+
     commu_time_sum = 0.0
     cp_time_sum =0.0
     reduce_time_sum = 0.0
 
     start_time = time.time()
     finetune_cnt = 0
-    last_saveto_path = None
+    last_saveto_paths = []
 
     if start_from_histo_data:
         if uidx != 0:

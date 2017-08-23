@@ -3,8 +3,6 @@
 
 from __future__ import print_function
 
-__author__ = 'fyabc'
-
 profile = False
 fX = 'float32'
 
