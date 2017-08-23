@@ -588,7 +588,7 @@ def check_options(options):
         assert options['unit_size'] > 0 and options['cond_unit_size'] > 0, 'Unit size must > 0'
 
     if options['reload_']:
-        assert os.path.exists(options['preload'])
+        assert os.path.exists(options['preload']), 'preload file {} does not exist'.format(options['preload'])
 
 
 def search_start_uidx(reload_, preload):
