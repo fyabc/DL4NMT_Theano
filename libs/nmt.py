@@ -445,7 +445,7 @@ Start Time = {}
             if np.isnan(cost) or np.isinf(cost):
                 message('NaN detected')
                 sys.stdout.flush()
-                clip_shared.set_value(np.float32(clip_shared.get_value() * 0.9))
+                clip_shared.set_value(np.float32(clip_shared.get_value() * 0.95))
                 message('Discount clip value to {} at iteration {}'.format(clip_shared.get_value(), uidx))
 
                 #try to load previously best model
