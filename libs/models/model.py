@@ -914,6 +914,7 @@ class NMTModel(object):
         np.savez(saveto_path, history_errs=history_errs,
                  uidx=uidx, **unzip(self.P))
         save_options(self.O, uidx, saveto)
+        return saveto_path
 
     @staticmethod
     def get_input():

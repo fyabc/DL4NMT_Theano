@@ -369,6 +369,7 @@ Start Time = {}
 
     start_time = time.time()
     finetune_cnt = 0
+    last_saveto_path = None
 
     if start_from_histo_data:
         if uidx != 0:
@@ -447,16 +448,25 @@ Start Time = {}
                 clip_shared.set_value(np.float32(clip_shared.get_value() * 0.9))
                 message('Discount clip value to {} at iteration {}'.format(clip_shared.get_value(), uidx))
 
+                #try to load previously best model
+                model_save_path = saveto
+                imm_save_path = saveto
+
+                if not os.path.exists(model_save_path):
+                    #try to load the latest dumped model
+                    message('No saved model at {}\n'.format(model_save_path))
+                    model_save_path = last_saveto_path
+                    imm_save_path = '{}_latest.npz'.format(os.path.splitext(saveto)[0])
+
                 #reload the best saved model
-                if not os.path.exists(saveto):
-                    message('No saved model at {}. Task exited'.format(saveto))
+                if not os.path.exists(model_save_path):
+                    message('No saved model at {}. Task exited'.format(model_save_path))
                     return 1., 1., 1.
                 else:
-                    message('Load previously dumped model at {}'.format(saveto))
+                    message('Load previously dumped model at {}'.format(model_save_path))
                     prev_params = load_params(saveto, params)
                     zipp(prev_params, model.P)
-                    saveto_imm_path = '{}_latest.npz'.format(os.path.splitext(saveto)[0])
-                    prev_imm_data = get_adadelta_imm_data(optimizer, True, saveto_imm_path)
+                    prev_imm_data = get_adadelta_imm_data(optimizer, True, imm_save_path)
                     adadelta_set_imm_data(optimizer, prev_imm_data, imm_shared)
 
             # discount learning rate
@@ -482,7 +492,7 @@ Start Time = {}
                 # save with uidx
                 if not overwrite:
                     print 'Saving the model at iteration {}...'.format(uidx),
-                    model.save_model(saveto, history_errs, uidx)
+                    last_saveto_path = model.save_model(saveto, history_errs, uidx)
                     print 'Done'
                     sys.stdout.flush()
 
