@@ -475,9 +475,9 @@ Start Time = {}
                         # find the model to reload.
                         message('Load previously dumped model at {}, immediate at {}'.format(
                             model_save_path, imm_save_path))
-                        prev_params = load_params(saveto, params)
+                        prev_params = load_params(model_save_path, params)
                         zipp(prev_params, model.P)
-                        prev_imm_data = get_adadelta_imm_data(optimizer, True, imm_save_path)
+                        prev_imm_data = get_adadelta_imm_data(optimizer, True, saveto, reload_iter)
                         adadelta_set_imm_data(optimizer, prev_imm_data, imm_shared)
 
                         break
