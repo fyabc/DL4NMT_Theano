@@ -14,7 +14,7 @@ import numpy as np
 import theano
 import theano.tensor as tensor
 
-from .constants import profile, fX
+from .constants import profile, fX, NaNReloadPrevious
 from .utility.data_iterator import TextIterator
 from .utility.optimizers import Optimizers
 from .utility.utils import *
@@ -309,7 +309,8 @@ Start Time = {}
     lr = tensor.scalar(name='lr')
     print 'Building optimizers...',
 
-    given_imm_data = get_adadelta_imm_data(optimizer, given_imm, preload)
+    uidx = search_start_uidx(reload_, preload)
+    given_imm_data = get_adadelta_imm_data(optimizer, given_imm, preload, uidx)
 
     f_grad_shared, f_update, grads_shared, imm_shared = Optimizers[optimizer](
         lr, model.P, grads, inps, cost, g2=g2, given_imm_data=given_imm_data, alpha = ada_alpha)
@@ -333,7 +334,6 @@ Start Time = {}
     best_valid_cost = 1e6
     best_p = None
     bad_counter = 0
-    uidx = search_start_uidx(reload_, preload)
 
     epoch_n_batches = 0
     pass_batches = 0
@@ -451,26 +451,42 @@ Start Time = {}
                 clip_shared.set_value(np.float32(clip_shared.get_value() * 0.95))
                 message('Discount clip value to {} at iteration {}'.format(clip_shared.get_value(), uidx))
 
-                #try to load previously best model
-                model_save_path = saveto
-                imm_save_path = saveto
+                # reload the N-th previous saved model.
+                reload_iter = (uidx // saveFreq - NaNReloadPrevious + 1) * saveFreq
 
-                if not os.path.exists(model_save_path):
-                    #try to load the latest dumped model
-                    message('No saved model at {}\n'.format(model_save_path))
-                    model_save_path = last_saveto_path
-                    imm_save_path = '{}_latest.npz'.format(os.path.splitext(saveto)[0])
+                if reload_iter < saveFreq:
+                    # if not exist, reload the first saved model.
+                    reload_iter = saveFreq
 
-                #reload the best saved model
-                if not os.path.exists(model_save_path):
-                    message('No saved model at {}. Task exited'.format(model_save_path))
+                can_reload = False
+                while reload_iter < uidx:
+                    model_save_path = '{}.iter{}.npz'.format(os.path.splitext(saveto[0]), reload_iter)
+                    imm_save_path = '{}_imm.iter{}.npz'.format(os.path.splitext(saveto[0]), reload_iter)
+
+                    can_reload = True
+                    if not os.path.exists(model_save_path):
+                        message('No saved model at {}'.format(model_save_path))
+                        can_reload = False
+                    if not os.path.exists(imm_save_path):
+                        message('No saved immediate file at {}'.format(imm_save_path))
+                        can_reload = False
+
+                    if can_reload:
+                        # find the model to reload.
+                        message('Load previously dumped model at {}, immediate at {}'.format(
+                            model_save_path, imm_save_path))
+                        prev_params = load_params(saveto, params)
+                        zipp(prev_params, model.P)
+                        prev_imm_data = get_adadelta_imm_data(optimizer, True, imm_save_path)
+                        adadelta_set_imm_data(optimizer, prev_imm_data, imm_shared)
+
+                        break
+
+                    reload_iter += saveFreq
+
+                if not can_reload:
+                    message('Cannot reload any saved model. Task exited')
                     return 1., 1., 1.
-                else:
-                    message('Load previously dumped model at {}'.format(model_save_path))
-                    prev_params = load_params(saveto, params)
-                    zipp(prev_params, model.P)
-                    prev_imm_data = get_adadelta_imm_data(optimizer, True, imm_save_path)
-                    adadelta_set_imm_data(optimizer, prev_imm_data, imm_shared)
 
             # discount learning rate
             # FIXME: Do NOT enable this and fine-tune at the same time
@@ -495,13 +511,12 @@ Start Time = {}
                 # save with uidx
                 if not overwrite:
                     print 'Saving the model at iteration {}...'.format(uidx),
-                    last_saveto_path = model.save_model(saveto, history_errs, uidx)
+                    model.save_model(saveto, history_errs, uidx)
                     print 'Done'
                     sys.stdout.flush()
 
                 # save immediate data in adadelta
-                saveto_imm_path = '{}_latest.npz'.format(os.path.splitext(saveto)[0])
-                dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto_imm_path)
+                dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto, uidx)
 
             if np.mod(uidx, validFreq) == 0:
                 valid_cost = validation(valid_iterator, f_cost, use_noise)
