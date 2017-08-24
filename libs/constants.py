@@ -6,13 +6,16 @@ from __future__ import print_function
 profile = False
 fX = 'float32'
 
-ImmediateFilenameBackup = '{}_imm.pkl'
-ImmediateFilenameBackup2 = '{}_imm.pkl.gz'
-ImmediateFilename = '{}_imm.npz'
-TempImmediateFilename = '{}_imm_tmp.npz'
+ImmediateFilename = '{}_imm.iter{}.npz'
+TempImmediateFilename = '{}_imm_tmp.iter{}.npz'
+BestImmediateFilename = '{}_imm.npz'
+BestTempImmediateFilename = '{}_imm_tmp.npz'
 
 # Cycle of shuffle data.
 ShuffleCycle = 7
+
+# Load the N-th previous saved model when NaN detected.
+NaNReloadPrevious = 4
 
 # Set datasets
 # train1, train2, small1, small2, valid1, valid2(postprocessed, e.g., bpe and truecase), valid3(original), test1, test2, dic1, dic2
