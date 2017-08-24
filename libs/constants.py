@@ -3,18 +3,19 @@
 
 from __future__ import print_function
 
-__author__ = 'fyabc'
-
 profile = False
 fX = 'float32'
 
-ImmediateFilenameBackup = '{}_imm.pkl'
-ImmediateFilenameBackup2 = '{}_imm.pkl.gz'
-ImmediateFilename = '{}_imm.npz'
-TempImmediateFilename = '{}_imm_tmp.npz'
+ImmediateFilename = '{}_imm.iter{}.npz'
+TempImmediateFilename = '{}_imm_tmp.iter{}.npz'
+BestImmediateFilename = '{}_imm.npz'
+BestTempImmediateFilename = '{}_imm_tmp.npz'
 
 # Cycle of shuffle data.
 ShuffleCycle = 7
+
+# Load the N-th previous saved model when NaN detected.
+NaNReloadPrevious = 4
 
 # Set datasets
 # train1, train2, small1, small2, valid1, valid2(postprocessed, e.g., bpe and truecase), valid3(original), test1, test2, dic1, dic2
@@ -107,7 +108,7 @@ Datasets = {
     'en-de-s2s_bpe': [
         'train.tok.clean.bpe.32000.en', 'train.tok.clean.bpe.32000.de',
         'small_train.tok.clean.bpe.32000.en', 'small_train.tok.clean.bpe.32000.de',
-        'newstest2013.tok.bpe.32000.en', 'newstest2013.tok.bpe.32000.de', '',
+        'newstest2013.tok.bpe.32000.en', 'newstest2013.tok.bpe.32000.de', 'dev_de.tok',
         'newstest2014.tok.bpe.32000.en', 'test_en-de.de.tok',
         'vocab.bpe.32000.pkl', 'vocab.bpe.32000.pkl',
     ],

@@ -588,7 +588,7 @@ def check_options(options):
         assert options['unit_size'] > 0 and options['cond_unit_size'] > 0, 'Unit size must > 0'
 
     if options['reload_']:
-        assert os.path.exists(options['preload'])
+        assert os.path.exists(options['preload']), 'preload file {} does not exist'.format(options['preload'])
 
 
 def search_start_uidx(reload_, preload):
@@ -613,15 +613,15 @@ def make_f_train(f_grad_shared, f_update):
     return f_train
 
 
-def get_adadelta_imm_data(optimizer, given_imm, preload):
+def get_adadelta_imm_data(optimizer, given_imm, preload, iteration=None):
     if given_imm:
-        # [NOTE] preload filename format: filename.iter10000.npz, or filename_latest.npz
+        # [NOTE] preload filename format: filename.iter10000.npz
         _real_filename = os.path.splitext(os.path.splitext(preload)[0])[0]
-        given_imm_filename = ImmediateFilename.format(_real_filename)
+        if iteration is None:
+            given_imm_filename = BestImmediateFilename.format(_real_filename)
+        else:
+            given_imm_filename = ImmediateFilename.format(_real_filename, iteration)
 
-        # For back compatibility
-        given_imm_filename_backup = ImmediateFilenameBackup.format(_real_filename)
-        given_imm_filename_backup2 = ImmediateFilenameBackup2.format(_real_filename)
         if os.path.exists(given_imm_filename):
             message('Loading adadelta immediate data')
             with np.load(given_imm_filename) as data:
@@ -640,26 +640,24 @@ def get_adadelta_imm_data(optimizer, given_imm, preload):
                     ]
                 else:
                     pass
-        elif os.path.exists(given_imm_filename_backup):
-            message('Loading adadelta immediate data')
-            return pkl.load(fopen(given_imm_filename_backup, 'rb'))
-        elif os.path.exists(given_imm_filename_backup2):
-            message('Loading adadelta immediate data')
-            return pkl.load(fopen(given_imm_filename_backup2, 'rb'))
         else:
             message('Immediate data not found.')
     return None
 
 
-def dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto):
+def dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto, iteration=None):
     if optimizer == 'sgd':
         return
 
     if imm_shared is None or dump_imm is None:
         return
 
-    tmp_filename = TempImmediateFilename.format(os.path.splitext(saveto)[0])
-    imm_filename = ImmediateFilename.format(os.path.splitext(saveto)[0])
+    if iteration is None:
+        tmp_filename = BestTempImmediateFilename.format(os.path.splitext(saveto)[0])
+        imm_filename = BestImmediateFilename.format(os.path.splitext(saveto)[0])
+    else:
+        tmp_filename = TempImmediateFilename.format(os.path.splitext(saveto)[0], iteration)
+        imm_filename = ImmediateFilename.format(os.path.splitext(saveto)[0], iteration)
 
     # Dump to temp file
     message('Dumping adadelta immediate data to temp file...', end='')
@@ -679,20 +677,6 @@ def dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto):
     # Move temp file to immediate file
     message('Moving temp file to immediate file...', end='')
     try:
-        os.remove(ImmediateFilenameBackup.format(os.path.splitext(saveto)[0]))
-    except OSError as e:
-        if e.errno == errno.ENOENT:
-            pass
-        else:
-            raise
-    try:
-        os.remove(ImmediateFilenameBackup2.format(os.path.splitext(saveto)[0]))
-    except OSError as e:
-        if e.errno == errno.ENOENT:
-            pass
-        else:
-            raise
-    try:
         os.remove(imm_filename)
     except OSError as e:
         if e.errno == errno.ENOENT:
@@ -701,6 +685,7 @@ def dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto):
             raise
     os.rename(tmp_filename, imm_filename)
     message('Done')
+
 
 def adadelta_set_imm_data(optimizer, given_imm_data, imm_shared):
     if optimizer == 'adadelta':

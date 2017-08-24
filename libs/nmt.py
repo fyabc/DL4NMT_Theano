@@ -14,7 +14,7 @@ import numpy as np
 import theano
 import theano.tensor as tensor
 
-from .constants import profile, fX
+from .constants import profile, fX, NaNReloadPrevious
 from .utility.data_iterator import TextIterator
 from .utility.optimizers import Optimizers
 from .utility.utils import *
@@ -139,6 +139,7 @@ def train(dim_word=100,  # word vector dimensionality
           task='en-fr',
 
           fine_tune_patience=8,
+          fine_tune_type = 'cost',
           nccl = False,
           src_vocab_map_file = None,
           tgt_vocab_map_file = None,
@@ -147,6 +148,7 @@ def train(dim_word=100,  # word vector dimensionality
           fix_dp_bug = False,
           io_buffer_size = 40,
           start_epoch = 0,
+          start_from_histo_data = False,
           ):
     model_options = locals().copy()
 
@@ -307,7 +309,8 @@ Start Time = {}
     lr = tensor.scalar(name='lr')
     print 'Building optimizers...',
 
-    given_imm_data = get_adadelta_imm_data(optimizer, given_imm, preload)
+    uidx = search_start_uidx(reload_, preload)
+    given_imm_data = get_adadelta_imm_data(optimizer, given_imm, preload, uidx)
 
     f_grad_shared, f_update, grads_shared, imm_shared = Optimizers[optimizer](
         lr, model.P, grads, inps, cost, g2=g2, given_imm_data=given_imm_data, alpha = ada_alpha)
@@ -331,7 +334,6 @@ Start Time = {}
     best_valid_cost = 1e6
     best_p = None
     bad_counter = 0
-    uidx = search_start_uidx(reload_, preload)
 
     epoch_n_batches = 0
     pass_batches = 0
@@ -361,12 +363,29 @@ Start Time = {}
     best_bleu = translate_dev_get_bleu(model, f_init, f_next, trng, use_noise) if reload_ else 0
     message('Worker id {}, Initial Valid cost {:.5f} Small train cost {:.5f} Valid BLEU {:.2f}'.format(worker_id, best_valid_cost, small_train_cost, best_bleu))
 
+    best_bleu = 0
+    best_valid_cost = 1e5 #do not let initial state affect the training process
+
     commu_time_sum = 0.0
     cp_time_sum =0.0
     reduce_time_sum = 0.0
 
     start_time = time.time()
     finetune_cnt = 0
+    last_saveto_paths = []
+
+    if start_from_histo_data:
+        if uidx != 0:
+            epoch_n_batches = get_epoch_batch_cnt(dataset_src, dataset_tgt, vocab_filenames, batch_size, maxlen, n_words_src, n_words) \
+                if worker_id == 0 else None
+        else:
+            epoch_n_batches = 1 #avoid heavy data IO
+
+        if dist_type == 'mpi_reduce':
+            epoch_n_batches = mpi_communicator.bcast(epoch_n_batches, root = 0)
+
+        start_epoch = start_epoch + uidx / epoch_n_batches
+        pass_batches = uidx % epoch_n_batches
 
     for eidx in xrange(start_epoch, max_epochs):
         if shuffle_data:
@@ -429,20 +448,45 @@ Start Time = {}
             if np.isnan(cost) or np.isinf(cost):
                 message('NaN detected')
                 sys.stdout.flush()
-                clip_shared.set_value(np.float32(clip_shared.get_value() * 0.9))
+                clip_shared.set_value(np.float32(clip_shared.get_value() * 0.95))
                 message('Discount clip value to {} at iteration {}'.format(clip_shared.get_value(), uidx))
 
-                #reload the best saved model
-                if not os.path.exists(saveto):
-                    message('No saved model at {}. Task exited'.format(saveto))
+                # reload the N-th previous saved model.
+                reload_iter = (uidx // saveFreq - NaNReloadPrevious + 1) * saveFreq
+
+                if reload_iter < saveFreq:
+                    # if not exist, reload the first saved model.
+                    reload_iter = saveFreq
+
+                can_reload = False
+                while reload_iter < uidx:
+                    model_save_path = '{}.iter{}.npz'.format(os.path.splitext(saveto[0]), reload_iter)
+                    imm_save_path = '{}_imm.iter{}.npz'.format(os.path.splitext(saveto[0]), reload_iter)
+
+                    can_reload = True
+                    if not os.path.exists(model_save_path):
+                        message('No saved model at {}'.format(model_save_path))
+                        can_reload = False
+                    if not os.path.exists(imm_save_path):
+                        message('No saved immediate file at {}'.format(imm_save_path))
+                        can_reload = False
+
+                    if can_reload:
+                        # find the model to reload.
+                        message('Load previously dumped model at {}, immediate at {}'.format(
+                            model_save_path, imm_save_path))
+                        prev_params = load_params(model_save_path, params)
+                        zipp(prev_params, model.P)
+                        prev_imm_data = get_adadelta_imm_data(optimizer, True, saveto, reload_iter)
+                        adadelta_set_imm_data(optimizer, prev_imm_data, imm_shared)
+
+                        break
+
+                    reload_iter += saveFreq
+
+                if not can_reload:
+                    message('Cannot reload any saved model. Task exited')
                     return 1., 1., 1.
-                else:
-                    message('Load previously dumped model at {}'.format(saveto))
-                    prev_params = load_params(saveto, params)
-                    zipp(prev_params, model.P)
-                    saveto_imm_path = '{}_latest.npz'.format(os.path.splitext(saveto)[0])
-                    prev_imm_data = get_adadelta_imm_data(optimizer, True, saveto_imm_path)
-                    adadelta_set_imm_data(optimizer, prev_imm_data, imm_shared)
 
             # discount learning rate
             # FIXME: Do NOT enable this and fine-tune at the same time
@@ -472,8 +516,7 @@ Start Time = {}
                     sys.stdout.flush()
 
                 # save immediate data in adadelta
-                saveto_imm_path = '{}_latest.npz'.format(os.path.splitext(saveto)[0])
-                dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto_imm_path)
+                dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto, uidx)
 
             if np.mod(uidx, validFreq) == 0:
                 valid_cost = validation(valid_iterator, f_cost, use_noise)
@@ -482,11 +525,26 @@ Start Time = {}
                 message('Worker {} Valid cost {:.5f} Small train cost {:.5f} Valid BLEU {:.2f} Bad count {}'.format(worker_id, valid_cost, small_train_cost, valid_bleu, bad_counter))
                 sys.stdout.flush()
 
-                # Fine-tune based on dev cost
+                # Fine-tune based on dev cost or bleu
                 if fine_tune_patience > 0:
+                    better_perf = False
                     if valid_bleu > best_bleu:
-                        bad_counter = 0
+                        if fine_tune_type != 'cost':
+                            bad_counter = 0
+                            better_perf = True
                         best_bleu = valid_bleu
+                    if valid_cost < best_valid_cost:
+                        if fine_tune_type == 'cost':
+                            bad_counter = 0
+                            better_perf = True
+                        best_valid_cost = valid_cost
+
+                    if better_perf:
+                        #safe sync before dump to make sure the models are the same on every worker
+                        if dist_type == 'mpi_reduce':
+                            all_reduce_params_nccl(nccl_comm, itemlist(model.P))
+                            for t_value in itemlist(model.P):
+                                t_value.set_value(t_value.get_value() / workers_cnt)
                         #dump the best model so far, including the immediate file
                         if worker_id == 0:
                             message('Dump the the best model so far at uidx {}'.format(uidx))
@@ -497,9 +555,9 @@ Start Time = {}
                         if bad_counter >= fine_tune_patience:
                             print 'Fine tune:',
                             if finetune_cnt % 2 == 0:
-                                lrate = np.float32(lrate * 0.5)
+                                lrate = np.float32(lrate * 0.1)
                                 message('Discount learning rate to {} at iteration {} at workder {}'.format(lrate, uidx, worker_id))
-                                if lrate <= 0.08:
+                                if lrate <= 0.05:
                                     message('Learning rate decayed to {:.5f}, task completed'.format(lrate))
                                     return 1., 1., 1.
                             else:

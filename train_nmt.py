@@ -134,6 +134,9 @@ def main():
                                            'each line is in the form physical_gpu_id\\theano_id')
     parser.add_argument('--ft_patience', action='store', metavar='N', dest='fine_tune_patience', type=int, default=-1,
                         help='Fine tune patience, default is %(default)s, set 8 to enable it')
+    parser.add_argument('--ft_type', action = 'store', metavar ='type', dest = 'finetune_type', type = str, default= 'bleu',
+                        help = 'Fine tune by what measure, default is "bleu", can be set to "cost"')
+
     parser.add_argument('--valid_freq', action='store', metavar='N', dest='valid_freq', type=int, default=5000,
                         help='Validation frequency, default is 5000')
     parser.add_argument('--trg_att', action='store', metavar='N', dest='trg_attention_layer_id', type=int, default=None,
@@ -141,7 +144,9 @@ def main():
     parser.add_argument('--fix_dp_bug', action="store_true", default=False, dest='fix_dp_bug',
                         help='Fix previous dropout bug, default to False, set to True')
     parser.add_argument('--abandon_imm', action="store_true", default=False, dest='abandon_imm',
-                        help='Whether to load previous immediate params, default to True, set to False')
+                        help='Whether to load previous immediate params, default to False, set to True')
+    parser.add_argument('--start_from_histo_data', action="store_true", default=False, dest='start_from_histo_data',
+                        help='Whether to start from previous untrained data, as calculated by uidx. Default to False, set to True')
     parser.add_argument('--reader_buffer_size', action='store', default=40, type=int, dest='buffer_size',
                         help='The buffer size in data reader, default to 40')
     parser.add_argument('--start_epoch', action='store', default=00, type=int, dest='start_epoch',
@@ -286,6 +291,8 @@ def main():
         fix_dp_bug= args.fix_dp_bug,
         io_buffer_size= args.buffer_size,
         start_epoch= args.start_epoch,
+        start_from_histo_data =  args.start_from_histo_data,
+        fine_tune_type= args.finetune_type,
     )
 
 
