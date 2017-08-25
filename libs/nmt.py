@@ -460,8 +460,8 @@ Start Time = {}
 
                 can_reload = False
                 while reload_iter < uidx:
-                    model_save_path = '{}.iter{}.npz'.format(os.path.splitext(saveto[0]), reload_iter)
-                    imm_save_path = '{}_imm.iter{}.npz'.format(os.path.splitext(saveto[0]), reload_iter)
+                    model_save_path = '{}.iter{}.npz'.format(os.path.splitext(saveto)[0], reload_iter)
+                    imm_save_path = '{}_imm.iter{}.npz'.format(os.path.splitext(saveto)[0], reload_iter)
 
                     can_reload = True
                     if not os.path.exists(model_save_path):
