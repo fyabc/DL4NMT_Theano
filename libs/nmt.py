@@ -338,8 +338,6 @@ Start Time = {}
     epoch_n_batches = 0
     pass_batches = 0
 
-    print 'worker', worker_id, 'uidx', uidx, 'l_rate', lrate, 'ada_alpha', ada_alpha, 'n_batches', epoch_n_batches, 'start_epoch', start_epoch, 'pass_batches', pass_batches
-
     start_uidx = uidx
 
     if dump_before_train:
@@ -386,6 +384,8 @@ Start Time = {}
 
         start_epoch = start_epoch + uidx / epoch_n_batches
         pass_batches = uidx % epoch_n_batches
+
+    print 'worker', worker_id, 'uidx', uidx, 'l_rate', lrate, 'ada_alpha', ada_alpha, 'n_batches', epoch_n_batches, 'start_epoch', start_epoch, 'pass_batches', pass_batches
 
     for eidx in xrange(start_epoch, max_epochs):
         if shuffle_data:
