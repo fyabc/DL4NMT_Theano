@@ -418,7 +418,7 @@ class NMTModel(object):
         emb_shifted = T.zeros_like(tgt_embedding)
         emb_shifted = T.set_subtensor(emb_shifted[1:], tgt_embedding[:-1])
         tgt_embedding = emb_shifted
-        pre_projected_context = self.attention_projected_context(tgt_embedding, prefix='decoder')
+        pre_projected_context = self.attention_projected_context(context, prefix='decoder')
 
         # Decoder - pass through the decoder conditional gru with attention
         hidden_decoder, context_decoder, opt_ret['dec_alphas'], _ = self.decoder(
