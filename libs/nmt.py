@@ -338,8 +338,6 @@ Start Time = {}
     epoch_n_batches = 0
     pass_batches = 0
 
-    print 'worker', worker_id, 'uidx', uidx, 'l_rate', lrate, 'ada_alpha', ada_alpha, 'n_batches', epoch_n_batches, 'start_epoch', start_epoch, 'pass_batches', pass_batches
-
     start_uidx = uidx
 
     if dump_before_train:
@@ -386,6 +384,8 @@ Start Time = {}
 
         start_epoch = start_epoch + uidx / epoch_n_batches
         pass_batches = uidx % epoch_n_batches
+
+    print 'worker', worker_id, 'uidx', uidx, 'l_rate', lrate, 'ada_alpha', ada_alpha, 'n_batches', epoch_n_batches, 'start_epoch', start_epoch, 'pass_batches', pass_batches
 
     for eidx in xrange(start_epoch, max_epochs):
         if shuffle_data:
@@ -434,16 +434,13 @@ Start Time = {}
                 cp_time_sum += gpucpu_cp_time
 
                 g2_value = f_grads_clip()
-                print '@Worker = {}, Reduce time = {:.5f}, Commu time = {:.5f}, Copy time = {:.5f}'.format(worker_id, reduce_time, commu_time, gpucpu_cp_time)
+                print '@Worker = {}, Reduce time = {:.5f}, Commu time = {:.5f}, Copy time = {:.5f}'.\
+                    format(worker_id, reduce_time, commu_time, gpucpu_cp_time)
 
-            curr_lr = lrate if not dist_type or dist_recover_lr_iter < effective_uidx else lrate * 0.05 + effective_uidx * lrate / dist_recover_lr_iter * 0.95
+            curr_lr = lrate if not dist_type or dist_recover_lr_iter < effective_uidx \
+                else lrate * 0.05 + effective_uidx * lrate / dist_recover_lr_iter * 0.95
             if curr_lr < lrate:
                 print 'Curr lr {:.3f}'.format(curr_lr)
-
-            # do the update on parameters
-            f_update(curr_lr)
-
-            ud = time.time() - ud_start
 
             if np.isnan(cost) or np.isinf(cost):
                 message('NaN detected')
@@ -460,8 +457,8 @@ Start Time = {}
 
                 can_reload = False
                 while reload_iter < uidx:
-                    model_save_path = '{}.iter{}.npz'.format(os.path.splitext(saveto[0]), reload_iter)
-                    imm_save_path = '{}_imm.iter{}.npz'.format(os.path.splitext(saveto[0]), reload_iter)
+                    model_save_path = '{}.iter{}.npz'.format(os.path.splitext(saveto)[0], reload_iter)
+                    imm_save_path = '{}_imm.iter{}.npz'.format(os.path.splitext(saveto)[0], reload_iter)
 
                     can_reload = True
                     if not os.path.exists(model_save_path):
@@ -480,6 +477,9 @@ Start Time = {}
                         prev_imm_data = get_adadelta_imm_data(optimizer, True, saveto, reload_iter)
                         adadelta_set_imm_data(optimizer, prev_imm_data, imm_shared)
 
+                        #begin scale the model parameters
+                        for (p, grad) in zip(itemlist(model.P), grads_shared):
+                            grad.set_value(p.get_value() * np.float32(.1))
                         break
 
                     reload_iter += saveFreq
@@ -487,6 +487,11 @@ Start Time = {}
                 if not can_reload:
                     message('Cannot reload any saved model. Task exited')
                     return 1., 1., 1.
+
+            # do the update on parameters
+            f_update(curr_lr)
+
+            ud = time.time() - ud_start
 
             # discount learning rate
             # FIXME: Do NOT enable this and fine-tune at the same time
