@@ -586,8 +586,6 @@ class NMTModel(object):
             get_gates=get_gates,
         )
 
-
-
         # Get memory_out and hiddens_without_dropout
         # FIXME: stack list into a single tensor
         memory_out = None
@@ -614,7 +612,7 @@ class NMTModel(object):
         # Compile a function to do the whole thing above, next word probability,
         # sampled word for the next target, next hidden state to be used
         print('Building f_next..', end='')
-        inps = [y, ctx, projected_context1, init_state]
+        inps = [y, ctx, proj_ctx, init_state]
         if batch_mode:
             inps.insert(2, x_mask)
         outs = [next_probs, next_sample, hiddens_without_dropout]
