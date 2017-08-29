@@ -798,14 +798,6 @@ class NMTModel(object):
         for ii in xrange(maxlen):
             ctx = np.repeat(ctx0, lives_k, axis=1)
             x_extend_masks = np.repeat(x_mask, lives_k, axis=1)
-            cursor_start, cursor_end = 0, lives_k[0]
-            for jj in xrange(batch_size):
-                if lives_k[jj] > 0:
-                    ctx[:, cursor_start: cursor_end, :] = np.repeat(ctx0[:, jj, :][:, None, :], lives_k[jj], axis=1)
-                    x_extend_masks[:, cursor_start: cursor_end] = np.repeat(x_mask[:, jj][:, None], lives_k[jj], axis=1)
-                if jj < batch_size - 1:
-                    cursor_start = cursor_end
-                    cursor_end += lives_k[jj + 1]
 
             inps = [next_w, ctx, x_extend_masks, next_state]
             if 'lstm' in unit:
