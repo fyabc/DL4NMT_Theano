@@ -334,7 +334,7 @@ def param_init_lstm_cond(O, params, prefix='lstm_cond', nin=None, dim=None, dimc
     return params
 
 
-def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, one_step=False, init_memory=None,
+def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, one_step=False, init_memory=None, projected_context=None,
                     init_state=None, context_mask=None, **kwargs):
     """Conditional LSTM layer with attention
 
@@ -370,8 +370,6 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
     # Initial/previous state
     if init_state is None:
         init_state = T.alloc(0., n_samples, dim)
-
-    projected_context = T.dot(context, P[_p(prefix, 'Wc_att', layer_id)]) + P[_p(prefix, 'b_att', layer_id)]
 
     # Projected x
     if multi:
