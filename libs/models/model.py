@@ -13,6 +13,7 @@ import os
 import copy
 
 import bottleneck
+import numexpr as ne
 import theano
 import theano.tensor as T
 import numpy as np
@@ -417,11 +418,12 @@ class NMTModel(object):
         emb_shifted = T.zeros_like(tgt_embedding)
         emb_shifted = T.set_subtensor(emb_shifted[1:], tgt_embedding[:-1])
         tgt_embedding = emb_shifted
+        pre_projected_context = self.attention_projected_context(context, prefix='decoder')
 
         # Decoder - pass through the decoder conditional gru with attention
         hidden_decoder, context_decoder, opt_ret['dec_alphas'], _ = self.decoder(
             tgt_embedding, y_mask=y_mask, init_state=init_decoder_state, context=context, x_mask=x_mask,
-            dropout_params=dropout_params, one_step=False,
+            projected_context=pre_projected_context,dropout_params=dropout_params, one_step=False,
         )
 
         trng, use_noise, probs = self.get_word_probability(hidden_decoder, context_decoder, tgt_embedding,
@@ -559,6 +561,12 @@ class NMTModel(object):
         f_init = theano.function(inps, outs, name='f_init', profile=profile)
         print('Done')
 
+
+        pre_projected_context_ = self.attention_projected_context(ctx, prefix='decoder')
+        f_att_projected = theano.function([ctx], pre_projected_context_, name='f_att_projected', profile=profile)
+
+
+
         # x: 1 x 1
         y = T.vector('y_sampler', dtype='int64')
         init_state = T.tensor3('init_state', dtype=fX)
@@ -568,14 +576,17 @@ class NMTModel(object):
         emb = T.switch(y[:, None] < 0,
                        T.alloc(0., 1, self.P['Wemb_dec'].shape[1]),
                        self.P['Wemb_dec'][y])
+        projected_context1 = T.tensor3('projected_context1', dtype=fX)
 
         # Apply one step of conditional gru with attention
         hidden_decoder, context_decoder, _, kw_ret = self.decoder(
-            emb, y_mask=None, init_state=init_state, context=ctx,
+            emb, y_mask=None, init_state=init_state, context=ctx, projected_context=projected_context1,
             x_mask=x_mask if batch_mode else None,
             dropout_params=dropout_params, one_step=True, init_memory=init_memory,
             get_gates=get_gates,
         )
+
+
 
         # Get memory_out and hiddens_without_dropout
         # FIXME: stack list into a single tensor
@@ -603,7 +614,7 @@ class NMTModel(object):
         # Compile a function to do the whole thing above, next word probability,
         # sampled word for the next target, next hidden state to be used
         print('Building f_next..', end='')
-        inps = [y, ctx, init_state]
+        inps = [y, ctx, projected_context1, init_state]
         if batch_mode:
             inps.insert(2, x_mask)
         outs = [next_probs, next_sample, hiddens_without_dropout]
@@ -622,7 +633,7 @@ class NMTModel(object):
         f_next = theano.function(inps, outs, name='f_next', profile=profile)
         print('Done')
 
-        return f_init, f_next
+        return f_init, [f_next, f_att_projected]
 
     def gen_sample(self, f_init, f_next, x, trng=None, k=1, maxlen=30,
                    stochastic=True, argmax=False, **kwargs):
@@ -794,24 +805,28 @@ class NMTModel(object):
         next_w = np.array([-1] * batch_size, dtype='int64')  # bos indicator
         next_state = np.tile(next_state[None, :, :], (self.O['n_decoder_layers'], 1, 1))
         next_memory = np.zeros((self.O['n_decoder_layers'], next_state.shape[1], next_state.shape[2]), dtype=fX)
+        ctx = np.repeat(ctx0, lives_k, axis=1)
+        projected_context_ = f_next[1](ctx)
 
         for ii in xrange(maxlen):
             ctx = np.repeat(ctx0, lives_k, axis=1)
+            p_context_ = np.repeat(projected_context_, lives_k, axis=1)
             x_extend_masks = np.repeat(x_mask, lives_k, axis=1)
             cursor_start, cursor_end = 0, lives_k[0]
             for jj in xrange(batch_size):
                 if lives_k[jj] > 0:
                     ctx[:, cursor_start: cursor_end, :] = np.repeat(ctx0[:, jj, :][:, None, :], lives_k[jj], axis=1)
+                    p_context_[:, cursor_start: cursor_end, :] = np.repeat(projected_context_[:, jj, :][:, None, :], lives_k[jj], axis=1)
                     x_extend_masks[:, cursor_start: cursor_end] = np.repeat(x_mask[:, jj][:, None], lives_k[jj], axis=1)
                 if jj < batch_size - 1:
                     cursor_start = cursor_end
                     cursor_end += lives_k[jj + 1]
 
-            inps = [next_w, ctx, x_extend_masks, next_state]
+            inps = [next_w, ctx, x_extend_masks, p_context_, next_state]
             if 'lstm' in unit:
                 inps.append(next_memory)
 
-            ret = f_next(*inps)
+            ret = f_next[0](*inps)
 
             if 'lstm' in unit:
                 next_memory = ret[3]
@@ -832,7 +847,8 @@ class NMTModel(object):
                         cursor_end += lives_k[jj + 1]
                     continue
                 index_range = range(cursor_start, cursor_end)
-                cand_scores = batch_hyp_scores[jj][:, None] - np.log(next_p[index_range, :])
+                tmp = next_p[index_range, :]
+                cand_scores = batch_hyp_scores[jj][:, None] - ne.evaluate('log(tmp)')
                 cand_flat = cand_scores.flatten()
 
                 try:
@@ -1127,7 +1143,7 @@ class NMTModel(object):
 
         return context, kw_ret
 
-    def decoder(self, tgt_embedding, y_mask, init_state, context, x_mask,
+    def decoder(self, tgt_embedding, y_mask, init_state, context, x_mask, projected_context, 
                 dropout_params=None, one_step=False, init_memory=None, **kwargs):
         """Multi-layer GRU decoder.
 
@@ -1265,7 +1281,7 @@ class NMTModel(object):
                     inputs.append(outputs[-1])
 
             hidden_decoder, context_decoder, alpha_decoder, kw_ret_att = get_build(unit + '_cond')(
-                self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, context=context,
+                self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, context=context, projected_context=projected_context, 
                 context_mask=x_mask, one_step=one_step, init_state=init_state[attention_layer_id],
                 dropout_params=dropout_params, layer_id=attention_layer_id, init_memory=init_memory[attention_layer_id],
                 get_gates=get_gates, unit_size=unit_size,
@@ -1384,6 +1400,11 @@ class NMTModel(object):
         for k, v in np.load(load_filename).iteritems():
             if k in self.P:
                 self.P[k].set_value(v)
+
+    def attention_projected_context(self, context, prefix='lstm', **kwargs):
+        attention_layer_id = self.O['attention_layer_id']
+        pre_projected_context_ = T.dot(context, self.P[_p(prefix, 'Wc_att', attention_layer_id)]) + self.P[_p(prefix, 'b_att', attention_layer_id)]
+        return pre_projected_context_
 
 
 __all__ = [
