@@ -374,6 +374,7 @@ class NMTModel(object):
         tgt_embedding = emb_shifted
 
         # Decoder - pass through the decoder conditional gru with attention
+        # FIXME: not add the projected_context param here
         hidden_decoder, context_decoder, _, _ = self.decoder(
             tgt_embedding, y_mask, init_decoder_state, context, x_mask,
             dropout_params=None,
@@ -522,6 +523,7 @@ class NMTModel(object):
         use_noise = kwargs.pop('use_noise', theano.shared(np.float32(0.)))
         get_gates = kwargs.pop('get_gates', False)
         dropout_rate = kwargs.pop('dropout', False)
+        need_srcattn = kwargs.pop('need_srcattn', False)
         if dropout_rate is not False:
             dropout_params = [use_noise, trng, dropout_rate]
         else:
@@ -561,11 +563,8 @@ class NMTModel(object):
         f_init = theano.function(inps, outs, name='f_init', profile=profile)
         print('Done')
 
-
         pre_projected_context_ = self.attention_projected_context(ctx, prefix='decoder')
         f_att_projected = theano.function([ctx], pre_projected_context_, name='f_att_projected', profile=profile)
-
-
 
         # x: 1 x 1
         y = T.vector('y_sampler', dtype='int64')
@@ -579,7 +578,7 @@ class NMTModel(object):
         proj_ctx = T.tensor3('proj_ctx', dtype=fX)
 
         # Apply one step of conditional gru with attention
-        hidden_decoder, context_decoder, _, kw_ret = self.decoder(
+        hidden_decoder, context_decoder, alpha_src, kw_ret = self.decoder(
             emb, y_mask=None, init_state=init_state, context=ctx, projected_context=proj_ctx,
             x_mask=x_mask if batch_mode else None,
             dropout_params=dropout_params, one_step=True, init_memory=init_memory,
@@ -616,6 +615,8 @@ class NMTModel(object):
         if batch_mode:
             inps.insert(2, x_mask)
         outs = [next_probs, next_sample, hiddens_without_dropout]
+        if need_srcattn:
+            outs.append(alpha_src)
         if 'lstm' in unit:
             inps.append(init_memory)
             outs.append(memory_out)
@@ -642,7 +643,7 @@ class NMTModel(object):
 
         kw_ret = {}
         have_kw_ret = bool(kwargs)
-
+        attn_src = kwargs.pop('attn_src', False) #used in zh->en translation
         get_gates = kwargs.pop('get_gates', False)
         if get_gates:
             kw_ret['input_gates_list'] = []
@@ -662,6 +663,8 @@ class NMTModel(object):
 
         sample = []
         sample_score = []
+        if attn_src:
+            sample_attn_src_words = []
         if stochastic:
             sample_score = 0
 
@@ -670,6 +673,8 @@ class NMTModel(object):
 
         hyp_samples = [[]] * live_k
         hyp_scores = np.zeros(live_k).astype(fX)
+        if attn_src:
+            hyp_attn_src_words = [[] for _ in xrange(live_k)]
         hyp_states = []
 
         # get initial state of decoder rnn and encoder context
@@ -687,8 +692,11 @@ class NMTModel(object):
 
             ret = f_next(*inps)
             next_p, next_w, next_state = ret[0], ret[1], ret[2]
+            if attn_src:
+                attn = ret[3]
+
             if 'lstm' in unit:
-                next_memory = ret[3]
+                next_memory = ret[-1]
 
             if get_gates:
                 kw_ret['input_gates_list'].append(ret[-6])
@@ -724,12 +732,16 @@ class NMTModel(object):
                 new_hyp_scores = np.zeros(k - dead_k).astype(fX)
                 new_hyp_states = []
                 new_hyp_memories = []
+                if attn_src:
+                    new_attn_src_words = []
 
                 for idx, [ti, wi] in enumerate(zip(trans_indices, word_indices)):
                     new_hyp_samples.append(hyp_samples[ti] + [wi])
                     new_hyp_scores[idx] = copy.copy(costs[idx])
                     new_hyp_states.append(copy.copy(next_state[:, ti, :]))
                     new_hyp_memories.append(copy.copy(next_memory[:, ti, :]))
+                    if attn_src:
+                        new_attn_src_words.append(copy.copy(hyp_attn_src_words[ti] + [attn[ti].argmax()]))
 
                 # check the finished samples
                 new_live_k = 0
@@ -737,11 +749,15 @@ class NMTModel(object):
                 hyp_scores = []
                 hyp_states = []
                 hyp_memories = []
+                if attn_src:
+                    hyp_attn_src_words = []
 
                 for idx in xrange(len(new_hyp_samples)):
                     if new_hyp_samples[idx][-1] == 0:
                         sample.append(new_hyp_samples[idx])
                         sample_score.append(new_hyp_scores[idx])
+                        if attn_src:
+                            sample_attn_src_words.append(new_attn_src_words[idx])
                         dead_k += 1
                     else:
                         new_live_k += 1
@@ -749,6 +765,8 @@ class NMTModel(object):
                         hyp_scores.append(new_hyp_scores[idx])
                         hyp_states.append(new_hyp_states[idx])
                         hyp_memories.append(new_hyp_memories[idx])
+                        if attn_src:
+                            hyp_attn_src_words.append(new_attn_src_words[idx])
                 hyp_scores = np.array(hyp_scores)
                 live_k = new_live_k
 
@@ -769,8 +787,8 @@ class NMTModel(object):
                     sample_score.append(hyp_scores[idx])
 
         if have_kw_ret:
-            return sample, sample_score, kw_ret
-        return sample, sample_score
+            return sample, sample_score, kw_ret if not attn_src else sample, sample_score, sample_attn_src_words, kw_ret
+        return sample, sample_score if not attn_src else sample, sample_score, sample_attn_src_words
 
     def gen_batch_sample(self, f_init, f_next, x, x_mask, trng=None, k=1, maxlen=30, eos_id=0, **kwargs):
         """
@@ -782,6 +800,8 @@ class NMTModel(object):
         have_kw_ret = bool(kwargs)
 
         ret_memory = kwargs.pop('ret_memory', False)
+        attn_src = kwargs.pop('attn_src', False) #used in zh->en translation
+
         if ret_memory:
             kw_ret['memory'] = []
 
@@ -790,12 +810,16 @@ class NMTModel(object):
         batch_size = x.shape[1]
         sample = [[] for _ in xrange(batch_size)]
         sample_score = [[] for _ in xrange(batch_size)]
+        if attn_src:
+            sample_attn_src_words = [[] for _ in xrange(batch_size)]
 
         lives_k = [1] * batch_size
         deads_k = [0] * batch_size
 
         batch_hyp_samples = [[[]] for _ in xrange(batch_size)]
         batch_hyp_scores = [np.zeros(ii, dtype=fX) for ii in lives_k]
+        if attn_src:
+            batch_hyp_attn_src_words = [[[]] for _ in xrange(batch_size)]
 
         # get initial state of decoder rnn and encoder context
         ret = f_init(x, x_mask)
@@ -818,7 +842,7 @@ class NMTModel(object):
             ret = f_next[0](*inps)
 
             if 'lstm' in unit:
-                next_memory = ret[3]
+                next_memory = ret[-1]
 
                 if ret_memory:
                     kw_ret['memory'].append(next_memory)
@@ -828,6 +852,9 @@ class NMTModel(object):
             next_memory_list = []
 
             next_p, next_state = ret[0], ret[2]
+            if attn_src:
+                attn = ret[3]
+
             cursor_start, cursor_end = 0, lives_k[0]
 
             for jj in xrange(batch_size):
@@ -856,12 +883,17 @@ class NMTModel(object):
                 new_hyp_scores = np.zeros(k - deads_k[jj]).astype('float32')
                 new_hyp_states = []
                 new_hyp_memories = []
+                if attn_src:
+                    new_attn_src_words = []
 
                 for idx, [ti, wi] in enumerate(zip(trans_indices, word_indices)):
                     new_hyp_samples.append(batch_hyp_samples[jj][ti] + [wi])
                     new_hyp_scores[idx] = copy.copy(costs[idx])
                     new_hyp_states.append(copy.copy(next_state[:, cursor_start + ti, :]))
                     new_hyp_memories.append(copy.copy(next_memory[:, cursor_start + ti, :]))
+                    if attn_src:
+                        new_attn_src_words.append(copy.copy(batch_hyp_attn_src_words[jj][ti] + \
+                                                        [attn[cursor_start + ti].argmax()]))
 
                 # check the finished samples
                 new_live_k = 0
@@ -869,11 +901,15 @@ class NMTModel(object):
                 hyp_scores = []
                 hyp_states = []
                 hyp_memories = []
+                if attn_src:
+                    batch_hyp_attn_src_words[jj] = []
 
                 for idx in xrange(len(new_hyp_samples)):
                     if new_hyp_samples[idx][-1] == eos_id:
                         sample[jj].append(new_hyp_samples[idx])
                         sample_score[jj].append(new_hyp_scores[idx])
+                        if attn_src:
+                            sample_attn_src_words[jj].append(new_attn_src_words[idx])
                         deads_k[jj] += 1
                     else:
                         new_live_k += 1
@@ -881,6 +917,8 @@ class NMTModel(object):
                         hyp_scores.append(new_hyp_scores[idx])
                         hyp_states.append(new_hyp_states[idx])
                         hyp_memories.append(new_hyp_memories[idx])
+                        if attn_src:
+                            batch_hyp_attn_src_words[jj].append(new_attn_src_words[idx])
 
                 batch_hyp_scores[jj] = np.array(hyp_scores)
                 lives_k[jj] = new_live_k
@@ -909,8 +947,8 @@ class NMTModel(object):
                     sample_score[jj].append(batch_hyp_scores[jj][idx])
 
         if have_kw_ret:
-            return sample, sample_score, kw_ret
-        return sample, sample_score
+            return sample, sample_score, kw_ret if not attn_src else sample, sample_score, sample_attn_src_words, kw_ret
+        return sample, sample_score if not attn_src else sample, sample_score, sample_attn_src_words
 
     def save_model(self, saveto, history_errs, uidx = -1):
         saveto_path = '{}.iter{}.npz'.format(
