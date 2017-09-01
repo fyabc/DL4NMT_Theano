@@ -230,9 +230,9 @@ def translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target, 
     all_trans = []
     all_attn_src_words = []
     for bidx, seqs in enumerate(all_src_num_blocks):
-        print('\n'.join(seqs2words(seqs, word_idict)) + '\n')
         trans, src_words = translate_block(seqs, model, f_init, f_next, trng, k, attn_src = zhen)
         all_trans.extend(trans)
+        print('\n'.join(seqs2words(trans, word_idict_trg)) + '\n')
         if zhen:
             all_attn_src_words.extend(src_words)
         print(bidx, '/', m_block, 'Done')
