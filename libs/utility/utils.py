@@ -613,7 +613,7 @@ def make_f_train(f_grad_shared, f_update):
     return f_train
 
 
-def get_adadelta_imm_data(optimizer, given_imm, preload, iteration=None):
+def get_optimizer_imm_data(optimizer, given_imm, preload, iteration=None):
     if given_imm:
         # [NOTE] preload filename format: filename.iter10000.npz
         _real_filename = os.path.splitext(os.path.splitext(preload)[0])[0]
@@ -645,7 +645,7 @@ def get_adadelta_imm_data(optimizer, given_imm, preload, iteration=None):
     return None
 
 
-def dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto, iteration=None):
+def dump_optimizer_imm_data(optimizer, imm_shared, dump_imm, saveto, iteration=None):
     if optimizer == 'sgd':
         return
 
@@ -687,14 +687,18 @@ def dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto, iteration=No
     message('Done')
 
 
-def adadelta_set_imm_data(optimizer, given_imm_data, imm_shared):
-    if optimizer == 'adadelta':
-        running_up2, running_grads2 = imm_shared[0], imm_shared[1]
-        for (ru, rg, ru_given, rg_given) in zip(running_up2, running_grads2, given_imm_data[0], given_imm_data[1]):
-            ru.set_value(ru_given)
-            rg.set_value(rg_given)
-    else: #TODO: add adam support
-        return
+def set_optimizer_imm_data(optimizer, given_imm_data, imm_shared):
+    imm_model_start_idx = 0 if optimizer == 'adadelta' else 1
+    for (imm_0, imm_1, imm0_given, imm1_given) in zip(imm_shared[imm_model_start_idx], imm_shared[imm_model_start_idx + 1], given_imm_data[imm_model_start_idx], given_imm_data[imm_model_start_idx + 1]):
+            imm_0.set_value(imm0_given)
+            imm_1.set_value(imm1_given)
+
+    if optimizer == 'adam':
+        imm_shared[0].set_value(given_imm_data[0])
+
+    else:
+        pass
+    return
 
 def create_shuffle_data(datasets_orig, dataset_src, dataset_tgt):
     orig_src, orig_tgt = datasets_orig[0], datasets_orig[1]
@@ -791,9 +795,9 @@ __all__ = [
     'check_options',
     'search_start_uidx',
     'make_f_train',
-    'get_adadelta_imm_data',
-    'dump_adadelta_imm_data',
+    'get_optimizer_imm_data',
+    'dump_optimizer_imm_data',
     'load_shuffle_text_iterator',
     'make_grads_clip_func',
-    'adadelta_set_imm_data',
+    'set_optimizer_imm_data',
 ]

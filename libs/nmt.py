@@ -310,7 +310,7 @@ Start Time = {}
     print 'Building optimizers...',
 
     uidx = search_start_uidx(reload_, preload)
-    given_imm_data = get_adadelta_imm_data(optimizer, given_imm, preload, uidx)
+    given_imm_data = get_optimizer_imm_data(optimizer, given_imm, preload, uidx)
 
     f_grad_shared, f_update, grads_shared, imm_shared = Optimizers[optimizer](
         lr, model.P, grads, inps, cost, g2=g2, given_imm_data=given_imm_data, alpha = ada_alpha)
@@ -365,7 +365,7 @@ Start Time = {}
     best_valid_cost = 1e5 #do not let initial state affect the training process
 
     commu_time_sum = 0.0
-    cp_time_sum =0.0
+    cp_time_sum = 0.0
     reduce_time_sum = 0.0
 
     start_time = time.time()
@@ -385,7 +385,8 @@ Start Time = {}
         start_epoch = start_epoch + uidx / epoch_n_batches
         pass_batches = uidx % epoch_n_batches
 
-    print 'worker', worker_id, 'uidx', uidx, 'l_rate', lrate, 'ada_alpha', ada_alpha, 'n_batches', epoch_n_batches, 'start_epoch', start_epoch, 'pass_batches', pass_batches
+    print 'worker', worker_id, 'uidx', uidx, 'l_rate', lrate, 'ada_alpha', ada_alpha, 'n_batches', epoch_n_batches, \
+        'start_epoch', start_epoch, 'pass_batches', pass_batches
 
     for eidx in xrange(start_epoch, max_epochs):
         if shuffle_data:
@@ -474,8 +475,8 @@ Start Time = {}
                             model_save_path, imm_save_path))
                         prev_params = load_params(model_save_path, params)
                         zipp(prev_params, model.P)
-                        prev_imm_data = get_adadelta_imm_data(optimizer, True, saveto, reload_iter)
-                        adadelta_set_imm_data(optimizer, prev_imm_data, imm_shared)
+                        prev_imm_data = get_optimizer_imm_data(optimizer, True, saveto, reload_iter)
+                        set_optimizer_imm_data(optimizer, prev_imm_data, imm_shared)
 
                         #begin scale the model parameters
                         for (p, grad) in zip(itemlist(model.P), grads_shared):
@@ -521,7 +522,7 @@ Start Time = {}
                     sys.stdout.flush()
 
                 # save immediate data in adadelta
-                dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto, uidx)
+                dump_optimizer_imm_data(optimizer, imm_shared, dump_imm, saveto, uidx)
 
             if np.mod(uidx, validFreq) == 0:
                 valid_cost = validation(valid_iterator, f_cost, use_noise)
@@ -554,7 +555,7 @@ Start Time = {}
                         if worker_id == 0:
                             message('Dump the the best model so far at uidx {}'.format(uidx))
                             model.save_model(saveto, history_errs)
-                            dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto)
+                            dump_optimizer_imm_data(optimizer, imm_shared, dump_imm, saveto)
                     else:
                         bad_counter += 1
                         if bad_counter >= fine_tune_patience:
@@ -562,7 +563,7 @@ Start Time = {}
                             if finetune_cnt % 2 == 0:
                                 lrate = np.float32(lrate * 0.1)
                                 message('Discount learning rate to {} at iteration {} at workder {}'.format(lrate, uidx, worker_id))
-                                if lrate <= 0.05:
+                                if lrate <= 0.005:
                                     message('Learning rate decayed to {:.5f}, task completed'.format(lrate))
                                     return 1., 1., 1.
                             else:

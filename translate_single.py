@@ -12,9 +12,7 @@ import theano
 
 from libs.config import DefaultOptions
 from libs.models import build_and_init_model
-from libs.utility.translate import load_translate_data, seqs2words, translate, translate_block
-
-__author__ = 'fyabc'
+from libs.utility.translate import load_translate_data, seqs2words, translate, translate_block, idx2str_attnBasedUNKReplace, translate_whole
 
 
 def translate_model_single(input_, model_name, options, k, normalize):
@@ -29,9 +27,8 @@ def translate_model_single(input_, model_name, options, k, normalize):
 
     return translate(input_, model, f_init, f_next, trng, k, normalize)
 
-
 def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
-         normalize=False, chr_level=False, batch_size=-1, args=None):
+         normalize=False, chr_level=False, batch_size=-1, zhen = False, src_trg_table_path=None, args=None):
     batch_mode = batch_size > 0
 
     # load model model_options
@@ -50,6 +47,10 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
         print 'Options:'
         pprint(options)
 
+    if src_trg_table_path:
+        with open(src_trg_table_path, 'rb') as f:
+            src_trg_table = pkl.load(f)
+
     from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
     trng = RandomStreams(1234)
     use_noise = theano.shared(np.float32(0.))
@@ -60,7 +61,7 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
 
     model, _ = build_and_init_model(model, options=options, build=False, model_type=model_type)
 
-    f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise, batch_mode=batch_mode, dropout=options['use_dropout'])
+    f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise, batch_mode = batch_mode, dropout=options['use_dropout'])
 
     if not batch_mode:
         word_dict, word_idict, word_idict_trg, input_ = load_translate_data(
@@ -74,19 +75,8 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
             word_idict_trg,
         )
     else:
-        word_dict, word_idict, word_idict_trg, all_src_blocks, m_block = load_translate_data(
-            dictionary, dictionary_target, source_file,
-            batch_mode=True, chr_level=chr_level, n_words_src=options['n_words_src'],batch_size= batch_size,
-        )
-
-        print 'Translating ', source_file, '...'
-        all_sample = []
-        for bidx, seqs in enumerate(all_src_blocks):
-            all_sample.extend(translate_block(seqs, model, f_init, f_next, trng, k))
-            print bidx, '/', m_block, 'Done'
-
-        trans = seqs2words(all_sample, word_idict_trg)
-
+        trans = translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target, source_file, k, normalize,
+                                src_trg_table = src_trg_table, zhen= zhen, n_words_src = options['n_words_src'])
     with open(saveto, 'w') as f:
         print >> f, '\n'.join(trans)
     print 'Done'

@@ -947,8 +947,8 @@ class NMTModel(object):
                     sample_score[jj].append(batch_hyp_scores[jj][idx])
 
         if have_kw_ret:
-            return sample, sample_score, kw_ret if not attn_src else sample, sample_score, sample_attn_src_words, kw_ret
-        return sample, sample_score if not attn_src else sample, sample_score, sample_attn_src_words
+            return sample, sample_score, None, kw_ret if not attn_src else sample, sample_score, sample_attn_src_words, kw_ret
+        return sample, sample_score, None if not attn_src else sample, sample_score, sample_attn_src_words
 
     def save_model(self, saveto, history_errs, uidx = -1):
         saveto_path = '{}.iter{}.npz'.format(
