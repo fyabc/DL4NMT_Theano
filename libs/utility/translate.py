@@ -135,46 +135,29 @@ def load_translate_data(dictionary, dictionary_target, source_file, batch_mode=F
     if not load_input:
         return word_dict, word_idict, word_idict_trg
 
-    if not batch_mode:
-        input_ = []
-        if echo:
-            print('Loading input...', end='')
+    batch_size = kwargs.pop('batch_size', 30)
+    all_src_str = None
+    all_src_hotfixes = None
 
+    if not zh_en:
         with open(source_file, 'r') as f:
-            for _, line in enumerate(f):
-                words = line.strip().split()
+            all_src_sent = [line.strip().split() for line in f]
 
-                x = [word_dict[w] if w in word_dict else unk_id for w in words]
-                x = [ii if ii < n_words_src else unk_id for ii in x]
-                x.append(0)
+        all_src_num = []
 
-                input_.append(x)
-        if echo:
-            print('Done')
-
-        return word_dict, word_idict, word_idict_trg, input_
+        for seg in all_src_sent:
+            tmp = [word_dict.get(w, unk_id) for w in seg]
+            all_src_num.append([w if w < n_words_src else unk_id for w in tmp])
     else:
-        batch_size = kwargs.pop('batch_size', 30)
+        all_src_str, all_src_num, all_src_hotfixes = load_zhen_trans_file(source_file, word_dict, n_words_src)
 
-        if not zh_en:
-            with open(source_file, 'r') as f:
-                all_src_sent = [line.strip().split() for line in f]
+    all_src_num_blocks = []
 
-            all_src_num = []
+    m_block = (len(all_src_num) + batch_size - 1) // batch_size
+    for idx in xrange(m_block):
+        all_src_num_blocks.append(all_src_num[batch_size * idx: batch_size * (idx + 1)])
 
-            for seg in all_src_sent:
-                tmp = [word_dict.get(w, unk_id) for w in seg]
-                all_src_num.append([w if w < n_words_src else unk_id for w in tmp])
-        else:
-            all_src_str, all_src_num, all_src_hotfixes = load_zhen_trans_file(source_file, word_dict, n_words_src)
-
-        all_src_num_blocks = []
-
-        m_block = (len(all_src_num) + batch_size - 1) // batch_size
-        for idx in xrange(m_block):
-            all_src_num_blocks.append(all_src_num[batch_size * idx: batch_size * (idx + 1)])
-
-        return word_dict, word_idict, word_idict_trg, all_src_num_blocks, all_src_str,all_src_hotfixes, m_block
+    return word_dict, word_idict, word_idict_trg, all_src_num_blocks, all_src_str, all_src_hotfixes, m_block
 
 
 def seqs2words(caps, word_idict_trg):
