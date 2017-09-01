@@ -93,8 +93,8 @@ def main():
         bleus[idx] = get_bleu('./data/test/{}'.format(test2), trans_result_file)
         print 'model %s, bleu %.2f, time %02d:%02d' % (idx * args.interval, bleus[idx], m, s)
 
-    args.result_file = './translated/complete/{}_s{}_e{}.txt'.format(os.path.splitext(model_file_name)[0], args.start,
-                                                                     args.end)
+    args.result_file = './translated/complete/{}_s{}_e{}_bs{}.txt'.format(os.path.splitext(model_file_name)[0], args.start,
+                                                                     args.end, args.beam_size)
     bleu_array = sorted(bleus.items(), key=operator.itemgetter(0), reverse=False)
     with open(args.result_file, 'w') as fout:
         fout.write('\n'.join([str(idx) + '\t' + str(score) for (idx, score) in bleu_array]))
