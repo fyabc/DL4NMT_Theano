@@ -232,7 +232,6 @@ def translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target, 
     for bidx, seqs in enumerate(all_src_num_blocks):
         trans, src_words = translate_block(seqs, model, f_init, f_next, trng, k, attn_src = zhen)
         all_trans.extend(trans)
-        print('\n'.join(seqs2words(trans, word_idict_trg)) + '\n')
         if zhen:
             all_attn_src_words.extend(src_words)
         print(bidx, '/', m_block, 'Done')
@@ -243,8 +242,8 @@ def translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target, 
         trans = [
             idx2str_attnBasedUNKReplace(trg_idx, src_str, src_trg_table, word_idict_trg, attn, hotfix)
             for (trg_idx, src_str, attn, hotfix) in zip(all_trans, all_src_str, all_attn_src_words, all_src_hotfixes)]
-    print('\n\n'+ '\n'.join(trans) + '\n')
-    return '\n'.join(trans) + '\n'
+
+    return trans
 
 def get_bleu(ref_file, hyp_in=None, type_in='filename'):
     """Get BLEU score, it will call script 'multi-bleu.perl'.
