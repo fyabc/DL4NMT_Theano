@@ -47,6 +47,7 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
         print 'Options:'
         pprint(options)
 
+    src_trg_table = None
     if src_trg_table_path:
         with open(src_trg_table_path, 'rb') as f:
             src_trg_table = pkl.load(f)
