@@ -790,7 +790,7 @@ class NMTModel(object):
             return sample, sample_score, kw_ret if not attn_src else sample, sample_score, sample_attn_src_words, kw_ret
         return sample, sample_score if not attn_src else sample, sample_score, sample_attn_src_words
 
-    def gen_batch_sample(self, f_init, f_next, x, x_mask, trng=None, k=1, maxlen=30, eos_id=0, **kwargs):
+    def gen_batch_sample(self, f_init, f_next, x, x_mask, trng=None, k=1, maxlen=30, eos_id=0, attn_src = False, **kwargs):
         """
         Only used for Batch Beam Search;
         Do not Support Stochastic Sampling
@@ -800,7 +800,6 @@ class NMTModel(object):
         have_kw_ret = bool(kwargs)
 
         ret_memory = kwargs.pop('ret_memory', False)
-        attn_src = kwargs.pop('attn_src', False) #used in zh->en translation
 
         if ret_memory:
             kw_ret['memory'] = []

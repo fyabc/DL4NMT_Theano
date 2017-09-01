@@ -50,7 +50,7 @@ def translate_block(input_, model, f_init, f_next, trng, k, attn_src = False):
 
     batch_sample, batch_sample_score, sample_attn_src_words = model.gen_batch_sample(
         f_init, f_next, x, x_mask, trng,
-        k=k, maxlen=200, eos_id=0, attn_src=attn_src
+        k=k, maxlen=200, eos_id=0, attn_src=attn_src,
     )
     assert len(batch_sample) == len(batch_sample_score)
 
