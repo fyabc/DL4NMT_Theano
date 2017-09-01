@@ -61,7 +61,8 @@ def translate_block(input_, model, f_init, f_next, trng, k, attn_src = False):
         score = sample_score / np.array([len(s) for s in sample])
         chosen_idx = np.argmin(score)
         output.append(sample[chosen_idx])
-        all_atten_src_words.append(sample_attn_src_word[chosen_idx])
+        if len(sample_attn_src_word) != 0:
+            all_atten_src_words.append(sample_attn_src_word[chosen_idx])
 
     return output, all_atten_src_words
 
@@ -231,7 +232,8 @@ def translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target, 
     for bidx, seqs in enumerate(all_src_num_blocks):
         trans, src_words = translate_block(seqs, model, f_init, f_next, trng, k, attn_src = zhen)
         all_trans.extend(trans)
-        all_attn_src_words.extend(src_words)
+        if zhen:
+            all_attn_src_words.extend(src_words)
         print(bidx, '/', m_block, 'Done')
 
     if not zhen:
@@ -287,13 +289,15 @@ def translate_dev_get_bleu(model, f_init, f_next, trng, use_noise, **kwargs):
     dev2 = kwargs.pop('dev2', model.O['valid_datasets'][2])
     dic1 = kwargs.pop('dic1', model.O['vocab_filenames'][0])
     dic2 = kwargs.pop('dic2', model.O['vocab_filenames'][1])
+    zhen = kwargs.pop('zhen', False)
 
     use_noise.set_value(0.)
 
-    translated_string = _translate_whole(
+    translated_string = translate_whole(
         model, f_init, f_next, trng,
         dic1, dic2, dev1,
         k=3, batch_mode=True,
+        zhen= zhen,
     )
 
     use_noise.set_value(1.)
