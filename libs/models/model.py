@@ -318,6 +318,12 @@ class NMTModel(object):
         # Instance of ParameterInitializer, init the parameters.
         self.initializer = ParameterInitializer(options)
 
+    def trainable_parameters(self):
+        if self.O['fix_encoder']:
+            # todo: remove encoder parameters
+            return self.P
+        return self.P
+
     def input_to_context(self, given_input=None, **kwargs):
         """Build the part of the model that from input to context vector.
 

@@ -3,6 +3,7 @@
 
 from .model import *
 from .target_attention import *
+from .deliberation import *
 
 __author__ = 'fyabc'
 

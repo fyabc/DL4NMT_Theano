@@ -20,7 +20,7 @@ from .utility.optimizers import Optimizers
 from .utility.utils import *
 
 from .utility.translate import translate_dev_get_bleu
-from .models import NMTModel, TrgAttnNMTModel
+from .models import NMTModel, TrgAttnNMTModel, DelibNMT
 
 
 def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True, normalize=False):
@@ -149,6 +149,13 @@ def train(dim_word=100,  # word vector dimensionality
           io_buffer_size = 40,
           start_epoch = 0,
           start_from_histo_data = False,
+
+          use_delib=False,
+          use_attn=False,
+          decoder_style='stackNN',
+          use_src_pos=True,
+          which_word=None,
+          fix_encoder=False,
           ):
     model_options = locals().copy()
 
@@ -236,10 +243,12 @@ Start Time = {}
     )
 
     print 'Building model'
-    if trg_attention_layer_id is None:
-        model = NMTModel(model_options)
-    else:
+    if trg_attention_layer_id is not None:
         model = TrgAttnNMTModel(model_options)
+    elif use_delib:
+        model = DelibNMT(model_options)
+    else:
+        model = NMTModel(model_options)
 
     params = model.initializer.init_params()
 
@@ -260,11 +269,18 @@ Start Time = {}
     model.init_tparams(params)
 
     # Build model
-    trng, use_noise, \
-        x, x_mask, y, y_mask, \
-        opt_ret, \
-        cost, test_cost, x_emb = model.build_model()
-    inps = [x, x_mask, y, y_mask]
+    if use_delib:
+        trng, use_noise, \
+            x, x_mask, y, y_mask, y_pos_, \
+            opt_ret, \
+            cost, test_cost, _ = model.build_model()
+        inps = [x, x_mask, y, y_mask, y_pos_]
+    else:
+        trng, use_noise, \
+            x, x_mask, y, y_mask, \
+            opt_ret, \
+            cost, test_cost, x_emb = model.build_model()
+        inps = [x, x_mask, y, y_mask]
 
     print 'Building sampler'
     f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise, batch_mode=True)
@@ -277,8 +293,9 @@ Start Time = {}
     test_cost = test_cost.mean() #FIXME: do not regularize test_cost here
 
     cost = cost.mean()
+    trainable_params = model.trainable_parameters()
 
-    cost = l2_regularization(cost, model.P, decay_c)
+    cost = l2_regularization(cost, trainable_params, decay_c)
 
     cost = regularize_alpha_weights(cost, alpha_c, model_options, x_mask, y_mask, opt_ret)
 
@@ -296,12 +313,12 @@ Start Time = {}
         print 'Done'
 
     print 'Computing gradient...',
-    grads = tensor.grad(cost, wrt=itemlist(model.P))
+    grads = tensor.grad(cost, wrt=itemlist(trainable_params))
 
     clip_shared = theano.shared(np.array(clip_c, dtype=fX), name='clip_shared')
 
     if dist_type != 'mpi_reduce': #build grads clip into computational graph
-        grads, g2 = clip_grad_remove_nan(grads, clip_shared, model.P)
+        grads, g2 = clip_grad_remove_nan(grads, clip_shared, trainable_params)
     else: #do the grads clip after gradients aggregation
         g2 = None
 
@@ -313,11 +330,12 @@ Start Time = {}
     given_imm_data = get_adadelta_imm_data(optimizer, given_imm, preload, uidx)
 
     f_grad_shared, f_update, grads_shared, imm_shared = Optimizers[optimizer](
-        lr, model.P, grads, inps, cost, g2=g2, given_imm_data=given_imm_data, alpha = ada_alpha)
+        lr, trainable_params, grads, inps, cost, g2=g2, given_imm_data=given_imm_data, alpha = ada_alpha)
     print 'Done'
 
     if dist_type == 'mpi_reduce':
-        f_grads_clip = make_grads_clip_func(grads_shared = grads_shared, mt_tparams= model.P, clip_c_shared = clip_shared)
+        f_grads_clip = make_grads_clip_func(grads_shared=grads_shared, mt_tparams=trainable_params,
+                                            clip_c_shared=clip_shared)
 
     print 'Optimization'
     log('Preparation Done\n@Current Time = {}'.format(time.time()))
@@ -326,7 +344,7 @@ Start Time = {}
         mv.barrier()
     elif dist_type == 'mpi_reduce':
         #create receive buffers for mpi allreduce
-        rec_grads = [np.zeros_like(p.get_value()) for p in model.P.itervalues()]
+        rec_grads = [np.zeros_like(p.get_value()) for p in trainable_params.itervalues()]
 
     estop = False
     history_errs = []
@@ -352,8 +370,8 @@ Start Time = {}
 
     #sync all model parameters if train from scratch
     if not reload_ and dist_type == 'mpi_reduce':
-        all_reduce_params_nccl(nccl_comm, itemlist(model.P))
-        for t_value in itemlist(model.P):
+        all_reduce_params_nccl(nccl_comm, itemlist(trainable_params))
+        for t_value in itemlist(trainable_params):
             t_value.set_value(t_value.get_value() / workers_cnt)
 
     best_valid_cost = validation(valid_iterator, f_cost, use_noise)
@@ -405,6 +423,17 @@ Start Time = {}
             use_noise.set_value(1.)
 
             x, x_mask, y, y_mask = prepare_data(x, y, maxlen=maxlen)
+            inputs = [x, x_mask, y, y_mask]
+            if use_delib:
+                y_pos_ = np.repeat(np.arange(y.shape[0])[:, None], y.shape[1], axis=1).astype('int64')
+                inputs.append(y_pos_)
+                if which_word is not None:
+                    try:
+                        y = y[which_word, None]
+                        y_mask = y_mask[which_word, None]
+                        y_pos_ = y_pos_[which_word, None]
+                    except:
+                        continue
 
             if x is None:
                 print 'Minibatch with zero sample under length ', maxlen
@@ -416,9 +445,9 @@ Start Time = {}
 
             # compute cost, grads
             if dist_type != 'mpi_reduce':
-                cost, g2_value = f_grad_shared(x, x_mask, y, y_mask)
+                cost, g2_value = f_grad_shared(*inputs)
             else:
-                cost = f_grad_shared(x, x_mask, y, y_mask)
+                cost = f_grad_shared(*inputs)
 
             if dist_type == 'mpi_reduce':
                 reduce_start = time.time()
@@ -547,8 +576,8 @@ Start Time = {}
                     if better_perf:
                         #safe sync before dump to make sure the models are the same on every worker
                         if dist_type == 'mpi_reduce':
-                            all_reduce_params_nccl(nccl_comm, itemlist(model.P))
-                            for t_value in itemlist(model.P):
+                            all_reduce_params_nccl(nccl_comm, itemlist(trainable_params))
+                            for t_value in itemlist(trainable_params):
                                 t_value.set_value(t_value.get_value() / workers_cnt)
                         #dump the best model so far, including the immediate file
                         if worker_id == 0:
