@@ -210,10 +210,10 @@ class DelibNMT(NMTModel):
             src_embedding_r += emb_pos[::-1]
 
         # Encoder
-        context = self.encoder(src_embedding, src_embedding_r, x_mask, x_mask_r,
-                               dropout_params=kwargs.pop('dropout_params', None))
+        context, kw_ret = self.encoder(src_embedding, src_embedding_r, x_mask, x_mask_r,
+                                       dropout_params=kwargs.pop('dropout_params', None))
 
-        return [x, x_mask, y, y_mask], context
+        return [x, x_mask, y, y_mask], context, kw_ret
 
     def build_model(self, set_instance_variables=False):
         """Build a training model."""
@@ -230,7 +230,7 @@ class DelibNMT(NMTModel):
         else:
             dropout_params = None
 
-        (x, x_mask, y, y_mask), context = self.input_to_context(dropout_params=dropout_params)
+        (x, x_mask, y, y_mask), context, _ = self.input_to_context(dropout_params=dropout_params)
         y_pos_ = T.matrix('y_pos_', dtype='int64')
         tgt_pos_embed = self.P['Wemb_dec_pos'][y_pos_.flatten()].reshape(
             [y_pos_.shape[0], y_pos_.shape[1], self.O['dim_word']])
