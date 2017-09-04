@@ -50,7 +50,7 @@ def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True, norma
     return np.array(probs)
 
 
-def validation(iterator, f_cost, use_noise):
+def validation(iterator, f_cost, use_noise, use_delib=False, which_word=None):
     orig_noise = use_noise.get_value()
     use_noise.set_value(0.)
 
@@ -58,6 +58,17 @@ def validation(iterator, f_cost, use_noise):
     valid_count = 0
     for x, y in iterator:
         x, x_mask, y, y_mask = prepare_data(x, y, maxlen=None)
+        inputs = [x, x_mask, y, y_mask]
+        if use_delib:
+            y_pos_ = np.repeat(np.arange(y.shape[0])[:, None], y.shape[1], axis=1).astype('int64')
+            if which_word is not None:
+                try:
+                    y = y[which_word, None]
+                    y_mask = y_mask[which_word, None]
+                    y_pos_ = y_pos_[which_word, None]
+                except:
+                    continue
+            inputs.append(y_pos_)
 
         if x is None:
             continue
@@ -379,8 +390,8 @@ Start Time = {}
         for t_value in itemlist(trainable_params):
             t_value.set_value(t_value.get_value() / workers_cnt)
 
-    best_valid_cost = validation(valid_iterator, f_cost, use_noise)
-    small_train_cost = validation(small_train_iterator, f_cost, use_noise)
+    best_valid_cost = validation(valid_iterator, f_cost, use_noise, use_delib, which_word)
+    small_train_cost = validation(small_train_iterator, f_cost, use_noise, use_delib, which_word)
 
     # TODO: Just a temporary solution to deliberation model
     if f_init:
@@ -437,7 +448,6 @@ Start Time = {}
             inputs = [x, x_mask, y, y_mask]
             if use_delib:
                 y_pos_ = np.repeat(np.arange(y.shape[0])[:, None], y.shape[1], axis=1).astype('int64')
-                inputs.append(y_pos_)
                 if which_word is not None:
                     try:
                         y = y[which_word, None]
@@ -445,6 +455,7 @@ Start Time = {}
                         y_pos_ = y_pos_[which_word, None]
                     except:
                         continue
+                inputs.append(y_pos_)
 
             if x is None:
                 print 'Minibatch with zero sample under length ', maxlen
@@ -564,8 +575,8 @@ Start Time = {}
                 dump_optimizer_imm_data(optimizer, imm_shared, dump_imm, saveto, uidx)
 
             if np.mod(uidx, validFreq) == 0:
-                valid_cost = validation(valid_iterator, f_cost, use_noise)
-                small_train_cost = validation(small_train_iterator, f_cost, use_noise)
+                valid_cost = validation(valid_iterator, f_cost, use_noise, use_delib, which_word)
+                small_train_cost = validation(small_train_iterator, f_cost, use_noise, use_delib, which_word)
                 if f_init:
                     valid_bleu = translate_dev_get_bleu(model, f_init, f_next, trng, use_noise)
                 else:

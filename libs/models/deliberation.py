@@ -12,6 +12,7 @@ from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 from ..layers.basic import _slice
 from .model import ParameterInitializer, NMTModel
 from ..utility.utils import *
+from ..constants import fX, profile
 
 
 class DelibInitializer(ParameterInitializer):
@@ -243,7 +244,64 @@ class DelibNMT(NMTModel):
         return trng, use_noise, x, x_mask, y, y_mask, y_pos_, opt_ret, cost, test_cost, probs
 
     def build_sampler(self, **kwargs):
-        # todo: add build_sampler
+        batch_mode = kwargs.pop('batch_mode', False)
+        trng = kwargs.pop('trng', RandomStreams(1234))
+        use_noise = kwargs.pop('use_noise', theano.shared(np.float32(0.)))
+        get_gates = kwargs.pop('get_gates', False)
+        dropout_rate = kwargs.pop('dropout', False)
+        need_srcattn = kwargs.pop('need_srcattn', False)
+        if dropout_rate is not False:
+            dropout_params = [use_noise, trng, dropout_rate]
+        else:
+            dropout_params = None
+
+        unit = self.O['unit']
+
+        x, x_mask, y, y_mask = self.get_input()
+        xr, xr_mask = self.reverse_input(x, x_mask)
+        n_timestep, n_timestep_tgt, n_samples = self.input_dimensions(x, y)
+
+        if batch_mode:
+            x_mask = T.matrix('x_mask', dtype=fX)
+            xr_mask = x_mask[::-1]
+
+        # Word embedding for forward rnn and backward rnn (source)
+        src_embedding = self.embedding(x, n_timestep, n_samples)
+        src_embedding_r = self.embedding(xr, n_timestep, n_samples)
+
+        if self.O['use_src_pos']:
+            x_pos = T.repeat(T.arange(n_timestep).dimshuffle(0, 'x'), n_samples, 1)
+            emb_pos = self.P['Wemb_pos'][x_pos.flatten()]
+            emb_pos = emb_pos.reshape([n_timestep, n_samples, self.O['dim_word']])
+            src_embedding += emb_pos
+            src_embedding_r += emb_pos[::-1]
+
+        # Encoder
+        context, _ = self.encoder(
+            src_embedding, src_embedding_r,
+            x_mask if batch_mode else None, xr_mask if batch_mode else None,
+            dropout_params=dropout_params,
+        )
+
+        y_pos_ = T.matrix('y_pos_', dtype='int64')
+        tgt_pos_embed = self.P['Wemb_dec_pos'][y_pos_.flatten()].reshape(
+            [y_pos_.shape[0], y_pos_.shape[1], self.O['dim_word']])
+        probs = self.independent_decoder(tgt_pos_embed, y, y_mask, context, x_mask,
+                                         dropout_params=None, trng=trng, use_noise=use_noise)
+
+        # Sample from softmax distribution to get the sample
+        sample = trng.multinomial(pvals=probs).argmax(1)
+
+        # todo: need test
+        inputs = [x, y]
+        if batch_mode:
+            inputs = [x, x_mask, y, y_mask]
+        f_sample = theano.function(inputs, sample, name='f_sample', profile=profile)
+
+        return f_sample, None
+
+    def gen_batch_sample(self, f_init, f_next, x, x_mask, trng=None, k=1, maxlen=30, eos_id=0, attn_src=False, **kwargs):
+        # todo: need test
         pass
 
 
