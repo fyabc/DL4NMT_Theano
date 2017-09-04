@@ -73,7 +73,7 @@ def validation(iterator, f_cost, use_noise, use_delib=False, which_word=None):
         if x is None:
             continue
 
-        valid_cost += f_cost(x, x_mask, y, y_mask) * x_mask.shape[1]
+        valid_cost += f_cost(*inputs) * x_mask.shape[1]
         valid_count += x_mask.shape[1]
 
     use_noise.set_value(orig_noise)
