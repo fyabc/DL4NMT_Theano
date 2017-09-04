@@ -283,7 +283,12 @@ Start Time = {}
         inps = [x, x_mask, y, y_mask]
 
     print 'Building sampler'
-    f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise, batch_mode=True)
+
+    # TODO: Just a temporary solution to deliberation model
+    try:
+        f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise, batch_mode=True)
+    except:
+        f_init, f_next = None, None
 
     # before any regularizer
     print 'Building f_log_probs...',
@@ -376,7 +381,12 @@ Start Time = {}
 
     best_valid_cost = validation(valid_iterator, f_cost, use_noise)
     small_train_cost = validation(small_train_iterator, f_cost, use_noise)
-    best_bleu = translate_dev_get_bleu(model, f_init, f_next, trng, use_noise) if reload_ else 0
+
+    # TODO: Just a temporary solution to deliberation model
+    if f_init:
+        best_bleu = translate_dev_get_bleu(model, f_init, f_next, trng, use_noise) if reload_ else 0
+    else:
+        best_bleu = 0
     message('Worker id {}, Initial Valid cost {:.5f} Small train cost {:.5f} Valid BLEU {:.2f}'.format(worker_id, best_valid_cost, small_train_cost, best_bleu))
 
     best_bleu = 0
@@ -556,7 +566,10 @@ Start Time = {}
             if np.mod(uidx, validFreq) == 0:
                 valid_cost = validation(valid_iterator, f_cost, use_noise)
                 small_train_cost = validation(small_train_iterator, f_cost, use_noise)
-                valid_bleu = translate_dev_get_bleu(model, f_init, f_next, trng, use_noise)
+                if f_init:
+                    valid_bleu = translate_dev_get_bleu(model, f_init, f_next, trng, use_noise)
+                else:
+                    valid_bleu = 0.0
                 message('Worker {} Valid cost {:.5f} Small train cost {:.5f} Valid BLEU {:.2f} Bad count {}'.format(worker_id, valid_cost, small_train_cost, valid_bleu, bad_counter))
                 sys.stdout.flush()
 

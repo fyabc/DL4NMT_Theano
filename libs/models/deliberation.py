@@ -242,6 +242,10 @@ class DelibNMT(NMTModel):
 
         return trng, use_noise, x, x_mask, y, y_mask, y_pos_, opt_ret, cost, test_cost, probs
 
+    def build_sampler(self, **kwargs):
+        # todo: add build_sampler
+        pass
+
 
 __all__ = [
     'DelibInitializer',
