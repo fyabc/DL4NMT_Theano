@@ -58,7 +58,6 @@ def validation(iterator, f_cost, use_noise, use_delib=False, which_word=None):
     valid_count = 0
     for x, y in iterator:
         x, x_mask, y, y_mask = prepare_data(x, y, maxlen=None)
-        inputs = [x, x_mask, y, y_mask]
         if use_delib:
             y_pos_ = np.repeat(np.arange(y.shape[0])[:, None], y.shape[1], axis=1).astype('int64')
             if which_word is not None:
@@ -68,6 +67,8 @@ def validation(iterator, f_cost, use_noise, use_delib=False, which_word=None):
                     y_pos_ = y_pos_[which_word, None]
                 except:
                     continue
+        inputs = [x, x_mask, y, y_mask]
+        if use_delib:
             inputs.append(y_pos_)
 
         if x is None:
@@ -445,7 +446,6 @@ Start Time = {}
             use_noise.set_value(1.)
 
             x, x_mask, y, y_mask = prepare_data(x, y, maxlen=maxlen)
-            inputs = [x, x_mask, y, y_mask]
             if use_delib:
                 y_pos_ = np.repeat(np.arange(y.shape[0])[:, None], y.shape[1], axis=1).astype('int64')
                 if which_word is not None:
@@ -455,6 +455,8 @@ Start Time = {}
                         y_pos_ = y_pos_[which_word, None]
                     except:
                         continue
+            inputs = [x, x_mask, y, y_mask]
+            if use_delib:
                 inputs.append(y_pos_)
 
             if x is None:
