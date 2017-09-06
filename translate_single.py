@@ -79,15 +79,16 @@ if __name__ == "__main__":
                         help='Batch size, default to -1, means not to use batch mode')
     parser.add_argument('-all', action="store_true", default=False,
                         help='Dump all candidate translations, default to False, set to True')
+    parser.add_argument('--trg_att', action='store_true', dest='trg_attention', default=False,
+                        help='Use target attention, default is False, set to True')
 
     parser.add_argument('model', type=str, help='The model path')
     parser.add_argument('dictionary_source', type=str, help='The source dict path')
     parser.add_argument('dictionary_target', type=str, help='The target dict path')
     parser.add_argument('source', type=str, help='The source input path')
     parser.add_argument('saveto', type=str, help='The translated file output path')
-    parser.add_argument('st_table_path', type=str, help = 'The src tgt map file path for zhen')
-    parser.add_argument('--trg_att', action='store_true', dest='trg_attention', default=False,
-                        help='Use target attention, default is False, set to True')
+    parser.add_argument('st_table_path', type=str, help = 'The src tgt map file path for zhen', default= None)
+
 
     args = parser.parse_args()
 
