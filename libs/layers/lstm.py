@@ -551,7 +551,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
         h1, c1 = _lstm_step_slice(mask_, x_, h_, c_, U)
 
         # Attention
-        ctx_, alpha = _attention(h1, projected_context_, context_, context_mask=context_mask, dense_attention=dense_attention, dim_word=O['dim_word'], dim=O['dim'], n_enc=O['n_encoder_layers'], *args)
+        ctx_, alpha = _attention(h1, projected_context_, context_, context_mask, dense_attention, O['dim_word'], O['dim'], O['n_encoder_layers'], *args)
 
         # LSTM 2 (with attention)
         h2, c2 = _one_step_attention_slice(mask_, h1, c1, ctx_, Wc, U_nl, b_nl)
@@ -569,7 +569,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
                                      alpha_h, beta_h, alpha_x, beta_x, alpha_c, beta_c, input_bias)
 
         # Attention
-        ctx_, alpha = _attention(h1, projected_context_, context_, context_mask=context_mask, dense_attention=dense_attention, dim_word=O['dim_word'], dim=O['dim'], n_enc=O['n_encoder_layers'], *args)
+        ctx_, alpha = _attention(h1, projected_context_, context_, context_mask, dense_attention, O['dim_word'], O['dim'], O['n_encoder_layers'], *args)
 
         # LSTM 2 (with attention)
         h2, c2 = _ln_attention_slice(mask_, h1, c1, ctx_, Wc, U_nl, b_nl,
@@ -586,7 +586,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
         h1, c1, i1, f1, o1 = _lstm_step_slice_gates(mask_, x_, h_, c_, i1_, f1_, o1_, U)
 
         # Attention
-        ctx_, alpha = _attention(h1, projected_context_, context_, context_mask=context_mask, dense_attention=dense_attention, dim_word=O['dim_word'], dim=O['dim'], n_enc=O['n_encoder_layers'], *args)
+        ctx_, alpha = _attention(h1, projected_context_, context_, context_mask, dense_attention, O['dim_word'], O['dim'], O['n_encoder_layers'], *args)
 
         # LSTM 2 (with attention)
         h2, c2, i2, f2, o2 = _one_step_attention_slice(mask_, h1, c1, ctx_, Wc, U_nl, b_nl)
@@ -607,7 +607,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
             c_tmp = c1
 
         # Attention
-        ctx_, alpha = _attention(h1, projected_context_, context_, context_mask=context_mask, dense_attention=dense_attention, dim_word=O['dim_word'], dim=O['dim'], n_enc=O['n_encoder_layers'], *args)
+        ctx_, alpha = _attention(h1, projected_context_, context_, context_mask, dense_attention, O['dim_word'], O['dim'], O['n_encoder_layers'], *args)
 
         # LSTM 2 (with attention)
         h_tmp_att = h1
