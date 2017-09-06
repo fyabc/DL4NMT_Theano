@@ -50,14 +50,14 @@ def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True, norma
     return np.array(probs)
 
 
-def validation(iterator, f_cost, use_noise, use_delib=False, which_word=None):
+def validation(iterator, f_cost, use_noise, use_delib=False, which_word=None, maxlen=None):
     orig_noise = use_noise.get_value()
     use_noise.set_value(0.)
 
     valid_cost = 0.0
     valid_count = 0
     for x, y in iterator:
-        x, x_mask, y, y_mask = prepare_data(x, y, maxlen=None)
+        x, x_mask, y, y_mask = prepare_data(x, y, maxlen=maxlen)
         if use_delib:
             y_pos_ = np.repeat(np.arange(y.shape[0])[:, None], y.shape[1], axis=1).astype('int64')
             if which_word is not None:
@@ -391,8 +391,8 @@ Start Time = {}
         for t_value in itemlist(trainable_params):
             t_value.set_value(t_value.get_value() / workers_cnt)
 
-    best_valid_cost = validation(valid_iterator, f_cost, use_noise, use_delib, which_word)
-    small_train_cost = validation(small_train_iterator, f_cost, use_noise, use_delib, which_word)
+    best_valid_cost = validation(valid_iterator, f_cost, use_noise, use_delib, which_word, maxlen)
+    small_train_cost = validation(small_train_iterator, f_cost, use_noise, use_delib, which_word, maxlen)
 
     # TODO: Just a temporary solution to deliberation model
     if f_init:
@@ -577,8 +577,8 @@ Start Time = {}
                 dump_optimizer_imm_data(optimizer, imm_shared, dump_imm, saveto, uidx)
 
             if np.mod(uidx, validFreq) == 0:
-                valid_cost = validation(valid_iterator, f_cost, use_noise, use_delib, which_word)
-                small_train_cost = validation(small_train_iterator, f_cost, use_noise, use_delib, which_word)
+                valid_cost = validation(valid_iterator, f_cost, use_noise, use_delib, which_word, maxlen)
+                small_train_cost = validation(small_train_iterator, f_cost, use_noise, use_delib, which_word, maxlen)
                 if f_init:
                     valid_bleu = translate_dev_get_bleu(model, f_init, f_next, trng, use_noise)
                 else:
