@@ -343,6 +343,7 @@ def param_init_lstm_cond(O, params, prefix='lstm_cond', nin=None, dim=None, dimc
     multi = 'multi' in O.get('unit', 'lstm_cond')
     unit_size = kwargs.pop('unit_size', O.get('cond_unit_size', 2))
     use_layer_normalization = O.get('use_LN', False)
+    dense_attention = O['densely_connected'] and O['dense_attention']
 
     if not multi:
         params[_p(prefix, 'W', layer_id)] = np.concatenate([
@@ -396,18 +397,30 @@ def param_init_lstm_cond(O, params, prefix='lstm_cond', nin=None, dim=None, dimc
         params[_p(prefix, 'Wc', layer_id)] = np.stack([
             normal_weight(dimctx, dim * 4) for _ in xrange(unit_size)], axis=0)
 
-    # attention: combined -> hidden
-    params[_p(prefix, 'W_comb_att', layer_id)] = normal_weight(dim, dimctx)
-
-    # attention: context -> hidden
-    params[_p(prefix, 'Wc_att', layer_id)] = normal_weight(dimctx)
-
-    # attention: hidden bias
-    params[_p(prefix, 'b_att', layer_id)] = np.zeros((dimctx,), dtype=fX)
-
-    # attention:
-    params[_p(prefix, 'U_att', layer_id)] = normal_weight(dimctx, 1)
-    params[_p(prefix, 'c_tt', layer_id)] = np.zeros((1,), dtype=fX)
+    if dense_attention:
+        dim_word = O['dim_word']
+        for i in xrange(O['n_encoder_layers'] + 1):
+            if i == 0:
+                params[_p(prefix, 'W_comb_att', layer_id, i)] = normal_weight(dim, 2 * dim_word)
+                params[_p(prefix, 'Wc_att', layer_id, i)] = normal_weight(2 * dim_word)
+                params[_p(prefix, 'b_att', layer_id, i)] = np.zeros((2 * dim_word,), dtype=fX)
+                params[_p(prefix, 'U_att', layer_id, i)] = normal_weight(2* dim_word, 1)
+            else:
+                params[_p(prefix, 'W_comb_att', layer_id, i)] = normal_weight(dim, 2 * dim)
+                params[_p(prefix, 'Wc_att', layer_id, i)] = normal_weight(2 * dim)
+                params[_p(prefix, 'b_att', layer_id, i)] = np.zeros((2 * dim,), dtype=fX)
+                params[_p(prefix, 'U_att', layer_id, i)] = normal_weight(2 * dim, 1)
+            params[_p(prefix, 'c_tt', layer_id, i)] = np.zeros((1,), dtype=fX)
+    else:
+        # attention: combined -> hidden
+        params[_p(prefix, 'W_comb_att', layer_id)] = normal_weight(dim, dimctx)
+        # attention: context -> hidden
+        params[_p(prefix, 'Wc_att', layer_id)] = normal_weight(dimctx)
+        # attention: hidden bias
+        params[_p(prefix, 'b_att', layer_id)] = np.zeros((dimctx,), dtype=fX)
+        # attention:
+        params[_p(prefix, 'U_att', layer_id)] = normal_weight(dimctx, 1)
+        params[_p(prefix, 'c_tt', layer_id)] = np.zeros((1,), dtype=fX)
 
     if use_layer_normalization:
         params[_p(prefix, 'alpha_h', layer_id)] = np.ones((4 * dim,), dtype='float32')
@@ -440,6 +453,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
     # FIXME: multi-gru/lstm do NOT support get_gates now
     get_gates = kwargs.pop('get_gates', False)
     use_LN = kwargs.pop('use_LN', False)
+    dense_attention = O['densely_connected'] and O['dense_attention']
 
     kw_ret = {}
 
@@ -465,7 +479,16 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
     if init_state is None:
         init_state = T.alloc(0., n_samples, dim)
 
-    projected_context = T.dot(context, P[_p(prefix, 'Wc_att', layer_id)]) + P[_p(prefix, 'b_att', layer_id)]
+    if dense_attention：
+    dim_word = O['dim_word']
+    dim = self.O['dim']
+    for i in xrange(O['n_encoder_layers'] + 1):
+        if i == 0:
+            projected_context = T.dot(context[:, :, :2 * dim_word], P[_p(prefix, 'Wc_att', layer_id, i)]) + P[_p(prefix, 'b_att', layer_id, i)]
+        else:
+            projected_context = concatenate([projected_context, T.dot(context[:, :, 2*(dim_word+(i-1)*dim):2*(dim_word+i*dim)], P[_p(prefix, 'Wc_att', layer_id, i)]) + P[_p(prefix, 'b_att', layer_id, i)]], axis=projected_context.ndim - 1)
+    else:
+        projected_context = T.dot(context, P[_p(prefix, 'Wc_att', layer_id)]) + P[_p(prefix, 'b_att', layer_id)]
 
     # Projected x
     if use_LN:
@@ -523,12 +546,12 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
     def _step_slice(mask_, x_,
                     h_, c_, ctx_, alpha_,
                     projected_context_, context_,
-                    U, Wc, W_comb_att, U_att, c_tt, U_nl, b_nl):
+                    U, Wc, U_nl, b_nl, *args):
         # LSTM 1
         h1, c1 = _lstm_step_slice(mask_, x_, h_, c_, U)
 
         # Attention
-        ctx_, alpha = _attention(h1, projected_context_, context_, W_comb_att, U_att, c_tt, context_mask=context_mask)
+        ctx_, alpha = _attention(h1, projected_context_, context_, context_mask=context_mask, dense_attention=dense_attention, dim_word=O['dim_word'], dim=O['dim'], n_enc=O['n_encoder_layers'], *args)
 
         # LSTM 2 (with attention)
         h2, c2 = _one_step_attention_slice(mask_, h1, c1, ctx_, Wc, U_nl, b_nl)
@@ -538,15 +561,15 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
     def _ln_step_slice(mask_, x_,
                        h_, c_, ctx_, alpha_,
                        projected_context_, context_,
-                       U, Wc, W_comb_att, U_att, c_tt, U_nl, b_nl,
+                       U, Wc, U_nl, b_nl,
                        alpha_h, beta_h, alpha_x, beta_x, alpha_c, beta_c, input_bias,
-                       alpha_h2, beta_h2, alpha_ctx, beta_ctx, alpha_c2, beta_c2):
+                       alpha_h2, beta_h2, alpha_ctx, beta_ctx, alpha_c2, beta_c2, *args):
         # LSTM 1
         h1, c1 = _ln_lstm_step_slice(mask_, x_, h_, c_, U,
                                      alpha_h, beta_h, alpha_x, beta_x, alpha_c, beta_c, input_bias)
 
         # Attention
-        ctx_, alpha = _attention(h1, projected_context_, context_, W_comb_att, U_att, c_tt, context_mask=context_mask)
+        ctx_, alpha = _attention(h1, projected_context_, context_, W_comb_att, U_att, c_tt, context_mask=context_mask, dense_attention=dense_attention, dim_word=O['dim_word'], dim=O['dim'], n_enc=O['n_encoder_layers'], *args)
 
         # LSTM 2 (with attention)
         h2, c2 = _ln_attention_slice(mask_, h1, c1, ctx_, Wc, U_nl, b_nl,
@@ -558,12 +581,12 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
     def _step_slice_gates(mask_, x_,
                           h_, c_, ctx_, alpha_, i1_, f1_, o1_, i2_, f2_, o2_,
                           projected_context_, context_,
-                          U, Wc, W_comb_att, U_att, c_tt, U_nl, b_nl):
+                          U, Wc, U_nl, b_nl, *args):
         # LSTM 1
         h1, c1, i1, f1, o1 = _lstm_step_slice_gates(mask_, x_, h_, c_, i1_, f1_, o1_, U)
 
         # Attention
-        ctx_, alpha = _attention(h1, projected_context_, context_, W_comb_att, U_att, c_tt, context_mask=context_mask)
+        ctx_, alpha = _attention(h1, projected_context_, context_, W_comb_att, U_att, c_tt, context_mask=context_mask, dense_attention=dense_attention, dim_word=O['dim_word'], dim=O['dim'], n_enc=O['n_encoder_layers'], *args)
 
         # LSTM 2 (with attention)
         h2, c2, i2, f2, o2 = _one_step_attention_slice(mask_, h1, c1, ctx_, Wc, U_nl, b_nl)
@@ -573,7 +596,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
     def _multi_step_slice(mask_, x_,
                           h_, c_, ctx_, alpha_,
                           projected_context_, context_,
-                          U, Wc, W_comb_att, U_att, c_tt, U_nl, b_nl):
+                          U, Wc, U_nl, b_nl, *args):
         # LSTM 1
         h_tmp = h_
         c_tmp = c_
@@ -584,7 +607,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
             c_tmp = c1
 
         # Attention
-        ctx_, alpha = _attention(h1, projected_context_, context_, W_comb_att, U_att, c_tt, context_mask=context_mask)
+        ctx_, alpha = _attention(h1, projected_context_, context_, W_comb_att, U_att, c_tt, context_mask=context_mask, dense_attention=dense_attention, dim_word=O['dim_word'], dim=O['dim'], n_enc=O['n_encoder_layers'], *args)
 
         # LSTM 2 (with attention)
         h_tmp_att = h1
@@ -619,9 +642,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
     shared_vars = [
         P[_p(prefix, 'U', layer_id)],
         P[_p(prefix, 'Wc', layer_id)],
-        P[_p(prefix, 'W_comb_att', layer_id)],
-        P[_p(prefix, 'U_att', layer_id)],
-        P[_p(prefix, 'c_tt', layer_id)],
+        
         P[_p(prefix, 'U_nl', layer_id)],
         P[_p(prefix, 'b_nl', layer_id)],
     ]
@@ -642,6 +663,25 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
             P[_p(prefix, 'alpha_c2', layer_id)],
             P[_p(prefix, 'beta_c2', layer_id)],
         ]
+
+    if dense_attention:
+        shared_vars += [
+            P[_p(prefix, 'W_comb_att', layer_id, i)] for i in xrange(O['n_encoder_layers'] + 1) 
+        ]
+        shared_vars += [
+            P[_p(prefix, 'U_att', layer_id, i)] for i in xrange(O['n_encoder_layers'] + 1) 
+        ]
+        shared_vars += [
+            P[_p(prefix, 'c_tt', layer_id, i)] for i in xrange(O['n_encoder_layers'] + 1) 
+        ]
+
+    else:
+        shared_vars += [
+            P[_p(prefix, 'W_comb_att', layer_id)],
+            P[_p(prefix, 'U_att', layer_id)],
+            P[_p(prefix, 'c_tt', layer_id)],
+        ]
+
     if one_step:
         result = _step(*(seqs + init_states + [projected_context, context] + shared_vars))
     else:

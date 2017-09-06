@@ -152,6 +152,8 @@ def main():
                         help='Use layer normalization in RNN, default to False, set to True')
     parser.add_argument('--dense', action="store_true", default=False, dest='densely_connected',
                         help='Use densely connected network architecture, default to False, set to True')
+    parser.add_argument('--dense_attention', action="store_true", default=False, dest='dense_attention',
+                        help='Use densely connected in attention mechanism, default to False, set to True')
 
     args = parser.parse_args()
     print args
@@ -295,6 +297,7 @@ def main():
         fix_rnn_weights= args.fix_rnn_weights,
         use_LN = args.use_LN,
         densely_connected = args.densely_connected,
+        dense_attention = args.dense_attention,
     )
 
 

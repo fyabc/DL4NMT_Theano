@@ -150,6 +150,7 @@ def train(dim_word=100,  # word vector dimensionality
           fix_rnn_weights = False,
           use_LN = False,
           densely_connected = False,
+          dense_attention = False,
           ):
     model_options = locals().copy()
 

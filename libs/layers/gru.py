@@ -260,6 +260,7 @@ def param_init_gru_cond(O, params, prefix='gru_cond', nin=None, dim=None, dimctx
     layer_id = kwargs.pop('layer_id', 0)
     multi = 'multi' in O.get('unit', 'gru_cond')
     unit_size = kwargs.pop('unit_size', O.get('cond_unit_size', 2))
+    dense_attention = O['densely_connected'] and O['dense_attention']
 
     if not multi:
         params[_p(prefix, 'W', layer_id)] = np.concatenate([normal_weight(nin, dim),
@@ -315,18 +316,30 @@ def param_init_gru_cond(O, params, prefix='gru_cond', nin=None, dim=None, dimctx
 
         params[_p(prefix, 'Wcx', layer_id)] = np.stack([normal_weight(dimctx, dim) for _ in xrange(unit_size)], axis=0)
 
-    # attention: combined -> hidden
-    params[_p(prefix, 'W_comb_att', layer_id)] = normal_weight(dim, dimctx)
-
-    # attention: context -> hidden
-    params[_p(prefix, 'Wc_att', layer_id)] = normal_weight(dimctx)
-
-    # attention: hidden bias
-    params[_p(prefix, 'b_att', layer_id)] = np.zeros((dimctx,), dtype=fX)
-
-    # attention:
-    params[_p(prefix, 'U_att', layer_id)] = normal_weight(dimctx, 1)
-    params[_p(prefix, 'c_tt', layer_id)] = np.zeros((1,), dtype=fX)
+    if dense_attention:
+        dim_word = O['dim_word']
+        for i in xrange(O['n_encoder_layers'] + 1):
+            if i == 0:
+                params[_p(prefix, 'W_comb_att', layer_id, i)] = normal_weight(dim, 2 * dim_word)
+                params[_p(prefix, 'Wc_att', layer_id, i)] = normal_weight(2 * dim_word)
+                params[_p(prefix, 'b_att', layer_id, i)] = np.zeros((2 * dim_word,), dtype=fX)
+                params[_p(prefix, 'U_att', layer_id, i)] = normal_weight(2* dim_word, 1)
+            else:
+                params[_p(prefix, 'W_comb_att', layer_id, i)] = normal_weight(dim, 2 * dim)
+                params[_p(prefix, 'Wc_att', layer_id, i)] = normal_weight(2 * dim)
+                params[_p(prefix, 'b_att', layer_id, i)] = np.zeros((2 * dim,), dtype=fX)
+                params[_p(prefix, 'U_att', layer_id, i)] = normal_weight(2 * dim, 1)
+            params[_p(prefix, 'c_tt', layer_id, i)] = np.zeros((1,), dtype=fX)         
+    else:
+        # attention: combined -> hidden
+        params[_p(prefix, 'W_comb_att', layer_id)] = normal_weight(dim, dimctx)
+        # attention: context -> hidden
+        params[_p(prefix, 'Wc_att', layer_id)] = normal_weight(dimctx)
+        # attention: hidden bias
+        params[_p(prefix, 'b_att', layer_id)] = np.zeros((dimctx,), dtype=fX)
+        # attention:
+        params[_p(prefix, 'U_att', layer_id)] = normal_weight(dimctx, 1)
+        params[_p(prefix, 'c_tt', layer_id)] = np.zeros((1,), dtype=fX)
 
     return params
 
@@ -351,6 +364,7 @@ def gru_cond_layer(P, state_below, O, prefix='gru', mask=None, context=None, one
     layer_id = kwargs.pop('layer_id', 0)
     multi = 'multi' in O.get('unit', 'gru_cond')
     unit_size = kwargs.pop('unit_size', O.get('cond_unit_size', 2))
+    dense_attention = O['densely_connected'] and O['dense_attention']
 
     kw_ret = {}
 
@@ -376,7 +390,16 @@ def gru_cond_layer(P, state_below, O, prefix='gru', mask=None, context=None, one
     if init_state is None:
         init_state = T.alloc(0., n_samples, dim)
 
-    projected_context = T.dot(context, P[_p(prefix, 'Wc_att', layer_id)]) + P[_p(prefix, 'b_att', layer_id)]
+    if dense_attention：
+    dim_word = O['dim_word']
+    dim = self.O['dim']
+    for i in xrange(O['n_encoder_layers'] + 1):
+        if i == 0:
+            projected_context = T.dot(context[:, :, :2 * dim_word], P[_p(prefix, 'Wc_att', layer_id, i)]) + P[_p(prefix, 'b_att', layer_id, i)]
+        else:
+            projected_context = concatenate([projected_context, T.dot(context[:, :, 2*(dim_word+(i-1)*dim):2*(dim_word+i*dim)], P[_p(prefix, 'Wc_att', layer_id, i)]) + P[_p(prefix, 'b_att', layer_id, i)]], axis=projected_context.ndim - 1)
+    else:
+        projected_context = T.dot(context, P[_p(prefix, 'Wc_att', layer_id)]) + P[_p(prefix, 'b_att', layer_id)]
 
     # projected x
     if multi:
@@ -410,11 +433,11 @@ def gru_cond_layer(P, state_below, O, prefix='gru', mask=None, context=None, one
     def _step_slice(m_, x_, xx_,
                     h_, ctx_, alpha_,
                     projected_context_, context_,
-                    U, Wc, W_comb_att, U_att, c_tt, Ux, Wcx, U_nl, Ux_nl, b_nl, bx_nl):
+                    U, Wc, Ux, Wcx, U_nl, Ux_nl, b_nl, bx_nl, *args):
         h1 = _gru_step_slice(m_, x_, xx_, h_, U, Ux)
 
         # attention
-        ctx_, alpha = _attention(h1, projected_context_, context_, W_comb_att, U_att, c_tt, context_mask=context_mask)
+        ctx_, alpha = _attention(h1, projected_context_, context_, context_mask=context_mask, dense_attention=dense_attention, dim_word=O['dim_word'], dim=O['dim'], n_enc=O['n_encoder_layers'], *args)
 
         # GRU 2 (with attention)
         h2 = _one_step_att_slice(m_, ctx_, h1, Wc, Wcx, U_nl, Ux_nl, b_nl, bx_nl)
@@ -424,7 +447,7 @@ def gru_cond_layer(P, state_below, O, prefix='gru', mask=None, context=None, one
     def _multi_step_slice(m_, x_, xx_,
                           h_, ctx_, alpha_,
                           projected_context_, context_,
-                          U, Wc, W_comb_att, U_att, c_tt, Ux, Wcx, U_nl, Ux_nl, b_nl, bx_nl):
+                          U, Wc, Ux, Wcx, U_nl, Ux_nl, b_nl, bx_nl, *args):
         h_tmp = h_
         for j in range(unit_size):
             x = _slice(x_, j, 2 * dim)
@@ -433,7 +456,7 @@ def gru_cond_layer(P, state_below, O, prefix='gru', mask=None, context=None, one
             h_tmp = h1
 
         # attention
-        ctx_, alpha = _attention(h1, projected_context_, context_, W_comb_att, U_att, c_tt, context_mask=context_mask)
+        ctx_, alpha = _attention(h1, projected_context_, context_, W_comb_att, U_att, c_tt, context_mask=context_mask, dense_attention=dense_attention, dim_word=O['dim_word'], dim=O['dim'], n_enc=O['n_encoder_layers'], *args)
 
         # GRU 2 (with attention)
         h_tmp_att = h1
@@ -451,15 +474,30 @@ def gru_cond_layer(P, state_below, O, prefix='gru', mask=None, context=None, one
 
     shared_vars = [P[_p(prefix, 'U', layer_id)],
                    P[_p(prefix, 'Wc', layer_id)],
-                   P[_p(prefix, 'W_comb_att', layer_id)],
-                   P[_p(prefix, 'U_att', layer_id)],
-                   P[_p(prefix, 'c_tt', layer_id)],
+            
                    P[_p(prefix, 'Ux', layer_id)],
                    P[_p(prefix, 'Wcx', layer_id)],
                    P[_p(prefix, 'U_nl', layer_id)],
                    P[_p(prefix, 'Ux_nl', layer_id)],
                    P[_p(prefix, 'b_nl', layer_id)],
                    P[_p(prefix, 'bx_nl', layer_id)]]
+
+    if dense_attention:
+        shared_vars += [
+            P[_p(prefix, 'W_comb_att', layer_id, i)] for i in xrange(O['n_encoder_layers'] + 1)
+        ]
+        shared_vars += [
+            P[_p(prefix, 'U_att', layer_id, i)] for i in xrange(O['n_encoder_layers'] + 1)
+        ]
+        shared_vars += [
+            P[_p(prefix, 'c_tt', layer_id, i)] for i in xrange(O['n_encoder_layers'] + 1)
+        ]
+    else:
+        shared_vars += [
+            P[_p(prefix, 'W_comb_att', layer_id)],
+            P[_p(prefix, 'U_att', layer_id)],
+            P[_p(prefix, 'c_tt', layer_id)],
+        ]
 
     if one_step:
         result = _step(*(seqs + [init_state, None, None, projected_context, context] + shared_vars))

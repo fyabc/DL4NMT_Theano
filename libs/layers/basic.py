@@ -93,19 +93,41 @@ def feed_forward(P, state_below, O, prefix='rconv',
     return activ(T.dot(state_below, P[_p(prefix, 'W')]) + P[_p(prefix, 'b')])
 
 
-def _attention(h1, projected_context_, context_, W_comb_att, U_att, c_tt, context_mask=None):
-    pstate_ = T.dot(h1, W_comb_att)
-    pctx__ = projected_context_ + pstate_[None, :, :]
-    # pctx__ += xc_
-    pctx__ = T.tanh(pctx__)
+def _attention(h1, projected_context_, context_, context_mask=None, dense_attention=False, dim_word=512, dim=256, n_enc=6, *args):
+    if dense_attention:
+        for i in xrange(n_enc + 1):
+            W_comb_att, U_att, c_tt = args[i], args[(n_enc + 1) + i], args[(n_enc + 1) * 2 + i]
+            pstate_ = T.dot(h1, W_comb_att)
+            if i == 0:
+                pctx__ = projected_context_[:, :, : 2 * dim_word] + pstate_[None, :, :]
+            else:
+                pctx__ = projected_context_[:, :, 2 * (dim_word + (i - 1) * dim):2 * (dim_word + i *dim)] + pstate_[None, :, :]
+            pctx__ = T.tanh(pctx__)
+            alpha = T.dot(pctx__, U_att) + c_tt
+            alpha = alpha.reshape([alpha.shape[0], alpha.shape[1]])
+            alpha = T.exp(alpha)
+            if context_mask:
+                alpha = alpha * context_mask
+            alpha = alpha / alpha.sum(0, keepdims=True)
+            if i == 0:
+                ctx_ = (context_[:, :, :2 * dim_word] * alpha[:, :, None]).sum(0)
+            else:
+                _ctx_ = (context_[:, :, 2 * (dim_word + (i - 1) * dim): 2 * (dim_word + i * dim)] * alpha[:, :, None]).sum(0)
+                ctx_ = concatenate([ctx_, _ctx_], axis = ctx_.ndim - 1)
+    else:
+    	W_comb_att, U_att, c_tt = args
+	    pstate_ = T.dot(h1, W_comb_att)
+	    pctx__ = projected_context_ + pstate_[None, :, :]
+	    # pctx__ += xc_
+	    pctx__ = T.tanh(pctx__)
 
-    alpha = T.dot(pctx__, U_att) + c_tt
-    alpha = alpha.reshape([alpha.shape[0], alpha.shape[1]])
-    alpha = T.exp(alpha)
-    if context_mask:
-        alpha = alpha * context_mask
-    alpha = alpha / alpha.sum(0, keepdims=True)
-    ctx_ = (context_ * alpha[:, :, None]).sum(0)  # current context
+	    alpha = T.dot(pctx__, U_att) + c_tt
+	    alpha = alpha.reshape([alpha.shape[0], alpha.shape[1]])
+	    alpha = T.exp(alpha)
+	    if context_mask:
+	        alpha = alpha * context_mask
+	    alpha = alpha / alpha.sum(0, keepdims=True)
+	    ctx_ = (context_ * alpha[:, :, None]).sum(0)  # current context
 
     return ctx_, alpha
 
