@@ -479,7 +479,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
     if init_state is None:
         init_state = T.alloc(0., n_samples, dim)
 
-    if dense_attention：
+    if dense_attention:
     dim_word = O['dim_word']
     dim = self.O['dim']
     for i in xrange(O['n_encoder_layers'] + 1):
