@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+import sys
 import cPickle as pkl
 
 import numpy as np
@@ -13,7 +14,7 @@ except ImportError:
     from bottleneck import argpartition as part_sort
 
 from ..models.deliberation import DelibNMT
-from ..utility.utils import prepare_data, load_params
+from ..utility.utils import prepare_data, load_params, set_logging_file, message, get_logging_file
 from ..constants import profile
 
 
@@ -52,7 +53,8 @@ def prepare_predict(modelpath,
         return sorted_src, sorted_trg
 
     valid_src, valid_trg = _load_files()
-    fp_log = open(logfile, 'w')
+
+    set_logging_file(logfile)
 
     print 'Building model'
     model = DelibNMT(model_options)
@@ -66,7 +68,7 @@ def prepare_predict(modelpath,
     f_predictor = theano.function(inps, [cost, probs], profile=profile)
     print 'Done'
 
-    return model_options, model, valid_src, valid_trg, fp_log, params, f_predictor
+    return model_options, model, valid_src, valid_trg, params, f_predictor
 
 
 def predict(modelpath,
@@ -81,7 +83,7 @@ def predict(modelpath,
             print_samples=True,
             k=1,
             ):
-    model_options, model, valid_src, valid_trg, fp_log, params, f_predictor = prepare_predict(
+    model_options, model, valid_src, valid_trg, params, f_predictor = prepare_predict(
         modelpath, valid_datasets, dictionary, dictionary_target, logfile,
     )
 
@@ -115,18 +117,15 @@ def predict(modelpath,
                 all_sample[ii] += _yy
                 correct_sample[ii] += _xx
 
-        print 'Action:', action, k
-        print >> fp_log, 'Action:', action, k
+        message('Action:', action, k)
 
         if print_samples:
-            print all_sample
-            print >> fp_log, all_sample
+            message(all_sample)
             print_samples = False
         for (xx_, yy_) in zip(correct_sample, all_sample):
             if yy_ < 1e-3:
                 yy_ = 1.
-            print xx_ / yy_, '\t',
-            print >> fp_log, xx_ / yy_, '\t',
-        print ''
-        print >> fp_log, ''
-    fp_log.close()
+            message(xx_ / yy_, '\t', end='')
+        message()
+
+    get_logging_file().close()
