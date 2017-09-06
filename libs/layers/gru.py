@@ -437,7 +437,7 @@ def gru_cond_layer(P, state_below, O, prefix='gru', mask=None, context=None, one
         h1 = _gru_step_slice(m_, x_, xx_, h_, U, Ux)
 
         # attention
-        ctx_, alpha = _attention(h1, projected_context_, context_, context_mask=context_mask, dense_attention=dense_attention, dim_word=O['dim_word'], dim=O['dim'], n_enc=O['n_encoder_layers'], *args)
+        ctx_, alpha = _attention(h1, projected_context_, context_, context_mask, dense_attention, O['dim_word'], O['dim'], O['n_encoder_layers'], *args)
 
         # GRU 2 (with attention)
         h2 = _one_step_att_slice(m_, ctx_, h1, Wc, Wcx, U_nl, Ux_nl, b_nl, bx_nl)
@@ -456,7 +456,7 @@ def gru_cond_layer(P, state_below, O, prefix='gru', mask=None, context=None, one
             h_tmp = h1
 
         # attention
-        ctx_, alpha = _attention(h1, projected_context_, context_, W_comb_att, U_att, c_tt, context_mask=context_mask, dense_attention=dense_attention, dim_word=O['dim_word'], dim=O['dim'], n_enc=O['n_encoder_layers'], *args)
+        ctx_, alpha = _attention(h1, projected_context_, context_, context_mask, dense_attention, O['dim_word'], O['dim'], O['n_encoder_layers'], *args)
 
         # GRU 2 (with attention)
         h_tmp_att = h1
