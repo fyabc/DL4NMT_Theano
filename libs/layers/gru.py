@@ -391,13 +391,13 @@ def gru_cond_layer(P, state_below, O, prefix='gru', mask=None, context=None, one
         init_state = T.alloc(0., n_samples, dim)
 
     if dense_attention:
-    dim_word = O['dim_word']
-    dim = self.O['dim']
-    for i in xrange(O['n_encoder_layers'] + 1):
-        if i == 0:
-            projected_context = T.dot(context[:, :, :2 * dim_word], P[_p(prefix, 'Wc_att', layer_id, i)]) + P[_p(prefix, 'b_att', layer_id, i)]
-        else:
-            projected_context = concatenate([projected_context, T.dot(context[:, :, 2*(dim_word+(i-1)*dim):2*(dim_word+i*dim)], P[_p(prefix, 'Wc_att', layer_id, i)]) + P[_p(prefix, 'b_att', layer_id, i)]], axis=projected_context.ndim - 1)
+        dim_word = O['dim_word']
+        dim = self.O['dim']
+        for i in xrange(O['n_encoder_layers'] + 1):
+            if i == 0:
+                projected_context = T.dot(context[:, :, :2 * dim_word], P[_p(prefix, 'Wc_att', layer_id, i)]) + P[_p(prefix, 'b_att', layer_id, i)]
+            else:
+                projected_context = concatenate([projected_context, T.dot(context[:, :, 2*(dim_word+(i-1)*dim):2*(dim_word+i*dim)], P[_p(prefix, 'Wc_att', layer_id, i)]) + P[_p(prefix, 'b_att', layer_id, i)]], axis=projected_context.ndim - 1)
     else:
         projected_context = T.dot(context, P[_p(prefix, 'Wc_att', layer_id)]) + P[_p(prefix, 'b_att', layer_id)]
 
