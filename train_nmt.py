@@ -130,7 +130,7 @@ def main():
     parser.add_argument('--dataset', action='store', dest='dataset', default='en-fr',
                         help='Dataset, default is "%(default)s"')
     parser.add_argument('--gpu_map_file', action='store', metavar='filename', dest='gpu_map_file', type=str,
-                        default=None, help='The file containing gpu id mapping information, '
+                        default=None, help = 'The file containing gpu id mapping information, '
                                            'each line is in the form physical_gpu_id\\theano_id')
     parser.add_argument('--ft_patience', action='store', metavar='N', dest='fine_tune_patience', type=int, default=-1,
                         help='Fine tune patience, default is %(default)s, set 8 to enable it')
@@ -183,6 +183,7 @@ def main():
     if args.dataset != 'en-fr':
         args.train1, args.train2, args.small1, args.small2, args.valid1, args.valid2, valid3, test1, test2, args.dic1, args.dic2 = \
             Datasets[args.dataset]
+    zhen = 'zh' in args.dataset and 'en' in args.dataset
 
     print 'Command line arguments:'
     print args
@@ -293,6 +294,7 @@ def main():
         start_epoch= args.start_epoch,
         start_from_histo_data =  args.start_from_histo_data,
         fine_tune_type= args.finetune_type,
+        zhen = zhen,
     )
 
 

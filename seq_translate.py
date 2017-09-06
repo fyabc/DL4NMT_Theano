@@ -8,32 +8,14 @@ import operator
 import time
 
 from libs.constants import Datasets
-from libs.utility.translate import de_bpe
-
-
-def get_bleu(ref_file, hyp_file):
-    pl_output = subprocess.Popen(
-        'perl scripts/moses/multi-bleu.perl {} < {}\n'.format(ref_file, hyp_file), shell=True,
-        stdout=subprocess.PIPE, stderr=open(os.devnull, 'w')).stdout.read()
-
-    contents = pl_output.split(',')
-    if len(contents) == 0:
-        return 0.0
-    var = contents[0].split(" = ")
-    if len(var) <= 1:
-        return 0.0
-    BLEU = var[1]
-
-    return float(BLEU)
-
+from libs.utility.translate import de_bpe, get_bleu
 
 TestDatasets = {'enfr_bpe'}
-
 
 def main():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('model_prefix', nargs='?', default='model/complete/enfr',
+    parser.add_argument('model_prefix', nargs='?', default='model/complete/enfr.npz',
                         help='The prefix of nmt model path, default is "%(default)s"')
     parser.add_argument('--start', action="store", metavar="index", dest="start", type=int, default=1,
                         help='The starting index of saved model to test, default is %(default)s')
@@ -61,6 +43,7 @@ def main():
 
     bleus = {}
     train1, train2, small1, small2, dev1, dev2, dev3, test1, test2, dic1, dic2 = Datasets[args.dataset]
+    zhen = 'zh' in args.dataset and 'en' in args.dataset
 
     for idx in xrange(args.start, args.end + 1):
         trans_model_file = '%s.iter%d.npz' % (os.path.splitext(args.model_prefix)[0], idx * args.interval)
@@ -69,9 +52,9 @@ def main():
         start_time = time.time()
 
         if not os.path.exists(trans_result_file):
-            exec_str = 'python translate_single.py -b 32 -k {} -p 1 -n {} {} {} {} {}\n'.format(
-                args.beam_size, trans_model_file, './data/dic/{}'.format(dic1), './data/dic/{}'.format(dic2),
-                './data/test/{}'.format(test1), trans_result_file
+            exec_str = 'python translate_single.py -b 32 {} -k {} -p 1 -n {} {} {} {} {} {}\n'.format(
+                '-zhen' if zhen else '', args.beam_size, trans_model_file, './data/dic/{}'.format(dic1), './data/dic/{}'.format(dic2),
+                './data/test/{}'.format(test1), trans_result_file, './data/dic/{}'.format(dev1) if zhen else '',
             )
             print 'Translate model {} '.format(trans_model_file)
             print exec_str
@@ -90,7 +73,7 @@ def main():
                 fout.write(de_bpe(open(trans_result_file, 'r').read()))
             trans_result_file = '{}.bpe'.format(trans_result_file)
 
-        bleus[idx] = get_bleu('./data/test/{}'.format(test2), trans_result_file)
+        bleus[idx] = get_bleu('./data/test/{}'.format(test2), trans_result_file, zhen = zhen)
         print 'model %s, bleu %.2f, time %02d:%02d' % (idx * args.interval, bleus[idx], m, s)
 
     args.result_file = './translated/complete/{}_s{}_e{}_bs{}.txt'.format(os.path.splitext(model_file_name)[0], args.start,

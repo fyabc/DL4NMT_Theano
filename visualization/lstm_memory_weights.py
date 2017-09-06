@@ -60,12 +60,12 @@ def load_options(model_name):
     with open('%s.pkl' % model_name, 'rb') as f:
         options = DefaultOptions.copy()
         options.update(pkl.load(f))
-
+        if 'fix_dp_bug' not in options:
+            options['fix_dp_bug'] = False
         print 'Options:'
         pprint(options)
 
     return options
-
 
 def seq2words(tgt_seq, tgt_dict):
     words = []

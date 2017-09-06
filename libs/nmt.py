@@ -149,6 +149,7 @@ def train(dim_word=100,  # word vector dimensionality
           io_buffer_size = 40,
           start_epoch = 0,
           start_from_histo_data = False,
+          zhen = False,
           ):
     model_options = locals().copy()
 
@@ -193,7 +194,7 @@ Start Time = {}
         message('Done')
     sys.stdout.flush()
 
-    load_options(model_options, reload_, preload, src_vocab_map_file and tgt_vocab_map_file)
+    load_options_train(model_options, reload_, preload, src_vocab_map_file and tgt_vocab_map_file)
     check_options(model_options)
     model_options['cost_normalization'] = 1
     ada_alpha = 0.95
@@ -224,7 +225,7 @@ Start Time = {}
         )
 
     valid_iterator = TextIterator(
-        valid_datasets[0], valid_datasets[1],
+        valid_datasets[0], valid_datasets[1] if not zhen else valid_datasets[2],
         vocab_filenames[0], vocab_filenames[1],
         valid_batch_size, n_words_src, n_words,k = io_buffer_size,
     )
@@ -358,7 +359,7 @@ Start Time = {}
 
     best_valid_cost = validation(valid_iterator, f_cost, use_noise)
     small_train_cost = validation(small_train_iterator, f_cost, use_noise)
-    best_bleu = translate_dev_get_bleu(model, f_init, f_next, trng, use_noise) if reload_ else 0
+    best_bleu = translate_dev_get_bleu(model, f_init, f_next, trng, use_noise, zhen = zhen) if reload_ else 0
     message('Worker id {}, Initial Valid cost {:.5f} Small train cost {:.5f} Valid BLEU {:.2f}'.format(worker_id, best_valid_cost, small_train_cost, best_bleu))
 
     best_bleu = 0
