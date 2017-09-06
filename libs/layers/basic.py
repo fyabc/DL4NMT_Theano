@@ -3,7 +3,7 @@
 import numpy as np
 from theano import tensor as T
 
-from ..utility.utils import _p, normal_weight
+from ..utility.utils import _p, normal_weight, concatenate
 from ..constants import fX
 
 __author__ = 'fyabc'
