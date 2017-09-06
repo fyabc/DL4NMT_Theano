@@ -7,6 +7,11 @@ import cPickle as pkl
 import numpy as np
 import theano
 
+try:
+    from bottleneck import argpartsort as part_sort
+except ImportError:
+    from bottleneck import argpartition as part_sort
+
 from ..models.deliberation import DelibNMT
 from ..utility.utils import prepare_data, load_params
 from ..constants import profile
@@ -23,15 +28,12 @@ def _load_one_file(filename, dic, maxlen, voc_size, UNKID=1):
     return ret
 
 
-def valid(modelpath,
-          valid_batch_size=80,
-          valid_datasets=('./data/dev/dev_en.tok',
-                          './data/dev/dev_fr.tok'),
-          dictionary='',
-          dictionary_target='',
-          start_idx=1, step_idx=1, end_idx=1,
-          logfile='.log'
-          ):
+def prepare_predict(modelpath,
+                    valid_datasets=('./data/dev/dev_en.tok',
+                                    './data/dev/dev_fr.tok'),
+                    dictionary='',
+                    dictionary_target='',
+                    logfile='.log'):
     model_options = pkl.load(open(modelpath + '.pkl', 'rb'))
 
     # load valid data; truncated by the ``maxlen''
@@ -50,22 +52,41 @@ def valid(modelpath,
         return sorted_src, sorted_trg
 
     valid_src, valid_trg = _load_files()
-    m_block = (len(valid_src) + valid_batch_size - 1) // valid_batch_size
+    fp_log = open(logfile, 'w')
 
     print 'Building model'
     model = DelibNMT(model_options)
     params = model.initializer.init_delib_params()
     model.init_tparams(params)
     # Build model
-    trng, use_noise, x, x_mask, y, y_mask, y_pos_, cost, probs = model.build_model()
+    _, use_noise, x, x_mask, y, y_mask, y_pos_, _, cost, _, probs = model.build_model()
     use_noise.set_value(0.)
     inps = [x, x_mask, y, y_mask, y_pos_]
     print 'Build predictor'
     f_predictor = theano.function(inps, [cost, probs], profile=profile)
     print 'Done'
 
-    print_samples = True
-    fp_log = open(logfile, 'w')
+    return model_options, model, valid_src, valid_trg, fp_log, params, f_predictor
+
+
+def predict(modelpath,
+            action='accuracy',
+            valid_batch_size=80,
+            valid_datasets=('./data/dev/dev_en.tok',
+                            './data/dev/dev_fr.tok'),
+            dictionary='',
+            dictionary_target='',
+            start_idx=1, step_idx=1, end_idx=1,
+            logfile='.log',
+            print_samples=True,
+            k=1,
+            ):
+    model_options, model, valid_src, valid_trg, fp_log, params, f_predictor = prepare_predict(
+        modelpath, valid_datasets, dictionary, dictionary_target, logfile,
+    )
+
+    m_block = (len(valid_src) + valid_batch_size - 1) // valid_batch_size
+
     for curidx in xrange(start_idx, end_idx + 1, step_idx):
         params = load_params(os.path.splitext(modelpath)[0] + '.iter' + str(curidx) + '.npz', params)
         for (kk, vv) in params.iteritems():
@@ -78,13 +99,24 @@ def valid(modelpath,
             x, x_mask, y, y_mask = prepare_data(seqx, seqy)
             y_pos_ = np.repeat(np.arange(y.shape[0])[:, None], y.shape[1], axis=1).astype('int64')
             cost, probs = f_predictor(x, x_mask, y, y_mask, y_pos_)
-            _predict = probs.argmax(axis=1).reshape((y.shape[0], y.shape[1]))
-            results = ((_predict == y).astype('float32') * y_mask).sum(axis=1)
+
+            if action == 'accuracy' or k == 1:
+                _predict = probs.argmax(axis=1).reshape((y.shape[0], y.shape[1]))
+                results = ((_predict == y).astype('float32') * y_mask).sum(axis=1)
+            elif action == 'recall':
+                _predict = part_sort(probs, k, axis=1)
+                results = 0
+                for i in xrange(k):
+                    kth_predict = _predict[:, k].reshape((y.shape[0], y.shape[1]))
+                    results += ((kth_predict == y).astype('float32') * y_mask).sum(axis=1)
             m_sample_ = y_mask.sum(axis=1)
 
             for ii, (_xx, _yy) in enumerate(zip(results, m_sample_)):
                 all_sample[ii] += _yy
                 correct_sample[ii] += _xx
+
+        print 'Action:', action, k
+        print >> fp_log, 'Action:', action, k
 
         if print_samples:
             print all_sample
