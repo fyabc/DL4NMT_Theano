@@ -20,17 +20,18 @@ class DelibInitializer(ParameterInitializer):
         import math
         dim_word = self.O['dim_word']
         dim = self.O['dim']
+        n_dec_layers = self.O['n_decoder_layers']
+
         if self.O['decoder_style'] == 'stackNN':
             np_parameters['decoder_W_pose2h'] = normal_weight(dim_word, dim_word)
             np_parameters['decoder_W_ctx2h'] = normal_weight(2 * dim, dim_word, scale=1. / math.sqrt(2 * dim))
             np_parameters['decoder_b_i2h'] = np.zeros((dim_word,), dtype=np.float32)
 
             np_parameters['decoder_W_h2h'] = 1. / math.sqrt(dim_word) * \
-                                             np.random.rand(self.O['n_decoder_layers'], dim_word, dim_word).astype(
-                                                 'float32')
-            np_parameters['decoder_b_h2h'] = np.zeros((self.O['n_decoder_layers'], dim_word)).astype('float32')
+                                             np.random.rand(n_dec_layers, dim_word, dim_word).astype('float32')
+            np_parameters['decoder_b_h2h'] = np.zeros((n_dec_layers, dim_word)).astype('float32')
         elif self.O['decoder_style'] == 'stackLSTM':
-            for layer_id in xrange(self.O['n_decoder_layers']):
+            for layer_id in xrange(n_dec_layers):
                 np_parameters[_p('decoder', 'W', 'lstm_i2h', layer_id)] = np.zeros((3 * dim + dim_word, 4 * dim),
                                                                                    dtype='float32')
                 np_parameters[_p('decoder', 'b', 'lstm_i2h', layer_id)] = np.zeros((4 * dim,), dtype='float32')
@@ -52,12 +53,23 @@ class DelibInitializer(ParameterInitializer):
             raise Exception('Not implemented yet')
         self.init_feed_forward(np_parameters, 'fc_lastHtoSoftmax', dim_word, self.O['n_words'], False)
 
-        if self.O['use_attn']:
+        if self.O['decoder_all_attention'] or self.O['use_attention']:
             np_parameters['attn_0_ctx2hidden'] = normal_weight(2 * dim, dim, scale=1. / math.sqrt(2 * dim))
+
+        if self.O['use_attn']:
             np_parameters['attn_0_pose2hidden'] = normal_weight(dim_word, dim, scale=0.01)
             np_parameters['attn_0_b'] = np.zeros((dim,), dtype='float32')
             np_parameters['attn_1_W'] = np.random.rand(dim).astype('float32') * 1. / math.sqrt(dim)
             np_parameters['attn_1_b'] = np.zeros((1,), dtype='float32')
+
+        if self.O['decoder_all_attention']:
+            np_parameters['decoder_attn_0_h2h'] = np.array([normal_weight(dim_word, dim, scale=0.01)
+                                                            for _ in xrange(n_dec_layers)], dtype=fX)
+            np_parameters['decoder_attn_0_b'] = np.zeros((n_dec_layers, dim), dtype=fX)
+            np_parameters['decoder_attn_1_W'] = np.random.rand(n_dec_layers, dim).astype(fX) * 1. / math.sqrt(dim)
+            np_parameters['decoder_attn_1_b'] = np.zeros((n_dec_layers, 1), dtype=fX)
+            np_parameters['decoder_W_att2h'] = np.array([normal_weight(2 * dim, dim_word, scale=1. / math.sqrt(2 * dim))
+                                                         for _ in xrange(n_dec_layers)], dtype=fX)
 
     def init_params(self):
         np_parameters = OrderedDict()
@@ -101,6 +113,20 @@ class DelibNMT(NMTModel):
             ctx_info = self.get_context_mean(context, x_mask)
         return ctx_info
 
+    def attention_layer(self, context, x_mask, projected_context, h, layer_id):
+        tmp = T.tanh(projected_context +
+                     T.dot(h, self.P['decoder_attn_0_h2h'][layer_id]).dimshuffle(0, 'x', 1, 2) +
+                     self.P['decoder_attn_0_b'][layer_id])
+        tmp = T.dot(tmp, self.P['decoder_attn_1_W'][layer_id]).dimshuffle(0, 1, 2, 'x') + \
+            self.P['decoder_attn_1_b'][layer_id]
+        tmp = T.exp(tmp)
+        tmp = tmp.reshape([tmp.shape[0], tmp.shape[1], tmp.shape[2]])
+        tmp *= x_mask.dimshuffle('x', 0, 1)
+        weight = tmp / tmp.sum(axis=1, keepdims=True)
+        ctx_info = (weight.dimshuffle(0, 1, 2, 'x') * context).sum(axis=1)
+
+        return ctx_info
+
     def _lstm_step(self, mask_, input_, h_, c_):
         """
         Since this function is not used in ``scan'' mode,  we do not need to much extra vars
@@ -139,6 +165,7 @@ class DelibNMT(NMTModel):
         C_ = T.zeros([n_steps, n_samples, dim], dtype=theano.config.floatX)
         for layer_id in xrange(self.O['n_decoder_layers']):
             # DO NOT change the order of the concated matrices !!!!
+            # todo: all attention: add get_context_info into each layer (need or not?)
             input_ = T.dot(
                 concatenate([H_, ctx_info, state_below], axis=2),
                 self.P[_p(prefix, 'W', 'lstm_i2h', layer_id)]
@@ -150,13 +177,21 @@ class DelibNMT(NMTModel):
         return H_
 
     def independent_decoder(self, tgt_pos_embed, y, y_mask, context, x_mask, dropout_params=None, **kwargs):
+        if self.O['decoder_all_attention']:
+            projected_context = T.dot(context, self.P['attn_0_ctx2hidden'])
         if self.O['decoder_style'] == 'stackNN':
             ctx_info = self.get_context_info(context, x_mask, tgt_pos_embed)
             H_ = T.dot(tgt_pos_embed, self.P['decoder_W_pose2h']) + \
-                 T.dot(ctx_info, self.P['decoder_W_ctx2h']) + self.P['decoder_b_i2h']
+                T.dot(ctx_info, self.P['decoder_W_ctx2h']) + self.P['decoder_b_i2h']
             for layer_id in xrange(self.O['n_decoder_layers']):
                 H_ = T.tanh(H_)
-                H_ = T.dot(H_, self.P['decoder_W_h2h'][layer_id]) + self.P['decoder_b_h2h'][layer_id]
+                if self.O['decoder_all_attention']:
+                    ctx_info = self.attention_layer(context, x_mask, projected_context, H_, layer_id)
+                    H_ = T.dot(H_, self.P['decoder_W_h2h'][layer_id]) + \
+                        T.dot(ctx_info, self.P['decoder_W_att2h'][layer_id]) + \
+                        self.P['decoder_b_h2h'][layer_id]
+                else:
+                    H_ = T.dot(H_, self.P['decoder_W_h2h'][layer_id]) + self.P['decoder_b_h2h'][layer_id]
             H_ = T.tanh(H_)
         elif self.O['decoder_style'] == 'stackLSTM':
             H_ = self.stackLSTM(tgt_pos_embed, 'decoder', y_mask, context, x_mask)
