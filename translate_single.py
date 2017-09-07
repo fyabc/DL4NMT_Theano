@@ -87,8 +87,7 @@ if __name__ == "__main__":
     parser.add_argument('dictionary_target', type=str, help='The target dict path')
     parser.add_argument('source', type=str, help='The source input path')
     parser.add_argument('saveto', type=str, help='The translated file output path')
-    parser.add_argument('st_table_path', type=str, help = 'The src tgt map file path for zhen', default= None)
-
+    parser.add_argument('st_table_path', nargs='?', type=str, help = 'The src tgt map file path for zhen', default= None)
 
     args = parser.parse_args()
 
