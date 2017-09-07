@@ -53,7 +53,7 @@ class DelibInitializer(ParameterInitializer):
             raise Exception('Not implemented yet')
         self.init_feed_forward(np_parameters, 'fc_lastHtoSoftmax', dim_word, self.O['n_words'], False)
 
-        if self.O['decoder_all_attention'] or self.O['use_attention']:
+        if self.O['decoder_all_attention'] or self.O['use_attn']:
             np_parameters['attn_0_ctx2hidden'] = normal_weight(2 * dim, dim, scale=1. / math.sqrt(2 * dim))
 
         if self.O['use_attn']:
