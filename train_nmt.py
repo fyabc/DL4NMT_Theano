@@ -99,7 +99,9 @@ def main():
     parser.add_argument('-z', '--zigzag', action='store_false', default=True, dest='use_zigzag',
                         help='Use zigzag in encoder, default is True, set to False')
     parser.add_argument('--dropout', action="store", metavar="dropout", dest="dropout", type=float, default=False,
-                        help='Dropout rate, default is False (not use dropout)')
+                        help='Dropout rate for rnn hidden states, default is False (not use dropout)')
+    parser.add_argument('--dropout_out', action="store", metavar="dropout_out", dest="dropout_out", type=float, default=False,
+                        help='Dropout rate before softmax, default is False (not use dropout)')
     parser.add_argument('--unit_size', action='store', default=2, type=int, dest='unit_size',
                         help='Number of unit size, default is %(default)s')
     # TODO: rename this option to decoder_unit_size in future
@@ -248,7 +250,8 @@ def main():
         vocab_filenames=('./data/dic/{}'.format(args.dic1),
                          './data/dic/{}'.format(args.dic2)),
         task=args.dataset,
-        use_dropout=args.dropout,
+        use_dropout = args.dropout, #dropout ratio for rnn hidden
+        dropout_out = args.dropout_out, #dropout ratio for hidden before softmax layer
         overwrite=False,
         n_words=args.n_words_tgt,
         n_words_src=args.n_words_src,
@@ -289,7 +292,6 @@ def main():
 
         trg_attention_layer_id=args.trg_attention_layer_id,
         dev_bleu_freq = args.dev_bleu_freq,
-        fix_dp_bug= args.fix_dp_bug,
         io_buffer_size= args.buffer_size,
         start_epoch= args.start_epoch,
         start_from_histo_data =  args.start_from_histo_data,

@@ -287,7 +287,6 @@ def get_bleu(ref_file, hyp_in=None, type_in='filename', zhen = False):
 def de_bpe(input_str):
     return re.sub(r'(@@ )|(@@ ?$)', '', input_str)
 
-
 def translate_dev_get_bleu(model, f_init, f_next, trng, use_noise, **kwargs):
     dataset = kwargs.pop('dataset', model.O['task'])
 

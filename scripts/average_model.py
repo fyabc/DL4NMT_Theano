@@ -37,7 +37,8 @@ def main(args=None):
     for key, value in params_dic.iteritems():
         value /= (args.end - args.start + 1)
 
-    save_model_file_name = '%s.ave_s%d_e%d_i%d.npz' % (os.path.splitext(args.model_prefix)[0], args.start * args.interval, args.end * args.interval, args.end - args.start + 1)
+    save_model_file_name = '%s.ave_s%d_e%d_i%d.npz' % (os.path.splitext(args.model_prefix)[0], args.start * args.interval,
+                                                       args.end * args.interval, args.end - args.start + 1)
     np.savez(save_model_file_name, **params_dic)
 
 

@@ -31,7 +31,7 @@ def linear(x):
 
 # Some helper layers.
 
-def dropout_layer(state_before, use_noise, trng, dropout_rate=0.5):
+def dropout_layer(state_before, use_noise, trng, dropout_rate = 0.):
     """Dropout"""
 
     projection = T.switch(

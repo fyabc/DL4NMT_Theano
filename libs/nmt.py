@@ -98,6 +98,7 @@ def train(dim_word=100,  # word vector dimensionality
           small_train_datasets=('./data/train/small_en-fr.en',
                                 './data/train/small_en-fr.fr'),
           use_dropout=False,
+          dropout_out = False,
           reload_=False,
           overwrite=False,
           preload='',
@@ -150,6 +151,7 @@ def train(dim_word=100,  # word vector dimensionality
           start_epoch = 0,
           start_from_histo_data = False,
           zhen = False,
+
           ):
     model_options = locals().copy()
 

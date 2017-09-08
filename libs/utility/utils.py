@@ -551,7 +551,7 @@ def load_options_train(options, reload_=None, preload=None, maintain_vocab_size 
     reload_ = options['reload_'] if reload_ is None else reload_
     preload = options['preload'] if preload is None else preload
     dropout = options['use_dropout']
-    fix_dp_bug = options['fix_dp_bug']
+    dropout_softmax = options['dropout_out']
     valid_datasets = options['valid_datasets']
     vocab_filenames = options['vocab_filenames']
 
@@ -561,7 +561,6 @@ def load_options_train(options, reload_=None, preload=None, maintain_vocab_size 
     if reload_ and os.path.exists(preload):
         print('Reloading model options')
         with open('{}.pkl'.format(preload), 'rb') as f:
-            # model_options = pkl.load(f)
             # FIXME: Update the option instead of replace it
             options.update(pkl.load(f))
 
@@ -569,9 +568,9 @@ def load_options_train(options, reload_=None, preload=None, maintain_vocab_size 
         options['reload_'] = reload_
         options['preload'] = preload
         options['use_dropout'] = dropout
+        options['dropout_out'] = dropout_softmax
         options['valid_datasets'] = valid_datasets
         options['vocab_filenames'] = vocab_filenames
-        options['fix_dp_bug'] = fix_dp_bug
 
         if maintain_vocab_size:
             options['n_words_src'] = src_vocab_size
