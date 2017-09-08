@@ -110,7 +110,7 @@ def load_zhen_trans_file(source_file, word_dict, n_words_src):
 def load_translate_data(dictionary, dictionary_target, source_file, batch_mode=False, **kwargs):
     unk_id = kwargs.pop('unk_id', 1)
     n_words_src = kwargs.pop('n_words_src', 30000)
-    echo = kwargs.pop('echo', True)
+    echo = kwargs.pop('echo', False)
     load_input = kwargs.pop('load_input', True)
     zh_en = kwargs.pop('zhen', False)
 
@@ -223,12 +223,14 @@ def translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target, 
     n_words_src = kwargs.pop('n_words_src', model.O['n_words_src'])
     zhen = kwargs.pop('zhen', False)
     batch_size = kwargs.pop('batch_size', 30)
+    echo = kwargs.pop('echo', False)
     #must be in batch mode now
 
     word_dict, word_idict, word_idict_trg, all_src_num_blocks, all_src_str, all_src_hotfixes, m_block \
-            = load_translate_data(dictionary, dictionary_target, source_file, batch_mode=True, chr_level=chr_level, n_words_src=n_words_src, batch_size = batch_size, zhen = zhen)
+            = load_translate_data(dictionary, dictionary_target, source_file, batch_mode=True, chr_level=chr_level, n_words_src=n_words_src, batch_size = batch_size, zhen = zhen, echo= echo)
 
-    print('Translating ', source_file, '...')
+    if echo:
+        print('Translating ', source_file, '...')
     all_chosen_trans = []
     all_attn_src_words = []
     all_cand_trans = []
@@ -239,7 +241,8 @@ def translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target, 
         all_cand_trans.extend(all_cands)
         if zhen:
             all_attn_src_words.extend(src_words)
-        print(bidx, '/', m_block, 'Done')
+        if echo:
+            print(bidx, '/', m_block, 'Done')
 
     if not zhen:
         trans = seqs2words(all_chosen_trans, word_idict_trg)
@@ -248,7 +251,6 @@ def translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target, 
         trans = [
             idx2str_attnBasedUNKReplace(trg_idx, src_str, src_trg_table, word_idict_trg, attn, hotfix)
             for (trg_idx, src_str, attn, hotfix) in zip(all_chosen_trans, all_src_str, all_attn_src_words, all_src_hotfixes)]
-
     return trans, all_cand_trans_str
 
 def get_bleu(ref_file, hyp_in=None, type_in='filename', zhen = False):
@@ -301,12 +303,13 @@ def translate_dev_get_bleu(model, f_init, f_next, trng, use_noise, **kwargs):
 
     use_noise.set_value(0.)
 
-    translated_str, all_cands_trans_str = translate_whole(
+    translated_str_list, all_cands_trans_str = translate_whole(
         model, f_init, f_next, trng,
         dic1, dic2, dev1,
         k=3, batch_mode = True,
         zhen = zhen, src_trg_table = st_table if zhen else None,
     )
+    translated_str = '\n'.join(translated_str_list)
 
     use_noise.set_value(1.)
 
