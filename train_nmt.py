@@ -243,7 +243,7 @@ def main():
         datasets=('./data/train/{}'.format(args.train1),
                   './data/train/{}'.format(args.train2)),
         valid_datasets=('./data/dev/{}'.format(args.valid1),
-                        './data/dev/{}'.format(args.valid2),
+                        './data/dev/{}'.format(args.valid2) if not zhen else './data/dic/{}'.format(args.valid2), #for zhen, dev1 is the giza file, stored in /data/dic
                         './data/dev/{}'.format(valid3)),
         small_train_datasets=('./data/train/{}'.format(args.small1),
                               './data/train/{}'.format(args.small2)),

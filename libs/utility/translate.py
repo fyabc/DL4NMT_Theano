@@ -301,10 +301,10 @@ def translate_dev_get_bleu(model, f_init, f_next, trng, use_noise, **kwargs):
 
     use_noise.set_value(0.)
 
-    translated_string = translate_whole(
+    translated_str, all_cands_trans_str = translate_whole(
         model, f_init, f_next, trng,
         dic1, dic2, dev1,
-        k=3, batch_mode=True,
+        k=3, batch_mode = True,
         zhen = zhen, src_trg_table = st_table if zhen else None,
     )
 
@@ -312,16 +312,16 @@ def translate_dev_get_bleu(model, f_init, f_next, trng, use_noise, **kwargs):
 
     # first de-truecase, then de-bpe
     if 'tc' in dataset:
-        translated_string = subprocess.Popen(
+        translated_str = subprocess.Popen(
             'perl scripts/moses/detruecase.perl',
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=open(os.devnull, 'w'),
             shell=True,
-        ).communicate(translated_string)[0]
+        ).communicate(translated_str)[0]
 
     if 'bpe' in dataset:
-        translated_string = de_bpe(translated_string)
+        translated_str = de_bpe(translated_str)
 
-    return get_bleu(dev2, translated_string, type_in='string', zhen = zhen)
+    return get_bleu(dev2, translated_str, type_in='string', zhen = zhen)
 
 __all__ = [
     'get_bleu',
