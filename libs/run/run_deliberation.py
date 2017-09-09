@@ -72,7 +72,7 @@ def prepare_predict(modelpath,
 
 
 def predict(modelpath,
-            action='accuracy',
+            action='a',
             valid_batch_size=80,
             valid_datasets=('./data/dev/dev_en.tok',
                             './data/dev/dev_fr.tok'),
@@ -80,7 +80,6 @@ def predict(modelpath,
             dictionary_target='',
             start_idx=1, step_idx=1, end_idx=1,
             logfile='.log',
-            print_samples=True,
             k=1,
             ):
     model_options, model, valid_src, valid_trg, params, f_predictor = prepare_predict(
@@ -88,6 +87,7 @@ def predict(modelpath,
     )
 
     m_block = (len(valid_src) + valid_batch_size - 1) // valid_batch_size
+    print_samples = True
 
     for curidx in xrange(start_idx, end_idx + 1, step_idx):
         params = load_params(os.path.splitext(modelpath)[0] + '.iter' + str(curidx) + '.npz', params)
@@ -95,6 +95,9 @@ def predict(modelpath,
             model.P[kk].set_value(vv)
         all_sample = [0 for _ in xrange(model_options['maxlen'] + 2)]
         correct_sample = [0 for _ in xrange(model_options['maxlen'] + 2)]
+        all_precisions = []
+        all_recalls = []
+
         for block_id in xrange(m_block):
             seqx = valid_src[block_id * valid_batch_size: (block_id + 1) * valid_batch_size]
             seqy = valid_trg[block_id * valid_batch_size: (block_id + 1) * valid_batch_size]
@@ -102,30 +105,53 @@ def predict(modelpath,
             y_pos_ = np.repeat(np.arange(y.shape[0])[:, None], y.shape[1], axis=1).astype('int64')
             cost, probs = f_predictor(x, x_mask, y, y_mask, y_pos_)
 
-            if action == 'accuracy' or k == 1:
+            if 'a' in action:
                 _predict = probs.argmax(axis=1).reshape((y.shape[0], y.shape[1]))
                 results = ((_predict == y).astype('float32') * y_mask).sum(axis=1)
-            elif action == 'recall':
+
+                m_sample_ = y_mask.sum(axis=1)
+
+                for ii, (_xx, _yy) in enumerate(zip(results, m_sample_)):
+                    all_sample[ii] += _yy
+                    correct_sample[ii] += _xx
+            if 'p' in action or 'r' in action:
                 _predict = part_sort(probs, k, axis=1)
-                results = 0
-                for i in xrange(k):
-                    kth_predict = _predict[:, k].reshape((y.shape[0], y.shape[1]))
-                    results += ((kth_predict == y).astype('float32') * y_mask).sum(axis=1)
-            m_sample_ = y_mask.sum(axis=1)
 
-            for ii, (_xx, _yy) in enumerate(zip(results, m_sample_)):
-                all_sample[ii] += _yy
-                correct_sample[ii] += _xx
+                y_mask_i = y_mask.astype('int64')
 
-        message('Action:', action, k)
+                for s_idx in xrange(y.shape[1]):
+                    # Words of the sentence
+                    # [NOTE]: EOS = 0
+                    R = set((y * y_mask_i)[:, s_idx].flatten())
 
-        if print_samples:
-            message(all_sample)
-            print_samples = False
-        for (xx_, yy_) in zip(correct_sample, all_sample):
-            if yy_ < 1e-3:
-                yy_ = 1.
-            message(xx_ / yy_, '\t', end='')
+                    # Words of top-k prediction of the sentence
+                    s_predict = _predict.reshape((y.shape[0], y.shape[1], _predict.shape[-1]))[:, s_idx, :]
+                    T_n = set((s_predict * y_mask_i[:, s_idx]).flatten())
+
+                    if 'p' in action:
+                        all_precisions.append(len(R.intersection(T_n)) * 1.0 / len(T_n))
+                    if 'r' in action:
+                        all_recalls.append(len(R.intersection(T_n)) * 1.0 / len(R))
+            else:
+                raise Exception('Unknown action {}'.format(action))
+
+        message('Iteration:', curidx)
+
+        if 'a' in action:
+            message('Accuracy:')
+            if print_samples:
+                message(all_sample)
+                print_samples = False
+            for (xx_, yy_) in zip(correct_sample, all_sample):
+                if yy_ < 1e-3:
+                    yy_ = 1.
+                message(xx_ / yy_, '\t', end='')
+            message()
+        if 'p' in action:
+            message('Precision: top {} = {}'.format(k, np.mean(all_precisions)))
+        if 'r' in action:
+            message('Recall: top {} = {}'.format(k, np.mean(all_recalls)))
+
         message()
 
     get_logging_file().close()
