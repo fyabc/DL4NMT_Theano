@@ -297,10 +297,10 @@ Start Time = {}
     print 'Building sampler'
 
     # TODO: Just a temporary solution to deliberation model
-    try:
+    if use_delib:
+        f_init, f_next = model.build_sampler()
+    else:
         f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise, batch_mode=True)
-    except:
-        f_init, f_next = None, None
 
     # before any regularizer
     print 'Building f_log_probs...',
