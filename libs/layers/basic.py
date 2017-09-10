@@ -89,7 +89,7 @@ def _attention(h1, projected_context_, context_, W_comb_att, U_att, c_tt, contex
 
     alpha = T.dot(pctx__, U_att) + c_tt
     alpha = alpha.reshape([alpha.shape[0], alpha.shape[1]])
-    alpha = T.exp(alpha)
+    alpha = T.exp(alpha - alpha.max(axis=0, keepdims=True))
     if context_mask:
         alpha = alpha * context_mask
     alpha = alpha / alpha.sum(0, keepdims=True)
