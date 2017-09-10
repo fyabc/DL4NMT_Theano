@@ -301,7 +301,7 @@ class DelibNMT(NMTModel):
             raise NotImplementedError('This decoder style not implemented yet')
 
     def gen_batch_sample(self, f_init, f_next, x, x_mask, trng=None, k=1, maxlen=30, eos_id=0, attn_src=False, **kwargs):
-        # todo: 解决包含y_mask和y_pos的问题
+        # 解决包含y_mask和y_pos的问题
         # 一个方案：translate的时候，翻译到第几个词，就给出第几个词的pos，翻译到出了EOS的时候就结束。
 
         if attn_src is True:
@@ -309,10 +309,12 @@ class DelibNMT(NMTModel):
 
         f_predictor = f_init
 
+        # todo: fix the bug of index out of bound.
+
         probs = f_predictor(x, x_mask)
         predict = probs.argmax(axis=1).reshape((x.shape[0], x.shape[1]))
 
-        return predict.T.to_list()
+        return predict.T.tolist()
 
 
 __all__ = [
