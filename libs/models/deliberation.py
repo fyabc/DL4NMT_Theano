@@ -279,9 +279,6 @@ class DelibNMT(NMTModel):
         return trng, use_noise, x, x_mask, y, y_mask, y_pos_, opt_ret, cost, test_cost, probs
 
     def build_sampler(self, **kwargs):
-        # todo: 解决包含y_mask和y_pos的问题
-        # 一个方案：translate的时候，翻译到第几个词，就给出第几个词的pos，翻译到出了EOS的时候就结束。
-
         if self.O['decoder_style'] == 'stackNN':
             # Build model
             _, use_noise, x, x_mask, y, y_mask, y_pos_, _, cost, _, probs = self.build_model()
@@ -290,7 +287,7 @@ class DelibNMT(NMTModel):
             use_noise.set_value(0.)
 
             inps = [x, x_mask]
-            print('Build predictor')
+            print('Build predictor... ', end='')
             f_predictor = theano.function(
                 inps, probs,
                 givens=[(y_pos_, T.repeat(T.arange(n_timestep).dimshuffle(0, 'x'), n_samples, 1))],
@@ -299,13 +296,23 @@ class DelibNMT(NMTModel):
             print('Done')
             return f_predictor, None
         elif self.O['decoder_style'] == 'stackLSTM':
-            raise NotImplementedError('Not implemented yet')
+            raise NotImplementedError('StackLSTM sampler not implemented yet')
         else:
-            raise NotImplementedError('Not implemented yet')
+            raise NotImplementedError('This decoder style not implemented yet')
 
     def gen_batch_sample(self, f_init, f_next, x, x_mask, trng=None, k=1, maxlen=30, eos_id=0, attn_src=False, **kwargs):
-        # todo: need test
-        pass
+        # todo: 解决包含y_mask和y_pos的问题
+        # 一个方案：translate的时候，翻译到第几个词，就给出第几个词的pos，翻译到出了EOS的时候就结束。
+
+        if attn_src is True:
+            raise NotImplementedError('attn_src not implemented in DelibNMT yet')
+
+        f_predictor = f_init
+
+        probs = f_predictor(x, x_mask)
+        predict = probs.argmax(axis=1).reshape((x.shape[0], x.shape[1]))
+
+        return predict.T.to_list()
 
 
 __all__ = [

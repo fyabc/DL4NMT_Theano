@@ -296,7 +296,6 @@ Start Time = {}
 
     print 'Building sampler'
 
-    # TODO: Just a temporary solution to deliberation model
     if use_delib:
         f_init, f_next = model.build_sampler()
     else:
