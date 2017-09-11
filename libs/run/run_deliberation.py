@@ -39,10 +39,8 @@ def prepare_predict(modelpath,
 
     if not (dictionary and dictionary_target and valid_datasets):
         # Load data path from options
-        _, _, _, _, valid1, valid2, _, _, _, dic1, dic2 = \
-            Datasets[model_options['datasets']]
-        valid_datasets = valid1, valid2
-        dictionary, dictionary_target = dic1, dic2
+        valid_datasets = model_options['valid_datasets']
+        dictionary, dictionary_target = model_options['vocab_filenames']
 
     # load valid data; truncated by the ``maxlen''
     srcdict = pkl.load(open(dictionary, 'rb'))
