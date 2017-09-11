@@ -279,26 +279,31 @@ class DelibNMT(NMTModel):
         return trng, use_noise, x, x_mask, y, y_mask, y_pos_, opt_ret, cost, test_cost, probs
 
     def build_sampler(self, **kwargs):
+        # Build model
+        _, use_noise, x, x_mask, y, y_mask, y_pos_, _, cost, _, probs = self.build_model()
+        n_timestep, n_timestep_tgt, n_samples = self.input_dimensions(x, y)
+
+        use_noise.set_value(0.)
+        inps = [x, x_mask]
+
         if self.O['decoder_style'] == 'stackNN':
-            # Build model
-            _, use_noise, x, x_mask, y, y_mask, y_pos_, _, cost, _, probs = self.build_model()
-            n_timestep, n_timestep_tgt, n_samples = self.input_dimensions(x, y)
-
-            use_noise.set_value(0.)
-
-            inps = [x, x_mask]
-            print('Build predictor... ', end='')
-            f_predictor = theano.function(
-                inps, probs,
-                givens=[(y_pos_, T.repeat(T.arange(n_timestep).dimshuffle(0, 'x'), n_samples, 1))],
-                profile=profile
-            )
-            print('Done')
-            return f_predictor, None
+            givens = [(y_pos_, T.repeat(T.arange(n_timestep).dimshuffle(0, 'x'), n_samples, 1))]
         elif self.O['decoder_style'] == 'stackLSTM':
-            raise NotImplementedError('StackLSTM sampler not implemented yet')
+            givens = [
+                (y_pos_, T.repeat(T.arange(n_timestep).dimshuffle(0, 'x'), n_samples, 1)),
+                (y_mask, T.fill(x_mask.shape, 1.0).astype(fX))
+            ]
+            # raise NotImplementedError('StackLSTM sampler not implemented yet')
         else:
             raise NotImplementedError('This decoder style not implemented yet')
+        print('Build predictor... ', end='')
+        f_predictor = theano.function(
+            inps, probs,
+            givens=givens,
+            profile=profile
+        )
+        print('Done')
+        return f_predictor, None
 
     def gen_batch_sample(self, f_init, f_next, x, x_mask, trng=None, k=1, maxlen=30, eos_id=0, attn_src=False, **kwargs):
         # 解决包含y_mask和y_pos的问题
@@ -309,7 +314,8 @@ class DelibNMT(NMTModel):
 
         f_predictor = f_init
 
-        # todo: fix the bug of index out of bound.
+        # FIXME: truncate source sentences to fix the bug: source embedding out of bound.
+        x, x_mask = x[:self.O['maxlen'] + 1], x_mask[:self.O['maxlen'] + 1]
 
         probs = f_predictor(x, x_mask)
         predict = probs.argmax(axis=1).reshape((x.shape[0], x.shape[1]))
