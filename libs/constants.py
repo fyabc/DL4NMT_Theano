@@ -18,7 +18,8 @@ ShuffleCycle = 7
 NaNReloadPrevious = 5
 
 # Set datasets
-# train1, train2, small1, small2, valid1, valid2(postprocessed, e.g., bpe and truecase), valid3(original), test1, test2, dic1, dic2
+#For datasets other than zhen: train1, train2, small1, small2, valid1, valid2(postprocessed, e.g., bpe and truecase), valid3(original), test1, test2, dic1, dic2
+#For zhen dataset: train1, train2, small1, small2, valid1, src_tgt_table, valid2, test1, test2, dict1,dict2
 Datasets = {
     'en-fr': [
         'filtered_en-fr.en', 'filtered_en-fr.fr',
@@ -160,11 +161,11 @@ Datasets = {
         '','',
         'zh-en.1.25M.zh.pkl', 'zh-en.1.25M.en.pkl',
     ],
-    'zh-en_tc_1.25m': [
-        'tc_zh-en.1.25M.zh', 'tc_zh-en.1.25M.en',
+    'zh-en_1.25m': [
+        'zh-en.1.25M.zh', 'zh-en.1.25M.en',
         'small_tc_zh-en.1.25M.zh', 'small_tc_zh-en.1.25M.en',
-        'tc_Nist2003.chs.word.max50.snt', 'tc_Nist2003.enu.word.max50.snt', 'Nist2003.enu.word.max50.snt',
-        '', '',
+        'sorted_Nist2005.dev.txt.zh.tok', 'zh2en.giza.pkl', 'NIST2005.reference',
+        'sorted_Nist2006.dev.txt.zh.tok, sorted_Nist2008.dev.txt.zh.tok, sorted_Nist2012.dev.txt.zh.tok', 'NIST2006.reference, NIST2008.reference, NIST2012.reference',
         'tc_zh-en.1.25M.zh.pkl', 'tc_zh-en.1.25M.en.pkl',
     ],
 }

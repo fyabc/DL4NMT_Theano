@@ -21,9 +21,9 @@ import numpy as np
 
 from ..constants import *
 from .data_iterator import TextIterator
+from libs.config import DefaultOptions
 
 _fp_log = None
-
 
 def set_logging_file(logging_filename):
     path, filename = os.path.split(logging_filename)
@@ -98,6 +98,17 @@ def _p(*args, **kwargs):
 
     return '_'.join(str(arg) for arg in args)
 
+def load_options_test(model_name):
+    # load model model_options
+    with open('%s.pkl' % model_name, 'rb') as f:
+        options = DefaultOptions.copy()
+        options.update(pkl.load(f))
+        if 'fix_dp_bug' not in options:
+            options['fix_dp_bug'] = False
+        print('Options:')
+        pprint(options)
+
+    return options
 
 # These parameters should be duplicated for multiverso.
 dup_shared_var_list = ['decoder_c_tt']
@@ -105,7 +116,6 @@ dup_size = 100
 
 def is_dup_params(name):
     return name.startswith(tuple(dup_shared_var_list))
-
 
 def init_tparams(params, given_tparams=None, given_dup_tparams=None, use_mv=False):
     """Initialize Theano shared variables according to the initial parameters"""
@@ -341,7 +351,6 @@ def average(l):
         return 0.0
     return sum(l) / len(l)
 
-
 def apply_gradient_clipping(clip_c, grads, clip_shared=None):
     g2 = 0.
     if clip_c > 0.:
@@ -536,13 +545,13 @@ def print_params(params, exit_=False):
         exit(0)
 
 
-def load_options(options, reload_=None, preload=None, maintain_vocab_size = False):
-    """Reload options."""
+def load_options_train(options, reload_=None, preload=None, maintain_vocab_size = False):
+    """Reload options for continuing training"""
 
     reload_ = options['reload_'] if reload_ is None else reload_
     preload = options['preload'] if preload is None else preload
     dropout = options['use_dropout']
-    fix_dp_bug = options['fix_dp_bug']
+    dropout_softmax = options['dropout_out']
     valid_datasets = options['valid_datasets']
     vocab_filenames = options['vocab_filenames']
 
@@ -552,7 +561,6 @@ def load_options(options, reload_=None, preload=None, maintain_vocab_size = Fals
     if reload_ and os.path.exists(preload):
         print('Reloading model options')
         with open('{}.pkl'.format(preload), 'rb') as f:
-            # model_options = pkl.load(f)
             # FIXME: Update the option instead of replace it
             options.update(pkl.load(f))
 
@@ -560,9 +568,9 @@ def load_options(options, reload_=None, preload=None, maintain_vocab_size = Fals
         options['reload_'] = reload_
         options['preload'] = preload
         options['use_dropout'] = dropout
+        options['dropout_out'] = dropout_softmax
         options['valid_datasets'] = valid_datasets
         options['vocab_filenames'] = vocab_filenames
-        options['fix_dp_bug'] = fix_dp_bug
 
         if maintain_vocab_size:
             options['n_words_src'] = src_vocab_size
@@ -790,7 +798,8 @@ __all__ = [
     'get_minibatches_idx',
     'get_epoch_batch_cnt',
     'print_params',
-    'load_options',
+    'load_options_train',
+    'load_options_test',
     'save_options',
     'check_options',
     'search_start_uidx',

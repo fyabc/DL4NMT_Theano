@@ -150,6 +150,8 @@ DefaultOptions = dict(
     use_src_pos=True,
     which_word=None,
     fix_encoder=False,
+
+    zhen=False,
 )
 
 

@@ -118,3 +118,6 @@ translated/
 # gcr wrapper
 wrapper.bat
 worker.bat
+
+# Some scripts
+*count_lengths.py

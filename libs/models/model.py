@@ -304,8 +304,8 @@ class NMTModel(object):
     def __init__(self, options, given_params=None):
         # Dict of options
         self.O = options
-        if 'fix_dp_bug' not in options:
-            self.O['fix_dp_bug'] = False
+        if 'dropout_out' not in options:
+            self.O['dropout_out'] = 0.5 if 'fix_dp_bug' not in options or not options['fix_dp_bug'] else self.O['use_dropout'] #recover previous dropout_before_softmax
         if 'cost_normalization' not in options:
             self.O['cost_normalization'] = 1
             
@@ -529,7 +529,9 @@ class NMTModel(object):
         use_noise = kwargs.pop('use_noise', theano.shared(np.float32(0.)))
         get_gates = kwargs.pop('get_gates', False)
         dropout_rate = kwargs.pop('dropout', False)
+        dropout_rate_out = self.O['dropout_out']
         need_srcattn = kwargs.pop('need_srcattn', False)
+
         if dropout_rate is not False:
             dropout_params = [use_noise, trng, dropout_rate]
         else:
@@ -602,9 +604,9 @@ class NMTModel(object):
         logit_prev = self.feed_forward(emb, prefix='ff_logit_prev', activation=linear)
         logit_ctx = self.feed_forward(context_decoder, prefix='ff_logit_ctx', activation=linear)
         logit = T.tanh(logit_lstm + logit_prev + logit_ctx)
-        if self.O['use_dropout']:
-            dropout_rate = self.O['use_dropout'] if self.O['fix_dp_bug'] else 0.5
-            logit = self.dropout(logit, use_noise, trng, dropout_rate)
+
+        if dropout_rate_out:
+            logit = self.dropout(logit, use_noise, trng, dropout_rate_out)
 
         logit = self.feed_forward(logit, prefix='ff_logit', activation=linear)
 
@@ -1009,7 +1011,7 @@ class NMTModel(object):
         return emb
 
     @staticmethod
-    def dropout(input_, use_noise, trng, dropout_rate=0.5):
+    def dropout(input_, use_noise, trng, dropout_rate = 0.):
         """Dropout"""
 
         projection = T.switch(
@@ -1374,9 +1376,9 @@ class NMTModel(object):
         logit_prev = self.feed_forward(tgt_embedding, prefix='ff_logit_prev', activation=linear)
         logit_ctx = self.feed_forward(context_decoder, prefix='ff_logit_ctx', activation=linear)
         logit = T.tanh(logit_lstm + logit_prev + logit_ctx)  # n_timestep * n_sample * dim_word
-        if self.O['use_dropout']:
-            dropout_rate = self.O['use_dropout'] if self.O['fix_dp_bug'] else 0.5
-            logit = self.dropout(logit, use_noise, trng, dropout_rate)
+        if self.O['dropout_out']:
+            logit = self.dropout(logit, use_noise, trng, self.O['dropout_out'])
+
         # n_timestep * n_sample * n_words
         logit = self.feed_forward(logit, prefix='ff_logit', activation=linear)
         logit_shp = logit.shape

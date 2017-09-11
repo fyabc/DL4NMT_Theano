@@ -53,7 +53,7 @@ def translate_block(input_, model, f_init, f_next, trng, k, attn_src = False):
             f_init, f_next, x, x_mask, trng,
             k=k, maxlen=200, eos_id=0, attn_src=attn_src,
         )
-        return output, []
+        return output, [], []
     else:
         batch_sample, batch_sample_score, sample_attn_src_words = model.gen_batch_sample(
             f_init, f_next, x, x_mask, trng,
@@ -63,6 +63,7 @@ def translate_block(input_, model, f_init, f_next, trng, k, attn_src = False):
 
         output = []
         all_atten_src_words = []
+        all_cand_trans = []
 
         for sample, sample_score, sample_attn_src_word in zip(batch_sample, batch_sample_score, sample_attn_src_words):
             score = sample_score / np.array([len(s) for s in sample])
@@ -71,7 +72,9 @@ def translate_block(input_, model, f_init, f_next, trng, k, attn_src = False):
             if len(sample_attn_src_word) != 0:
                 all_atten_src_words.append(sample_attn_src_word[chosen_idx])
 
-        return output, all_atten_src_words
+            all_cand_trans.extend(sample)
+
+        return output, all_atten_src_words, all_cand_trans
 
 def load_zhen_trans_file(source_file, word_dict, n_words_src):
     """
@@ -87,15 +90,15 @@ def load_zhen_trans_file(source_file, word_dict, n_words_src):
         if line == '':
             break
         sent = line.strip().split('||||')
-        words = sent[0].strip().split()
+        words = sent[0].strip().split()  #the actual content
 
         if len(sent) > 1:
             hotfix = defaultdict(lambda: list())
             hotfix_segs = sent[1].strip().split('}{')
-            hotfix_segs[0] = hotfix_segs[0][1:]
-            hotfix_segs[-1] = hotfix_segs[-1][:-1]
-            for segs in hotfix_segs:
-                xx = segs.strip().split(' ||| ')
+            hotfix_segs[0] = hotfix_segs[0][1:] #remove {
+            hotfix_segs[-1] = hotfix_segs[-1][:-1] #remove }
+            for segs in hotfix_segs: #an example might be `13 ||| 13 ||| December 26 ||| $day ||| 十二月二十六日'
+                xx = segs.strip().split(' ||| ') #xx[0]: 13; xx[1]:13; xx[2]:December 26; xx[3]: $day; xx[4]:十二月二十六日
                 if xx[0] == xx[1]:
                     hotfix[xx[3]].append([int(xx[0]), xx[2], xx[4]])
                     words[int(xx[0])] = xx[3]
@@ -114,7 +117,7 @@ def load_zhen_trans_file(source_file, word_dict, n_words_src):
 def load_translate_data(dictionary, dictionary_target, source_file, batch_mode=False, **kwargs):
     unk_id = kwargs.pop('unk_id', 1)
     n_words_src = kwargs.pop('n_words_src', 30000)
-    echo = kwargs.pop('echo', True)
+    echo = kwargs.pop('echo', False)
     load_input = kwargs.pop('load_input', True)
     zh_en = kwargs.pop('zhen', False)
 
@@ -195,28 +198,27 @@ def idx2str_attnBasedUNKReplace(trg_idx, src_str, src_trg_table, trg_idict, attn
     else:
         all_vs = []
         map(lambda kv: all_vs.extend(kv[1]), hotfix.iteritems())
-        short_dic = dict((ele[0], ele[1]) for ele in all_vs)
+        short_dic = dict((ele[0], ele[1]) for ele in all_vs) #map from location to possible translation
 
     for idx in xrange(trg_len):
         current_word = trg_idx[idx]
         if current_word == 0:
             break
-        elif current_word == 1:
-            selectidx = min(attn[idx], len(src_str)-1)
-            if selectidx in short_dic:
-                current_word = short_dic[selectidx]
+        elif current_word == 1: #Normal UNK replace
+            srcidx = min(attn[idx], len(src_str)-1)
+            if srcidx in short_dic:
+                current_word = short_dic[srcidx]
             else:
-                source_word = src_str[selectidx]
-                current_word = src_trg_table.get(source_word, source_word)
-        elif trg_idict[current_word][0] == '$' and len(trg_idict[current_word]) > 1 and hotfix is not None:
-            currLabel = trg_idict[current_word]
-            srcidx= min(attn[idx], len(src_str)-1)
-            possible_trans = hotfix.get(currLabel, None)
-            if possible_trans is None:
                 current_word = src_trg_table.get(src_str[srcidx], src_str[srcidx])
+        elif trg_idict[current_word][0] == '$' and len(trg_idict[current_word]) > 1 and hotfix is not None: #Decode each special token
+            special_word_str = trg_idict[current_word]
+            srcidx = min(attn[idx], len(src_str)-1)
+            possible_trans = hotfix.get(special_word_str, None) #a list
+            if possible_trans is None:
+                current_word = src_trg_table.get(src_str[srcidx], src_str[srcidx]) # normal UNK replace
             else:
                 dist = [abs(vv[0] - srcidx) for vv in possible_trans]
-                selectidx = np.argmin(dist)
+                selectidx = np.argmin(dist) # find the best matching element index
                 current_word = possible_trans[selectidx][1]
         else:
             current_word = trg_idict[current_word]
@@ -229,31 +231,37 @@ def translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target, 
     n_words_src = kwargs.pop('n_words_src', model.O['n_words_src'])
     zhen = kwargs.pop('zhen', False)
     batch_size = kwargs.pop('batch_size', 30)
+    echo = kwargs.pop('echo', False)
     #must be in batch mode now
 
     word_dict, word_idict, word_idict_trg, all_src_num_blocks, all_src_str, all_src_hotfixes, m_block \
-            = load_translate_data(dictionary, dictionary_target, source_file, batch_mode=True, chr_level=chr_level, n_words_src=n_words_src, batch_size = batch_size, zhen = zhen)
+            = load_translate_data(dictionary, dictionary_target, source_file, batch_mode=True, chr_level=chr_level, n_words_src=n_words_src, batch_size = batch_size, zhen = zhen, echo= echo)
 
-    print('Translating ', source_file, '...')
-    all_trans = []
+    if echo:
+        print('Translating ', source_file, '...')
+    all_chosen_trans = []
     all_attn_src_words = []
+    all_cand_trans = []
+    all_cand_trans_str = []
     for bidx, seqs in enumerate(all_src_num_blocks):
-        trans, src_words = translate_block(seqs, model, f_init, f_next, trng, k, attn_src = zhen)
-        all_trans.extend(trans)
+        trans, src_words, all_cands = translate_block(seqs, model, f_init, f_next, trng, k, attn_src = zhen)
+        all_chosen_trans.extend(trans)
+        all_cand_trans.extend(all_cands)
         if zhen:
             all_attn_src_words.extend(src_words)
-        print(bidx, '/', m_block, 'Done')
+        if echo:
+            print(bidx, '/', m_block, 'Done')
 
     if not zhen:
-        trans = seqs2words(all_trans, word_idict_trg)
+        trans = seqs2words(all_chosen_trans, word_idict_trg)
+        all_cand_trans_str = seqs2words(all_cand_trans, word_idict_trg)
     else:
         trans = [
             idx2str_attnBasedUNKReplace(trg_idx, src_str, src_trg_table, word_idict_trg, attn, hotfix)
-            for (trg_idx, src_str, attn, hotfix) in zip(all_trans, all_src_str, all_attn_src_words, all_src_hotfixes)]
+            for (trg_idx, src_str, attn, hotfix) in zip(all_chosen_trans, all_src_str, all_attn_src_words, all_src_hotfixes)]
+    return trans, all_cand_trans_str
 
-    return trans
-
-def get_bleu(ref_file, hyp_in=None, type_in='filename'):
+def get_bleu(ref_file, hyp_in=None, type_in='filename', zhen = False):
     """Get BLEU score, it will call script 'multi-bleu.perl'.
 
     :param ref_file: standard test filename of target language.
@@ -261,15 +269,16 @@ def get_bleu(ref_file, hyp_in=None, type_in='filename'):
     :param type_in: input type, default is 'filename', can be 'filename' or 'string'.
     :return:
     """
-
+    if zhen:
+        ref_file = ' '.join(['{}{}'.format(ref_file, id) for id in xrange(4)])
     if type_in == 'filename':
         pl_process = subprocess.Popen(
-            'perl scripts/moses/multi-bleu.perl {} < {}\n'.format(ref_file, hyp_in), shell=True,
+            'perl scripts/moses/multi-bleu.perl {} {} < {}\n'.format('-lc' if zhen else '', ref_file, hyp_in), shell=True,
             stdout=subprocess.PIPE)
         pl_output = pl_process.stdout.read()
     elif type_in == 'string':
         pl_process = subprocess.Popen(
-            'perl scripts/moses/multi-bleu.perl {}\n'.format(ref_file), shell=True, stdin=subprocess.PIPE,
+            'perl scripts/moses/multi-bleu.perl {} {}\n'.format('-lc' if zhen else '', ref_file), shell=True, stdin=subprocess.PIPE,
             stdout=subprocess.PIPE)
         pl_output = pl_process.communicate(hyp_in)[0]
     else:
@@ -285,45 +294,45 @@ def get_bleu(ref_file, hyp_in=None, type_in='filename'):
 
     return float(BLEU)
 
-
 def de_bpe(input_str):
     return re.sub(r'(@@ )|(@@ ?$)', '', input_str)
-
 
 def translate_dev_get_bleu(model, f_init, f_next, trng, use_noise, **kwargs):
     dataset = kwargs.pop('dataset', model.O['task'])
 
     # [NOTE]: Filenames here are with path prefix.
-    dev1 = kwargs.pop('dev1', model.O['valid_datasets'][0])
-    dev2 = kwargs.pop('dev2', model.O['valid_datasets'][2])
+    dev1 = kwargs.pop('dev1', model.O['valid_datasets'][0]) #dev src
+    dev2 = kwargs.pop('dev2', model.O['valid_datasets'][2]) #dev (real) target
     dic1 = kwargs.pop('dic1', model.O['vocab_filenames'][0])
     dic2 = kwargs.pop('dic2', model.O['vocab_filenames'][1])
     zhen = kwargs.pop('zhen', False)
+    if zhen:
+        st_table = model.O['valid_datasets'][1]
 
     use_noise.set_value(0.)
 
-    translated_string = translate_whole(
+    translated_str_list, all_cands_trans_str = translate_whole(
         model, f_init, f_next, trng,
         dic1, dic2, dev1,
-        k=3, batch_mode=True,
-        zhen= zhen,
+        k=3, batch_mode = True,
+        zhen = zhen, src_trg_table = st_table if zhen else None,
     )
+    translated_str = '\n'.join(translated_str_list)
 
     use_noise.set_value(1.)
 
     # first de-truecase, then de-bpe
     if 'tc' in dataset:
-        translated_string = subprocess.Popen(
+        translated_str = subprocess.Popen(
             'perl scripts/moses/detruecase.perl',
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=open(os.devnull, 'w'),
             shell=True,
-        ).communicate(translated_string)[0]
+        ).communicate(translated_str)[0]
 
     if 'bpe' in dataset:
-        translated_string = de_bpe(translated_string)
+        translated_str = de_bpe(translated_str)
 
-    return get_bleu(dev2, translated_string, type_in='string')
-
+    return get_bleu(dev2, translated_str, type_in='string', zhen = zhen)
 
 __all__ = [
     'get_bleu',
