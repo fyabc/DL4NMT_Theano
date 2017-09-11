@@ -64,7 +64,7 @@ def prepare_predict(modelpath,
 
     print 'Building model'
     model = DelibNMT(model_options)
-    params = model.initializer.init_delib_params()
+    params = model.initializer.init_params()
     model.init_tparams(params)
     # Build model
     _, use_noise, x, x_mask, y, y_mask, y_pos_, _, cost, _, probs = model.build_model()
