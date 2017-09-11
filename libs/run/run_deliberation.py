@@ -59,7 +59,8 @@ def prepare_predict(modelpath,
 
     valid_src, valid_trg = _load_files()
 
-    set_logging_file(logfile)
+    if logfile is not None:
+        set_logging_file(logfile)
 
     print 'Building model'
     model = DelibNMT(model_options)
