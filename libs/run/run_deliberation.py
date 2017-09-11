@@ -14,7 +14,7 @@ except ImportError:
     from bottleneck import argpartition as part_sort
 
 from ..models.deliberation import DelibNMT
-from ..utility.utils import prepare_data, load_params, set_logging_file, message, get_logging_file
+from ..utility.utils import prepare_data, load_params, set_logging_file, message, get_logging_file, load_options_test
 from ..constants import profile, Datasets
 
 
@@ -35,7 +35,7 @@ def prepare_predict(modelpath,
                     dictionary='',
                     dictionary_target='',
                     logfile='.log'):
-    model_options = pkl.load(open(modelpath + '.pkl', 'rb'))
+    model_options = load_options_test(modelpath)
 
     if not (dictionary and dictionary_target and valid_datasets):
         # Load data path from options
