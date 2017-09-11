@@ -132,7 +132,7 @@ def predict(modelpath,
                     R = set((y * y_mask_i)[:, s_idx].flatten())
 
                     # Words of top-k prediction of the sentence
-                    s_predict = _predict.reshape((y.shape[0], y.shape[1], _predict.shape[-1]))[:, s_idx, :]
+                    s_predict = _predict.reshape((y.shape[0], y.shape[1], _predict.shape[-1]))[:, s_idx, :k]
                     T_n = set((s_predict * y_mask_i[:, s_idx, None]).flatten())
 
                     if 'p' in action:
@@ -160,5 +160,3 @@ def predict(modelpath,
             message('Recall: top {} = {}'.format(k, np.mean(all_recalls)))
 
         message()
-
-    get_logging_file().close()
