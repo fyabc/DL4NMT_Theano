@@ -15,7 +15,7 @@ except ImportError:
 
 from ..models.deliberation import DelibNMT
 from ..utility.utils import prepare_data, load_params, set_logging_file, message, get_logging_file
-from ..constants import profile
+from ..constants import profile, Datasets
 
 
 def _load_one_file(filename, dic, maxlen, voc_size, UNKID=1):
@@ -36,6 +36,13 @@ def prepare_predict(modelpath,
                     dictionary_target='',
                     logfile='.log'):
     model_options = pkl.load(open(modelpath + '.pkl', 'rb'))
+
+    if not (dictionary and dictionary_target and valid_datasets):
+        # Load data path from options
+        _, _, _, _, valid1, valid2, _, _, _, dic1, dic2 = \
+            Datasets[model_options['dataset']]
+        valid_datasets = valid1, valid2
+        dictionary, dictionary_target = dic1, dic2
 
     # load valid data; truncated by the ``maxlen''
     srcdict = pkl.load(open(dictionary, 'rb'))
@@ -90,7 +97,8 @@ def predict(modelpath,
     print_samples = True
 
     for curidx in xrange(start_idx, end_idx + 1, step_idx):
-        params = load_params(os.path.splitext(modelpath)[0] + '.iter' + str(curidx) + '.npz', params)
+        params = load_params(os.path.splitext(os.path.splitext(modelpath)[0])[0] +
+                             '.iter' + str(curidx) + '.npz', params)
         for (kk, vv) in params.iteritems():
             model.P[kk].set_value(vv)
         all_sample = [0 for _ in xrange(model_options['maxlen'] + 2)]
