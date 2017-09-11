@@ -133,7 +133,7 @@ def predict(modelpath,
 
                     # Words of top-k prediction of the sentence
                     s_predict = _predict.reshape((y.shape[0], y.shape[1], _predict.shape[-1]))[:, s_idx, :]
-                    T_n = set((s_predict * y_mask_i[:, s_idx]).flatten())
+                    T_n = set((s_predict * y_mask_i[:, s_idx, None]).flatten())
 
                     if 'p' in action:
                         all_precisions.append(len(R.intersection(T_n)) * 1.0 / len(T_n))
