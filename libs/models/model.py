@@ -320,8 +320,16 @@ class NMTModel(object):
 
     def trainable_parameters(self):
         if self.O['fix_encoder']:
-            # todo: remove encoder parameters
-            return self.P
+            # todo: remove encoder parameters, need test
+            params = self.P.copy()
+
+            del params['Wemb']
+
+            encoder_keys = (k for k in params.keys() if 'encoder' in k)
+            for key in encoder_keys:
+                del params[key]
+
+            return params
         return self.P
 
     def input_to_context(self, given_input=None, **kwargs):
