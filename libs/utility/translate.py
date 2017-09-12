@@ -190,6 +190,34 @@ def seqs2words(caps, word_idict_trg, eos_id=0):
         capsw.append(' '.join(ww))
     return capsw
 
+
+def words2seqs(sentences, word_dict, n_words, unk_id=1, eos_id=0):
+    """Sentences -> Sequences
+
+    Parameters
+    ----------
+    sentences
+        A list of strings
+    word_dict
+        Word dict
+    n_words
+        Vocabulary size
+    unk_id
+        ID of UNK token, default is 1
+    eos_id
+        ID of UNK token, default is 0
+    Returns
+    -------
+        A list of word indices
+    """
+
+    seqs = []
+    for s in sentences:
+        tmp = [word_dict.get(w, unk_id) for w in s.strip().split()]
+        seqs.append([w if w < n_words else unk_id for w in tmp])
+
+    return seqs
+
 def idx2str_attnBasedUNKReplace(trg_idx, src_str, src_trg_table, trg_idict, attn, hotfix):
     result_trg_str = []
     trg_len = len(trg_idx)
@@ -337,5 +365,6 @@ def translate_dev_get_bleu(model, f_init, f_next, trng, use_noise, **kwargs):
 __all__ = [
     'get_bleu',
     'de_bpe',
+    'words2seqs',
     'translate_dev_get_bleu',
 ]

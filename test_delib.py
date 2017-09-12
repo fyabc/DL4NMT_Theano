@@ -7,8 +7,7 @@ import argparse
 
 import numpy as np
 
-from libs.run.run_deliberation import predict
-from libs.constants import Datasets
+from libs.run.run_PR import predict
 
 
 def main():
