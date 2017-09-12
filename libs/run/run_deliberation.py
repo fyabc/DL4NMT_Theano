@@ -122,7 +122,7 @@ def predict(modelpath,
                     all_sample[ii] += _yy
                     correct_sample[ii] += _xx
             if 'p' in action or 'r' in action:
-                _predict = part_sort(probs, max(k_list), axis=1)
+                _predict = part_sort(probs, max(k_list) - 1, axis=1)
                 _predict = _predict.reshape((y.shape[0], y.shape[1], _predict.shape[-1]))
 
                 y_mask_i = y_mask.astype('int64')
@@ -134,7 +134,7 @@ def predict(modelpath,
 
                     for i, k in enumerate(k_list):
                         # Words of top-k prediction of the sentence
-                        s_predict = _predict[:, s_idx, :k]
+                        s_predict = _predict[:, s_idx, :k - 1]
                         T_n = set((s_predict * y_mask_i[:, s_idx, None]).flatten())
 
                         if 'p' in action:
