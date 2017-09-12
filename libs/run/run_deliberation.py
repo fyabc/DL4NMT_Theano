@@ -86,7 +86,7 @@ def predict(modelpath,
             dictionary_target='',
             start_idx=1, step_idx=1, end_idx=1,
             logfile='.log',
-            k=1,
+            k_list=[1],
             ):
     model_options, model, valid_src, valid_trg, params, f_predictor = prepare_predict(
         modelpath, valid_datasets, dictionary, dictionary_target, logfile,
@@ -102,8 +102,8 @@ def predict(modelpath,
             model.P[kk].set_value(vv)
         all_sample = [0 for _ in xrange(model_options['maxlen'] + 2)]
         correct_sample = [0 for _ in xrange(model_options['maxlen'] + 2)]
-        all_precisions = []
-        all_recalls = []
+        all_precisions_list = [[] for _ in xrange(len(k_list))]
+        all_recalls_list = [[] for _ in xrange(len(k_list))]
 
         for block_id in xrange(m_block):
             seqx = valid_src[block_id * valid_batch_size: (block_id + 1) * valid_batch_size]
@@ -122,7 +122,8 @@ def predict(modelpath,
                     all_sample[ii] += _yy
                     correct_sample[ii] += _xx
             if 'p' in action or 'r' in action:
-                _predict = part_sort(probs, k, axis=1)
+                _predict = part_sort(probs, max(k_list), axis=1)
+                _predict = _predict.reshape((y.shape[0], y.shape[1], _predict.shape[-1]))
 
                 y_mask_i = y_mask.astype('int64')
 
@@ -131,14 +132,15 @@ def predict(modelpath,
                     # [NOTE]: EOS = 0
                     R = set((y * y_mask_i)[:, s_idx].flatten())
 
-                    # Words of top-k prediction of the sentence
-                    s_predict = _predict.reshape((y.shape[0], y.shape[1], _predict.shape[-1]))[:, s_idx, :k]
-                    T_n = set((s_predict * y_mask_i[:, s_idx, None]).flatten())
+                    for i, k in enumerate(k_list):
+                        # Words of top-k prediction of the sentence
+                        s_predict = _predict[:, s_idx, :k]
+                        T_n = set((s_predict * y_mask_i[:, s_idx, None]).flatten())
 
-                    if 'p' in action:
-                        all_precisions.append(len(R.intersection(T_n)) * 1.0 / len(T_n))
-                    if 'r' in action:
-                        all_recalls.append(len(R.intersection(T_n)) * 1.0 / len(R))
+                        if 'p' in action:
+                            all_precisions_list[i].append(len(R.intersection(T_n)) * 1.0 / len(T_n))
+                        if 'r' in action:
+                            all_recalls_list[i].append(len(R.intersection(T_n)) * 1.0 / len(R))
             else:
                 raise Exception('Unknown action {}'.format(action))
 
@@ -155,8 +157,16 @@ def predict(modelpath,
                 message(xx_ / yy_, '\t', end='')
             message()
         if 'p' in action:
-            message('Precision: top {} = {}'.format(k, np.mean(all_precisions)))
+            message('Precision: {}'.format(
+                ', '.join(
+                    'top{}={:.6f}'.format(k, np.mean(all_precisions))
+                    for k, all_precisions in zip(k_list, all_precisions_list)
+                )))
         if 'r' in action:
-            message('Recall: top {} = {}'.format(k, np.mean(all_recalls)))
+            message('Recall: {}'.format(
+                ', '.join(
+                    'top{}={:.6f}'.format(k, np.mean(all_recalls))
+                    for k, all_recalls in zip(k_list, all_recalls_list)
+                )))
 
         message()

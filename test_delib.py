@@ -5,6 +5,8 @@
 
 import argparse
 
+import numpy as np
+
 from libs.run.run_deliberation import predict
 from libs.constants import Datasets
 
@@ -24,10 +26,20 @@ def main():
                         help='Step iteration of model, default is %(default)s')
     parser.add_argument('--end', action='store', dest='end_idx', default=10000, type=int, metavar='N',
                         help='End iteration of model, default is %(default)s')
-    parser.add_argument('-k', action='store', dest='k', default=1, type=int, metavar='N',
-                        help='Get the top-k of word probabilities, default is %(default)s')
+    parser.add_argument('-k', action='store', dest='k_list', default=['1'], metavar='N', nargs='+',
+                        help='Get the top-k of word probabilities, k is a list, default is %(default)s')
 
     args = parser.parse_args()
+
+    new_k_list = []
+    for k_str in args.k_list:
+        if '..' in k_str:
+            start, end = k_str.split('..')
+            new_k_list.extend(range(int(start), int(end) + 1))
+        else:
+            new_k_list.append(int(k_str))
+
+    args.k_list = np.unique(new_k_list)
 
     print args
 
@@ -43,7 +55,7 @@ def main():
         step_idx=args.step_idx,
         end_idx=args.end_idx,
         logfile=args.logfile,
-        k=args.k,
+        k_list=args.k_list,
     )
 
 
