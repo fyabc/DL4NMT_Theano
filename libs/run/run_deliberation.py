@@ -8,11 +8,6 @@ import cPickle as pkl
 import numpy as np
 import theano
 
-try:
-    from bottleneck import argpartsort as part_sort
-except ImportError:
-    from bottleneck import argpartition as part_sort
-
 from ..models.deliberation import DelibNMT
 from ..utility.utils import prepare_data, load_params, set_logging_file, message, get_logging_file, load_options_test
 from ..constants import profile, Datasets
@@ -122,7 +117,12 @@ def predict(modelpath,
                     all_sample[ii] += _yy
                     correct_sample[ii] += _xx
             if 'p' in action or 'r' in action:
-                _predict = part_sort(probs, max(k_list) - 1, axis=1)
+                try:
+                    from bottleneck import argpartsort as part_sort
+                    _predict = part_sort(probs, max(k_list), axis=1)
+                except ImportError:
+                    from bottleneck import argpartition as part_sort
+                    _predict = part_sort(probs, max(k_list) - 1, axis=1)
                 _predict = _predict.reshape((y.shape[0], y.shape[1], _predict.shape[-1]))
 
                 y_mask_i = y_mask.astype('int64')
@@ -134,7 +134,7 @@ def predict(modelpath,
 
                     for i, k in enumerate(k_list):
                         # Words of top-k prediction of the sentence
-                        s_predict = _predict[:, s_idx, :k - 1]
+                        s_predict = _predict[:, s_idx, :k]
                         T_n = set((s_predict * y_mask_i[:, s_idx, None]).flatten())
 
                         if 'p' in action:
