@@ -236,6 +236,9 @@ def predict(modelpath,
 
                 if 'a' in action:
                     for j in xrange(len(y_seq)):
+                        if j >= len(all_sample) or j >= len(correct_sample):
+                            all_sample.append(0)
+                            correct_sample.append(0)
                         all_sample[j] += 1
                         if len(trans_seq) > j and y_seq[j] == trans_seq[j]:
                             correct_sample[j] += 1
