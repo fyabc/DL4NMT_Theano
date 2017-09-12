@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 import os
-import sys
 import cPickle as pkl
 
 import numpy as np
@@ -238,7 +237,7 @@ def predict(modelpath,
                 if 'a' in action:
                     for j in xrange(len(y_seq)):
                         all_sample[j] += 1
-                        if y_seq[j] == trans_seq[j]:
+                        if len(trans_seq) > j and y_seq[j] == trans_seq[j]:
                             correct_sample[j] += 1
                 if 'p' in action:
                     all_precisions.append(len(R.intersection(T_n)) * 1.0 / len(T_n))
