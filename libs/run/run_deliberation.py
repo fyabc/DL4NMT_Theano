@@ -157,15 +157,15 @@ def predict(modelpath,
                 message(xx_ / yy_, '\t', end='')
             message()
         if 'p' in action:
-            message('Precision: {}'.format(
-                ', '.join(
-                    'top{}={:.6f}'.format(k, np.mean(all_precisions))
+            message('Precision:\n\t{}'.format(
+                '\n\t'.join(
+                    'top {} = {}'.format(k, np.mean(all_precisions))
                     for k, all_precisions in zip(k_list, all_precisions_list)
                 )))
         if 'r' in action:
-            message('Recall: {}'.format(
-                ', '.join(
-                    'top{}={:.6f}'.format(k, np.mean(all_recalls))
+            message('Recall:\n\t{}'.format(
+                '\n\t'.join(
+                    'top {} = {}'.format(k, np.mean(all_recalls))
                     for k, all_recalls in zip(k_list, all_recalls_list)
                 )))
 
