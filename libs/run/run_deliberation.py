@@ -117,22 +117,22 @@ def predict(modelpath,
                     all_sample[ii] += _yy
                     correct_sample[ii] += _xx
             if 'p' in action or 'r' in action:
-                try:
-                    from bottleneck import argpartsort as part_sort
-                    _predict = part_sort(probs, max(k_list), axis=1)
-                except ImportError:
-                    from bottleneck import argpartition as part_sort
-                    _predict = part_sort(probs, max(k_list) - 1, axis=1)
-                _predict = _predict.reshape((y.shape[0], y.shape[1], _predict.shape[-1]))
-
                 y_mask_i = y_mask.astype('int64')
 
-                for s_idx in xrange(y.shape[1]):
-                    # Words of the sentence
-                    # [NOTE]: EOS = 0
-                    R = set((y * y_mask_i)[:, s_idx].flatten())
+                for i, k in enumerate(k_list):
+                    try:
+                        from bottleneck import argpartsort as part_sort
+                        _predict = part_sort(probs, k, axis=1)
+                    except ImportError:
+                        from bottleneck import argpartition as part_sort
+                        _predict = part_sort(probs, k - 1, axis=1)
+                    _predict = _predict.reshape((y.shape[0], y.shape[1], _predict.shape[-1]))
 
-                    for i, k in enumerate(k_list):
+                    for s_idx in xrange(y.shape[1]):
+                        # Words of the sentence
+                        # [NOTE]: EOS = 0
+                        R = set((y * y_mask_i)[:, s_idx].flatten())
+
                         # Words of top-k prediction of the sentence
                         s_predict = _predict[:, s_idx, :k]
                         T_n = set((s_predict * y_mask_i[:, s_idx, None]).flatten())
