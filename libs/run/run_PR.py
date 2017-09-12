@@ -231,7 +231,7 @@ def predict(modelpath,
                 R.discard(eos_id)
                 T_n = set()
                 for cand_seq in cand_seqs:
-                    T_n = T_n.intersection(set(cand_seq))
+                    T_n = T_n.union(set(cand_seq))
                 T_n.discard(eos_id)
 
                 if 'a' in action:
