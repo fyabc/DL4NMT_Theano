@@ -28,8 +28,9 @@ def translate_model_single(input_, model_name, options, k, normalize):
     return translate(input_, model, f_init, f_next, trng, k, normalize)
 
 def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
-         normalize=False, chr_level=False, batch_size=-1, zhen = False, src_trg_table_path=None, dump_all = False, args=None):
-    batch_mode = batch_size > 0
+         normalize=False, chr_level=False, batch_size=1, zhen = False, src_trg_table_path=None, dump_all = False, args=None):
+    batch_mode = batch_size > 1
+    assert batch_mode
 
     # load model model_options
     options = load_options_test(model)
@@ -52,7 +53,7 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
     f_init, f_next = model.build_sampler(trng=trng, use_noise = use_noise, batch_mode = batch_mode, dropout=options['use_dropout'])
 
     trans, all_cand_trans = translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target, source_file, k, normalize,
-                                src_trg_table = src_trg_table, zhen= zhen, n_words_src = options['n_words_src'], echo= True)
+                                src_trg_table = src_trg_table, zhen= zhen, n_words_src = options['n_words_src'], echo= True, batch_size= batch_size)
     with open(saveto, 'w') as f:
         print >> f, '\n'.join(trans)
     if dump_all:

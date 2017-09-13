@@ -15,7 +15,7 @@ BestTempImmediateFilename = '{}_imm_tmp.npz'
 ShuffleCycle = 7
 
 # Load the N-th previous saved model when NaN detected.
-NaNReloadPrevious = 5
+NaNReloadPrevious = 4
 
 # Set datasets
 #For datasets other than zhen: train1, train2, small1, small2, valid1, valid2(postprocessed, e.g., bpe and truecase), valid3(original), test1, test2, dic1, dic2

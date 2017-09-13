@@ -248,8 +248,7 @@ def translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target, 
         trans = seqs2words(all_chosen_trans, word_idict_trg)
         all_cand_trans_str = seqs2words(all_cand_trans, word_idict_trg)
     else:
-        trans = [
-            idx2str_attnBasedUNKReplace(trg_idx, src_str, src_trg_table, word_idict_trg, attn, hotfix)
+        trans = [idx2str_attnBasedUNKReplace(trg_idx, src_str, src_trg_table, word_idict_trg, attn, hotfix)
             for (trg_idx, src_str, attn, hotfix) in zip(all_chosen_trans, all_src_str, all_attn_src_words, all_src_hotfixes)]
     return trans, all_cand_trans_str
 
