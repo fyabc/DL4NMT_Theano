@@ -98,10 +98,10 @@ class OpCounter(object):
 
     def report(self):
         message('Number of nodes:', self.n_nodes)
-        message('Dots:')
+        message('Dots:', len(self.dots))
         for record in self.dots:
             message('\tindex: {} shapes: {}'.format(record[0], ' '.join(str(s) for s in record[1:])))
-        message('Elemwises:')
+        message('Elemwises:', len(self.elemwises))
         for record in self.elemwises:
             message('\tindex: {} scalar_op: {} shapes: {}'.format(
                 record[0], record[1], ' '.join(str(s) for s in record[2:])))
