@@ -5,6 +5,8 @@
 
 from __future__ import print_function
 
+from collections import OrderedDict
+
 import numpy as np
 import theano
 import theano.tensor as T
@@ -20,12 +22,18 @@ class OpCounter(object):
         model_name = args.modelpath
         self.O = load_options_test(model_name)
 
+        # Build model
         model_type = 'NMTModel'
         if self.O['trg_attention_layer_id'] is not None:
             model_type = 'TrgAttnNMTModel'
         self.model, _, ret = build_and_init_model(model_name, self.O, build=True, model_type=model_type)
 
-        print_params(self.model.P)
+        # Print model size and parameters.
+        np_parameters = OrderedDict()
+        for k, v in self.model.P.iteritems():
+            np_parameters[k] = v.get_value()
+        print_params(np_parameters)
+        del np_parameters
 
         trng, use_noise, \
             x, x_mask, y, y_mask, \
