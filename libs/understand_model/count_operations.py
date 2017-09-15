@@ -9,68 +9,93 @@ import numpy as np
 import theano
 import theano.tensor as T
 
-from ..utility.utils import normal_weight
+from ..utility.utils import load_options_test, message
 from ..constants import fX
+from ..models import build_and_init_model
 
 
 class OpCounter(object):
-    def __init__(self, O):
+    def __init__(self, args):
         # About model
+        model_name = args.modelpath
+        self.O = load_options_test(model_name)
+
+        model_type = 'NMTModel'
+        if self.O['trg_attention_layer_id'] is not None:
+            model_type = 'TrgAttnNMTModel'
+        self.model, _, ret = build_and_init_model(model_name, self.O, build=True, model_type=model_type)
+
+        trng, use_noise, \
+            x, x_mask, y, y_mask, \
+            opt_ret, \
+            cost, test_cost, x_emb = ret
+        inps = [x, x_mask, y, y_mask]
+
+        if args.dest == 'probs':
+            self.f = theano.function(
+                inps, cost,
+                profile=False,
+                mode=theano.compile.MonitorMode(
+                    pre_func=self.inspect_inputs,
+                    post_func=self.inspect_outputs,
+                )
+            )
+
+        self.fake_inputs = self._get_fake_inputs()
 
         # Counters
         self.dots = []
+        self.n_nodes = 0
 
     def inspect_inputs(self, i, node, fn):
-        print('Index:', i, 'Node:', node)
-        print('inputs:')
+        message('Index:', i, 'Node:', node)
+        message('inputs:')
         for input_ in fn.inputs:
-            print('\t shape: {} dtype: {}'.format(input_[0].shape, input_[0].dtype))
+            message('\t shape: {} dtype: {}'.format(input_[0].shape, input_[0].dtype))
 
         op_name = type(node.op).__name__.lower()
         if 'dot' in op_name:
             self.dots.append([input_[0].shape for input_ in fn.inputs])
+        if i > self.n_nodes:
+            self.n_nodes = i
 
     def inspect_outputs(self, i, node, fn):
-        print('outputs:')
+        message('outputs:')
         for output in fn.outputs:
-            print('\t shape: {} dtype: {}'.format(output[0].shape, output[0].dtype))
-        print()
+            message('\t shape: {} dtype: {}'.format(output[0].shape, output[0].dtype))
+        message()
+
+    def run(self):
+        self.f(**self.fake_inputs)
+
+    def _get_fake_inputs(self):
+        maxlen = self.O['maxlen']
+        maxlen_x = min(maxlen, 10)
+        maxlen_y = min(maxlen, 8)
+        n_samples = self.O['batch_size']
+        n_words_src = self.O['n_words_src']
+        n_words = self.O['n_words']
+
+        return {
+            'x': np.random.randint(0, n_words_src, (maxlen_x, n_samples), dtype='int64'),
+            'y': np.random.randint(0, n_words, (maxlen_y, n_samples), dtype='int64'),
+            'x_mask': np.ones((maxlen_x, n_samples), dtype=fX),
+            'y_mask': np.ones((maxlen_y, n_samples), dtype=fX),
+        }
+
+    def report(self):
+        message('Number of nodes:', self.n_nodes)
+        message('Dots:', self.dots)
 
 
-def test_func(grad=True):
-    x = T.matrix('x', dtype=fX)
-    y = T.matrix('y', dtype=fX)
-    a = theano.shared(normal_weight(3, 5))
+def real_main(args):
+    counter = OpCounter(args)
 
-    z = T.dot(x, y)
-    o = (z + 1) * a
+    message('Inputs:')
+    for k, v in counter.fake_inputs.items():
+        message('\t {} shape: {} dtype: {}'.format(k, v.shape, v.dtype))
+    message()
 
-    w = theano.shared(np.random.randn(2, 5, 7).astype(fX))
+    counter.run()
 
-    o = T.dot(o, w)
-
-    if grad:
-        output = T.grad(o.mean(), [x, y])
-    else:
-        output = o
-
-    return [x, y], [a], output
-
-
-def real_main(args=None):
-    inputs, shares, output = test_func(True)
-    counter = OpCounter({})
-
-    f = theano.function(
-        inputs, output,
-        mode=theano.compile.MonitorMode(
-            pre_func=counter.inspect_inputs,
-            post_func=counter.inspect_outputs,
-        )
-    )
-
-    f(normal_weight(3, 4), normal_weight(4, 5))
-
-    print(counter.dots)
-
-    # todo
+    counter.report()
