@@ -41,7 +41,7 @@ def test_func(grad=True):
     return [x, y], [a], output
 
 
-def real_main():
+def real_main(args):
     inputs, shares, output = test_func(True)
 
     f = theano.function(

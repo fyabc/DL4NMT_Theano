@@ -45,6 +45,7 @@ class OpCounter(object):
 
         # Counters
         self.dots = []
+        self.elemwises = []
         self.n_nodes = 0
 
     def inspect_inputs(self, i, node, fn):
@@ -55,7 +56,9 @@ class OpCounter(object):
 
         op_name = type(node.op).__name__.lower()
         if 'dot' in op_name:
-            self.dots.append([input_[0].shape for input_ in fn.inputs])
+            self.dots.append([i] + [input_[0].shape for input_ in fn.inputs])
+        if 'elemwise' in op_name:
+            self.elemwises.append([i, node.op.scalar_op] + [input_[0].shape for input_ in fn.inputs])
         if i > self.n_nodes:
             self.n_nodes = i
 
@@ -85,7 +88,13 @@ class OpCounter(object):
 
     def report(self):
         message('Number of nodes:', self.n_nodes)
-        message('Dots:', self.dots)
+        message('Dots:')
+        for record in self.dots:
+            message('\tindex: {} shapes: {}'.format(record[0], ' '.join(str(s) for s in record[1:])))
+        message('Elemwises:')
+        for record in self.elemwises:
+            message('\tindex: {} scalar_op: {} shapes: {}'.format(
+                record[0], record[1], ' '.join(str(s) for s in record[2:])))
 
 
 def real_main(args):
