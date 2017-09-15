@@ -9,7 +9,7 @@ import numpy as np
 import theano
 import theano.tensor as T
 
-from ..utility.utils import load_options_test, message
+from ..utility.utils import load_options_test, message, print_params
 from ..constants import fX
 from ..models import build_and_init_model
 
@@ -24,6 +24,8 @@ class OpCounter(object):
         if self.O['trg_attention_layer_id'] is not None:
             model_type = 'TrgAttnNMTModel'
         self.model, _, ret = build_and_init_model(model_name, self.O, build=True, model_type=model_type)
+
+        print_params(self.model.P)
 
         trng, use_noise, \
             x, x_mask, y, y_mask, \
