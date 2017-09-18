@@ -11,7 +11,7 @@ from ..models import build_and_init_model
 from ..models.deliberation import DelibNMT
 from ..utility.utils import prepare_data, load_params, set_logging_file, message, load_options_test
 from ..constants import profile
-from ..utility.translate import translate_whole, words2seqs
+from ..utility.translate import translate_whole, words2seqs, seqs2words
 
 
 def _load_one_file(filename, dic, maxlen, voc_size, UNKID=1):
@@ -39,6 +39,10 @@ def prepare_predict(model_options,
     # load valid data; truncated by the ``maxlen''
     srcdict = pkl.load(open(dictionary, 'rb'))
     trgdict = pkl.load(open(dictionary_target, 'rb'))
+
+    trg_idict = {v: k for k, v in trgdict.iteritems()}
+    trg_idict[0] = '<eos>'
+    trg_idict[1] = 'UNK'
 
     def _load_files():
         src_lines = _load_one_file(valid_datasets[0], srcdict, model_options['maxlen'], model_options['n_words_src'])
@@ -68,11 +72,11 @@ def prepare_predict(model_options,
     f_predictor = theano.function(inps, [cost, probs], profile=profile)
     print 'Done'
 
-    return model, valid_src, valid_trg, params, f_predictor
+    return model, valid_src, valid_trg, params, f_predictor, trg_idict
 
 
 def predict(modelpath,
-            action='a',
+            action='aprs',
             valid_batch_size=80,
             valid_datasets=('./data/dev/dev_en.tok',
                             './data/dev/dev_fr.tok'),
@@ -88,7 +92,7 @@ def predict(modelpath,
     print_samples = True
 
     if model_options['use_delib']:
-        model, valid_src, valid_trg, params, f_predictor = prepare_predict(
+        model, valid_src, valid_trg, params, f_predictor, trg_idict = prepare_predict(
             model_options, valid_datasets, dictionary, dictionary_target, logfile,
         )
 
@@ -104,6 +108,8 @@ def predict(modelpath,
             all_precisions_list = [[] for _ in xrange(len(k_list))]
             all_recalls_list = [[] for _ in xrange(len(k_list))]
 
+            sample_translation = None
+
             for block_id in xrange(m_block):
                 seqx = valid_src[block_id * valid_batch_size: (block_id + 1) * valid_batch_size]
                 seqy = valid_trg[block_id * valid_batch_size: (block_id + 1) * valid_batch_size]
@@ -111,7 +117,7 @@ def predict(modelpath,
                 y_pos_ = np.repeat(np.arange(y.shape[0])[:, None], y.shape[1], axis=1).astype('int64')
                 cost, probs = f_predictor(x, x_mask, y, y_mask, y_pos_)
 
-                if 'a' in action:
+                if 'a' in action or 's' in action:
                     _predict = probs.argmax(axis=1).reshape((y.shape[0], y.shape[1]))
                     results = ((_predict == y).astype('float32') * y_mask).sum(axis=1)
 
@@ -120,6 +126,13 @@ def predict(modelpath,
                     for ii, (_xx, _yy) in enumerate(zip(results, m_sample_)):
                         all_sample[ii] += _yy
                         correct_sample[ii] += _xx
+
+                    if 's' in action and sample_translation is None:
+                        # Get a random sample translated sentence and ground truth
+                        sample_translation = {
+                            'translated': seqs2words(_predict.T, trg_idict),
+                            'ground truth': seqs2words(seqy, trg_idict),
+                        }
                 if 'p' in action or 'r' in action:
                     y_mask_i = y_mask.astype('int64')
 
@@ -147,8 +160,6 @@ def predict(modelpath,
                                 all_precisions_list[i].append(len(R.intersection(T_n)) * 1.0 / len(T_n))
                             if 'r' in action:
                                 all_recalls_list[i].append(len(R.intersection(T_n)) * 1.0 / len(R))
-                else:
-                    raise Exception('Unknown action {}'.format(action))
 
             message('Iteration:', curidx)
 
@@ -174,6 +185,13 @@ def predict(modelpath,
                         'top {} = {}'.format(k, np.mean(all_recalls))
                         for k, all_recalls in zip(k_list, all_recalls_list)
                     )))
+            if 's' in action:
+                message('Sample translation:\nGround truth:')
+                for s in sample_translation['ground truth']:
+                    message('\t' + s)
+                message('Translated:')
+                for s in sample_translation['translated']:
+                    message('\t' + s)
 
             message()
     else:

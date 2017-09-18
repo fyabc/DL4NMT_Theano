@@ -15,7 +15,7 @@ def main():
     parser.add_argument('modelpath', help='The model path, default is %(default)s')
     parser.add_argument('--log', action='store', dest='logfile', default=None, metavar='FILE',
                         help='The logging filename, default is %(default)s')
-    parser.add_argument('--action', action='store', dest='action', default='a',
+    parser.add_argument('--action', action='store', dest='action', default='aprs',
                         help='Test action (string contains "a", "p" and "r"), default is %(default)s')
     parser.add_argument('--bs', action='store', dest='valid_batch_size', default=80, type=int, metavar='N',
                         help='Batch size, default is %(default)s')
