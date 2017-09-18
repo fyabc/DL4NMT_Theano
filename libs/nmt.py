@@ -461,7 +461,7 @@ Start Time = {}
                     message('Load previously dumped model at {}'.format(saveto))
                     prev_params = load_params(saveto, params)
                     zipp(prev_params, model.P)
-                    saveto_imm_path = '{}_latest.npz'.format(os.path.splitext(saveto)[0])
+                    saveto_imm_path = '{}.npz'.format(os.path.splitext(saveto)[0])
                     prev_imm_data = get_adadelta_imm_data(optimizer, True, saveto_imm_path)
                     adadelta_set_imm_data(optimizer, prev_imm_data, imm_shared)
 

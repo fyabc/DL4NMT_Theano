@@ -622,7 +622,7 @@ def get_adadelta_imm_data(optimizer, given_imm, preload, iteration=None):
         if iteration is None:
             given_imm_filename = BestImmediateFilename.format(_real_filename)
         else:
-            given_imm_filename ImmediateFilename.format(_real_filename, iteration)
+            given_imm_filename = ImmediateFilename.format(_real_filename, iteration)
         
         if os.path.exists(given_imm_filename):
             message('Loading adadelta immediate data')
