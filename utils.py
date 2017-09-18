@@ -189,15 +189,16 @@ def load_embedding(params, embedding_model_file, emb_keys=('Wemb', 'Wemb_dec')):
 
     return params
 
-
 # some utilities
 def orthogonal_weight(ndim):
     W = np.random.randn(ndim, ndim)
+    # return W.astype('float32')
     u, s, v = np.linalg.svd(W)
     return u.astype('float32')
 
 
 def normal_weight(nin, nout=None, scale=0.01, orthogonal=True):
+    # orthogonal = False
     if nout is None:
         nout = nin
     if nout == nin and orthogonal:
@@ -564,13 +565,13 @@ def dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto):
     message('Dumping adadelta immediate data to temp file...', end='')
     if optimizer == 'adadelta':
         np.savez(tmp_filename,
-                 [g.get_value() for g in imm_shared[0]] +
-                 [g.get_value() for g in imm_shared[1]])
+                 np.array([g.get_value() for g in imm_shared[0]] +
+                          [g.get_value() for g in imm_shared[1]], dtype=object))
     elif optimizer == 'adam':
         np.savez(tmp_filename,
-                 [imm_shared[0].get_value()] +
-                 [g.get_value() for g in imm_shared[1]] +
-                 [g.get_value() for g in imm_shared[2]])
+                 np.array([imm_shared[0].get_value()] +
+                          [g.get_value() for g in imm_shared[1]] +
+                          [g.get_value() for g in imm_shared[2]], dtype=object))
     else:
         pass
     message('Done')

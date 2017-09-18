@@ -30,7 +30,7 @@ def translate_model(queue, rqueue, pid, model_name, options, k, normalize):
     model.init_tparams(params)
 
     # word index
-    f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise)
+    f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise, dropout=options['use_dropout'])
 
     def _translate(seq):
         # sample given an input sequence and obtain scores

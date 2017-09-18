@@ -8,6 +8,7 @@ import re
 import cPickle as pkl
 import numpy as np
 import subprocess
+import time
 
 from constants import Datasets
 from utils import prepare_data_x
@@ -40,7 +41,7 @@ def translate(input_, model, f_init, f_next, trng, k, normalize):
     return output
 
 
-def translate_block(input_, model, f_init, f_next, trng, k):
+def translate_block(input_, model, f_init, f_next, trng, k, target_idict=None):
     """Translate for batch sampler.
 
     :return output: a list of word indices
@@ -49,7 +50,7 @@ def translate_block(input_, model, f_init, f_next, trng, k):
 
     batch_sample, batch_sample_score = model.gen_batch_sample(
         f_init, f_next, x, x_mask, trng,
-        k=k, maxlen=200, eos_id=0,
+        k=k, maxlen=200, eos_id=0, target_idict=target_idict
     )
     assert len(batch_sample) == len(batch_sample_score)
 
@@ -181,11 +182,11 @@ def _translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target,
             batch_mode=batch_mode, chr_level=chr_level, n_words_src=n_words_src,
             echo=False, batch_size=30,
         )
-
+        start_time = time.time()
         all_sample = []
         for bidx, seqs in enumerate(all_src_blocks):
-            all_sample.extend(translate_block(seqs, model, f_init, f_next, trng, k))
-            print(bidx, '/', m_block, 'Done')
+            all_sample.extend(translate_block(seqs, model, f_init, f_next, trng, k, target_idict=word_idict_trg))
+            print(bidx, '/', m_block, 'Done.', 'Time for translation is', time.time() - start_time)
 
         trans = seqs2words(all_sample, word_idict_trg)
 
@@ -228,13 +229,15 @@ def get_bleu(ref_file, hyp_in=None, type_in='filename'):
 def de_bpe(input_str):
     return re.sub(r'(@@ )|(@@ ?$)', '', input_str)
 
+def de_special_signal(input_str):
+    return re.sub(r'(----- )|(----- ?$)', '', input_str)
 
 def translate_dev_get_bleu(model, f_init, f_next, trng, use_noise, **kwargs):
     dataset = kwargs.pop('dataset', model.O['task'])
 
     # [NOTE]: Filenames here are with path prefix.
     dev1 = kwargs.pop('dev1', model.O['valid_datasets'][0])
-    dev2 = kwargs.pop('dev2', model.O['valid_datasets'][1])
+    dev2 = kwargs.pop('dev2', model.O['valid_datasets'][2])
     dic1 = kwargs.pop('dic1', model.O['vocab_filenames'][0])
     dic2 = kwargs.pop('dic2', model.O['vocab_filenames'][1])
 
@@ -243,7 +246,7 @@ def translate_dev_get_bleu(model, f_init, f_next, trng, use_noise, **kwargs):
     translated_string = _translate_whole(
         model, f_init, f_next, trng,
         dic1, dic2, dev1,
-        k=2, batch_mode=True,
+        k=4, batch_mode=True,
     )
 
     use_noise.set_value(1.)
@@ -256,14 +259,53 @@ def translate_dev_get_bleu(model, f_init, f_next, trng, use_noise, **kwargs):
             shell=True,
         ).communicate(translated_string)[0]
 
+    if 'special_signal' in dataset:
+        translated_string = de_special_signal(translated_string)
+
     if 'bpe' in dataset:
         translated_string = de_bpe(translated_string)
 
     return get_bleu(dev2, translated_string, type_in='string')
+
+def translate_test_get_bleu(model, f_init, f_next, trng, use_noise, **kwargs):
+    dataset = kwargs.pop('dataset', model.O['task'])
+
+    # [NOTE]: Filenames here are with path prefix.
+    test1 = kwargs.pop('test1', model.O['test_datasets'][0])
+    test2 = kwargs.pop('test2', model.O['test_datasets'][2])
+    dic1 = kwargs.pop('dic1', model.O['vocab_filenames'][0])
+    dic2 = kwargs.pop('dic2', model.O['vocab_filenames'][1])
+
+    use_noise.set_value(0.)
+
+    translated_string = _translate_whole(
+        model, f_init, f_next, trng,
+        dic1, dic2, test1,
+        k=4, batch_mode=True,
+    )
+
+    use_noise.set_value(1.)
+
+    # first de-truecase, then de-bpe
+    if 'tc' in dataset:
+        translated_string = subprocess.Popen(
+            'perl detruecase.perl',
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=open(os.devnull, 'w'),
+            shell=True,
+        ).communicate(translated_string)[0]
+
+    if 'special_signal' in dataset:
+        translated_string = de_special_signal(translated_string)
+
+    if 'bpe' in dataset:
+        translated_string = de_bpe(translated_string)
+
+    return get_bleu(test2, translated_string, type_in='string')
 
 
 __all__ = [
     'get_bleu',
     'de_bpe',
     'translate_dev_get_bleu',
+    'translate_test_get_bleu',
 ]

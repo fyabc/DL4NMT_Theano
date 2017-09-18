@@ -1091,6 +1091,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
     # Return memory c at the last in kw_ret
     return result[0], result[2], result[3], kw_ret
 
+from hmrnn import param_init_hmrnn, hmrnn_layer, param_init_hmrnn_cond, hmrnn_cond_layer
 
 # layers: 'name': ('parameter initializer', 'builder')
 layers = {
@@ -1104,6 +1105,8 @@ layers = {
     # todo: implement it
     'multi_lstm': (param_init_lstm, lstm_layer),
     'multi_lstm_cond': (param_init_lstm_cond, lstm_cond_layer),
+    'hmrnn': (param_init_hmrnn, hmrnn_layer),
+    'hmrnn_cond': (param_init_hmrnn_cond, hmrnn_cond_layer)
 }
 
 

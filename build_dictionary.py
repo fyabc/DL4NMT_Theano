@@ -54,6 +54,7 @@ def real_main(args):
         worddict[ww] = ii + 2
 
     with open(tgt_filename, 'wb') as f:
+        print('Dictionary Size:', len(worddict))
         print('Dump to', tgt_filename)
 
         pkl.dump(worddict, f)

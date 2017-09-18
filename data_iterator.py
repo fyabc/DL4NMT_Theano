@@ -18,7 +18,8 @@ class TextIterator:
                  batch_size=128,
                  maxlen=100,
                  n_words_source=-1,
-                 n_words_target=-1):
+                 n_words_target=-1,
+                 print_data_file = None):
         self.source = fopen(source, 'r')
         self.target = fopen(target, 'r')
         with open(source_dict, 'rb') as f:
@@ -37,6 +38,7 @@ class TextIterator:
         self.k = batch_size * 40
 
         self.end_of_data = False
+        self.print_data_file = print_data_file
 
     def __iter__(self):
         return self
@@ -78,6 +80,15 @@ class TextIterator:
 
             self.source_buffer = _sbuf
             self.target_buffer = _tbuf
+
+            if self.print_data_file is not None:
+                print "Print raw data!"
+                for s, t in zip(self.source_buffer, self.target_buffer):
+                    print >>self.print_data_file, s
+                    print >>self.print_data_file, t
+                    print >>self.print_data_file
+                self.print_data_file.close()
+                self.print_data_file = None
 
         if len(self.source_buffer) == 0 or len(self.target_buffer) == 0:
             self.end_of_data = False

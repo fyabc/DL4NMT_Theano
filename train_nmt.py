@@ -18,11 +18,17 @@ def main():
     parser.add_argument('--optimizer', action='store', default='adadelta')
     parser.add_argument('--plot', action='store', default=None,
                         help='Plot filename, default is None (not plot) (deprecated).')
-    parser.add_argument('--save_freq', action='store', default=10000, type=int, dest='save_freq',
+    parser.add_argument('--save_freq', action='store', default=5000, type=int, dest='save_freq',
                         help='Model save frequency, default is %(default)s')
+    parser.add_argument('--valid_freq', action='store', default=500, type=int, dest='valid_freq',
+                        help='Model validate frequency, default is %(default)s')
+    parser.add_argument('--bleu_freq', action='store', default=5000, type=int, dest='bleu_freq',
+                        help='Model BLEU test frequency, default is %(default)s')
+    parser.add_argument('--bleu_start_id', action='store', default=0, type=int, dest='bleu_start_id',
+                        help='Model BLEU test start from, default is %(default)s')
     parser.add_argument('--dim', action='store', default=512, type=int, dest='dim',
                         help='Dim of hidden units, default is %(default)s')
-    parser.add_argument('--bs', action='store', default=128, type=int, dest='batch_size',
+    parser.add_argument('--bs', action='store', default=32, type=int, dest='batch_size',
                         help='Train batch size, default is %(default)s')
     parser.add_argument('--dim_word', action='store', default=512, type=int, dest='dim_word',
                         help='Dim of word embedding, default is %(default)s')
@@ -54,6 +60,10 @@ def main():
     parser.add_argument('--dic2', action='store', metavar='filename', dest='dic2', type=str,
                         default='filtered_dic_en-fr.fr.pkl',
                         help='Target dict file, default is %(default)s')
+    parser.add_argument('--n_words_src', action='store', default=25000, type=int, dest='n_words_src',
+                        help='Vocabularies in source side, default is %(default)s')
+    parser.add_argument('--n_words_tgt', action='store', default=25000, type=int, dest='n_words_tgt',
+                        help='Vocabularies in target side, default is %(default)s')
 
     parser.add_argument('model_file', nargs='?', default='model/baseline/baseline.npz',
                         help='Generated model file, default is "%(default)s"')
@@ -68,8 +78,17 @@ def main():
                         help='Connection type, '
                              'default is 2 (bidirectional only in first layer, other layers are forward);'
                              '1 is divided bidirectional GRU')
+
     parser.add_argument('--unit', action='store', metavar='unit', dest='unit', type=str, default='lstm',
-                        help='The unit type, default is "lstm", can be set to "gru".')
+                        help='The unit type, default is "lstm", can be set to "gru" or "hmrnn".')
+
+    parser.add_argument('--encoder_unit', action='store', metavar='unit', dest='encoder_unit', type=str, default=None,
+                        help='The unit type of encoder, default is None (use type specified by --unit),'
+                             ' can be set to "lstm", "gru" or "hmrnn".')
+    parser.add_argument('--decoder_unit', action='store', metavar='unit', dest='decoder_unit', type=str, default=None,
+                        help='The unit type of decoder, default is None (use type specified by --unit),'
+                             ' can be set to "lstm", "gru" or "hmrnn".')
+
     parser.add_argument('--attention', action='store', metavar='index', dest='attention_layer_id', type=int, default=0,
                         help='Attention layer index, default is 0')
     parser.add_argument('--residual_enc', action='store', metavar='type', dest='residual_enc', type=str, default=None,
@@ -114,6 +133,29 @@ def main():
     parser.add_argument('--ft_patience', action='store', metavar='N', dest='fine_tune_patience', type=int, default=-1,
                         help='Fine tune patience, default is %(default)s, set 8 to enable it')
 
+    parser.add_argument('--bottom_lstm', action='store_true', dest='bottom_lstm', default=False,
+                        help='Use LSTM in the first layer of multiscale RNN structure, default is False, set to True')
+    parser.add_argument('--use_mask', action='store_true', dest='use_mask', default=False,
+                        help='Use masks rather than T.switch in multiscale RNN structure, default is False, set to True')
+    parser.add_argument('--benefit_0_boundary', action='store_true', dest='benefit_0_boundary', default=False,
+                        help="Mask lower layers' hidden state, default is False, set to True")
+    parser.add_argument('--use_all_one_boundary', action='store_true', dest='use_all_one_boundary', default=False,
+                        help="Use all one boundary in decoder, default is False, set to True")
+    parser.add_argument('--use_explicit_boundary', action='store_true', dest='use_explicit_boundary', default=False,
+                        help="Use explicit boundary in decoder, default is False, set to True")
+    parser.add_argument('--boundary_type', action = 'store', metavar ='type', dest = 'boundary_type', type = str, default='ST',
+                        help='Type of boundaries, default is "ST", candidates are "Gumbel_Softmax", "ST_Gumbel"')
+    parser.add_argument('--hard_sigmoid_a', action='store', metavar='hard_sigmoid_a', dest='hard_sigmoid_a', type=float,
+                        default=5.0, help='Hard_sigomoid_a, default is 5.0.')
+    parser.add_argument('--temperature', action='store', metavar='temperature', dest='temperature', type=float, default=1.0,
+                        help='Temperature for gumbel softmax, default is 1.0.')
+    parser.add_argument('--enc_boundary_regularization', action='store', metavar='regularization_alpha',
+                        dest='enc_boundary_regularization', type=float, default=0.0,
+                        help='Boundary regularization for multiscale RNN at encoder, default is 0.0.')
+    parser.add_argument('--dec_boundary_regularization', action='store', metavar='regularization_alpha',
+                        dest='dec_boundary_regularization', type=float, default=0.0,
+                        help='Boundary regularization for multiscale RNN at decoder, default is 0.0.')
+
     args = parser.parse_args()
     print args
 
@@ -141,9 +183,18 @@ def main():
 
         args.cond_unit_size = args.unit_size
 
+    if args.encoder_unit is None:
+        args.encoder_unit = args.unit
+    if args.decoder_unit is None:
+        args.decoder_unit = args.unit
+
     # If dataset is not 'en-fr', old value of dataset options like 'args.train1' will be omitted
     if args.dataset != 'en-fr':
-        args.train1, args.train2, args.small1, args.small2, args.valid1, args.valid2, test1, test2, args.dic1, args.dic2 = \
+        args.train1, args.train2, \
+        args.small1, args.small2, \
+        args.valid1, args.valid2, valid3, \
+        test1, test2, test3, \
+        args.dic1, args.dic2 = \
             Datasets[args.dataset]
 
     print 'Command line arguments:'
@@ -197,11 +248,17 @@ def main():
         valid_batch_size=128,
         dispFreq=1,
         saveFreq=args.save_freq,
-        validFreq=5000,  # Change it from 2500 to 5000 @ 6/11/2017
+        validFreq=args.valid_freq,  # Change it from 2500 to 5000 @ 6/11/2017.
+        bleuFreq=args.bleu_freq,
+        bleu_start_id=args.bleu_start_id,
         datasets=('./data/train/{}'.format(args.train1),
                   './data/train/{}'.format(args.train2)),
         valid_datasets=('./data/dev/{}'.format(args.valid1),
-                        './data/dev/{}'.format(args.valid2)),
+                        './data/dev/{}'.format(args.valid2),
+                        './data/dev/{}'.format(valid3)),
+        test_datasets=('./data/test/{}'.format(test1),
+                       './data/test/{}'.format(test2),
+                       './data/test/{}'.format(test3)),
         small_train_datasets=('./data/train/{}'.format(args.small1),
                               './data/train/{}'.format(args.small2)),
         vocab_filenames=('./data/dic/{}'.format(args.dic1),
@@ -209,8 +266,11 @@ def main():
         task=args.dataset,
         use_dropout=args.dropout,
         overwrite=False,
-        n_words=30000,
-        n_words_src=30000,
+
+        # n_words=30000,
+        # n_words_src=30000,
+        n_words=args.n_words_tgt,
+        n_words_src=args.n_words_src,
 
         # Options from v-yanfa
         dump_before_train=args.dump_before_train,
@@ -223,6 +283,8 @@ def main():
 
         attention_layer_id=args.attention_layer_id,
         unit=args.unit,
+        encoder_unit=args.encoder_unit,
+        decoder_unit=args.decoder_unit,
         residual_enc=args.residual_enc,
         residual_dec=args.residual_dec,
         use_zigzag=args.use_zigzag,
@@ -244,6 +306,16 @@ def main():
         sync_models = args.sync_models,
 
         fine_tune_patience=args.fine_tune_patience,
+        bottom_lstm=args.bottom_lstm,
+        use_mask=args.use_mask,
+        boundary_type_str=args.boundary_type,
+        hard_sigmoid_a_schedule=args.hard_sigmoid_a,
+        temperature_schedule=args.temperature,
+        benefit_0_boundary=args.benefit_0_boundary,
+        use_all_one_boundary=args.use_all_one_boundary,
+        use_explicit_boundary=args.use_explicit_boundary,
+        enc_boundary_regularization=args.enc_boundary_regularization,
+        dec_boundary_regularization=args.dec_boundary_regularization,
     )
 
 

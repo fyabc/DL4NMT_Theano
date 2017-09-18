@@ -12,8 +12,9 @@ from pprint import pprint
 import numpy as np
 import theano
 import theano.tensor as tensor
+from theano.updates import OrderedUpdates
 
-from constants import profile, fX
+from constants import profile, fX, boundary_dict
 from data_iterator import TextIterator
 from optimizers import Optimizers
 from utils import *
@@ -21,6 +22,7 @@ from utils import *
 from utils_fine_tune import *
 from model import NMTModel
 
+from hmrnn import prepare_explicit_boundary
 
 def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True, normalize=False):
     """Calculate the log probablities on a given corpus using translation model"""
@@ -49,25 +51,206 @@ def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True, norma
     return np.array(probs)
 
 
-def validation(iterator, f_cost, maxlen=None):
+def validation(iterator, f_cost, encoder_unit, decoder_unit, use_explicit_boundary=False, maxlen=None,
+               source_idict=None, target_idict=None,
+               f_get_boundary=None,
+               encoder_boundary_save_file=None, decoder_boundary_save_file=None,
+               encoder_boundary_before_sigmoid_save_file=None,
+               encoder_r_boundary_before_sigmoid_save_file=None,
+               decoder_boundary_before_sigmoid_save_file=None,
+               data_file=None):
+
     valid_cost = 0.0
     valid_count = 0
+
+    encoder_per = 0.0
+    decoder_per = 0.0
+
+    x_expected_error_num_0 = 0.0
+    x_expected_error_tot_0 = 0.0
+    x_expected_error_num_1 = 0.0
+    x_expected_error_tot_1 = 0.0
+
+    y_expected_error_num_0 = 0.0
+    y_expected_error_tot_0 = 0.0
+    y_expected_error_num_1 = 0.0
+    y_expected_error_tot_1 = 0.0
+
     for x, y in iterator:
         x, x_mask, y, y_mask = prepare_data(x, y, maxlen=maxlen)
 
         if x is None:
             continue
+        inps = [x, x_mask, y, y_mask]
+        if 'hmrnn' in decoder_unit and use_explicit_boundary:
+            inps.append(prepare_explicit_boundary(y, target_idict))
 
-        valid_cost += f_cost(x, x_mask, y, y_mask)
+        ret = f_cost(*inps)
+
+        batch_valid_cost = ret[0]
+        ret = ret[1:]
+        valid_cost += batch_valid_cost
+
+        if 'hmrnn' in encoder_unit:
+            batch_encoder_per, encoder_boundary = ret[:2]
+            ret = ret[2:]
+
+            encoder_per += batch_encoder_per.mean()
+
+            encoder_boundary = encoder_boundary.reshape((encoder_boundary.shape[0], encoder_boundary.shape[1]))
+            x_expected_boundary_mask_0 = np.zeros_like(x)
+            x_expected_boundary_mask_1 = np.zeros_like(x)
+
+            for i in xrange(x.shape[0]):
+                for j in xrange(x.shape[1]):
+                    if i > 0 and source_idict[x[i - 1][j]][-2:] == '@@':
+                        x_expected_boundary_mask_0[i][j] = 1.0
+                    elif i > 1 and source_idict[x[i - 2][j]][-2:] == '@@' and source_idict[x[i - 1][j]][-2:] != '@@':
+                        x_expected_boundary_mask_1[i][j] = 1.0
+
+            x_expected_error_num_0 += (encoder_boundary * x_expected_boundary_mask_0).sum()
+            x_expected_error_tot_0 += x_expected_boundary_mask_0.sum()
+
+            x_expected_error_num_1 += ((1.0 - encoder_boundary) * x_expected_boundary_mask_1).sum()
+            x_expected_error_tot_1 += x_expected_boundary_mask_1.sum()
+
+        if 'hmrnn' in decoder_unit:
+            batch_decoder_per, decoder_boundary = ret[:2]
+            ret = ret[2:]
+
+            decoder_per += batch_decoder_per.mean()
+
+            decoder_boundary = decoder_boundary.reshape((decoder_boundary.shape[0], decoder_boundary.shape[1]))
+            y_expected_boundary_mask_0 = np.zeros_like(y)
+            y_expected_boundary_mask_1 = np.zeros_like(y)
+
+            for i in xrange(y.shape[0]):
+                for j in xrange(y.shape[1]):
+                    if i > 0 and target_idict[y[i-1][j]][-2:] == '@@':
+                        y_expected_boundary_mask_0[i][j] = 1.0
+                    elif i > 1 and target_idict[y[i - 2][j]][-2:] == '@@' and target_idict[y[i - 1][j]][-2:] != '@@':
+                        y_expected_boundary_mask_1[i][j] = 1.0
+
+            y_expected_error_num_0 += (decoder_boundary * y_expected_boundary_mask_0).sum()
+            y_expected_error_tot_0 += y_expected_boundary_mask_0.sum()
+
+            y_expected_error_num_1 += ((1.0 - decoder_boundary) * y_expected_boundary_mask_1).sum()
+            y_expected_error_tot_1 += y_expected_boundary_mask_1.sum()
+
+        assert ret == []
+
+        if valid_count == 0 and f_get_boundary is not None:
+
+            ret = f_get_boundary(*inps)
+
+            if encoder_boundary_save_file is not None:
+                enc_b, enc_b_bs = ret[:2]
+                ret = ret[2:]
+
+                enc_b = np.reshape(enc_b, (enc_b.shape[0], enc_b.shape[1])).T
+                np.savetxt(encoder_boundary_save_file, enc_b, delimiter=', ', fmt='%.2f')
+                encoder_boundary_save_file.write('\n')
+                encoder_boundary_save_file.flush()
+
+                enc_b_bs = np.reshape(enc_b_bs, (enc_b_bs.shape[0], enc_b_bs.shape[1])).T
+                np.savetxt(encoder_boundary_before_sigmoid_save_file, enc_b_bs, delimiter=', ', fmt='%.5f')
+                encoder_boundary_before_sigmoid_save_file.write('\n')
+                encoder_boundary_before_sigmoid_save_file.flush()
+
+                if encoder_r_boundary_before_sigmoid_save_file is not None:
+                    enc_r_b_bs = ret[0]
+                    ret = ret[1:]
+
+                    enc_r_b_bs = np.reshape(enc_r_b_bs, (enc_r_b_bs.shape[0], enc_r_b_bs.shape[1])).T
+                    np.savetxt(encoder_r_boundary_before_sigmoid_save_file, enc_r_b_bs, delimiter=', ', fmt='%.5f')
+                    encoder_r_boundary_before_sigmoid_save_file.write('\n')
+                    encoder_r_boundary_before_sigmoid_save_file.flush()
+
+            if decoder_boundary_save_file is not None:
+                dec_b, dec_b_bs = ret[:2]
+                ret = ret[2:]
+
+                dec_b = np.reshape(dec_b, (dec_b.shape[0], dec_b.shape[1])).T
+                np.savetxt(decoder_boundary_save_file, dec_b, delimiter=', ', fmt='%.2f')
+                decoder_boundary_save_file.write('\n')
+                decoder_boundary_save_file.flush()
+
+                dec_b_bs = np.reshape(dec_b_bs, (dec_b_bs.shape[0], dec_b_bs.shape[1])).T
+                np.savetxt(decoder_boundary_before_sigmoid_save_file, dec_b_bs, delimiter=', ', fmt='%.5f')
+                decoder_boundary_before_sigmoid_save_file.write('\n')
+                decoder_boundary_before_sigmoid_save_file.flush()
+
+            assert ret == []
+
+            assert data_file is not None, 'data_file must be provided'
+
+            reshaped_x = np.reshape(x, (x.shape[0], x.shape[1])).T
+            np.savetxt(data_file, reshaped_x, delimiter=', ', fmt='%6d')
+            data_file.write('\n')
+
+            for line in reshaped_x:
+                str_line = []
+                for word in line:
+                    str_word = source_idict[word]
+                    if str_word == ',':
+                        str_word = '<comma>'
+                    if str_word == '.':
+                        str_word = '<period>'
+                    str_line.append(str_word)
+                data_file.write(', '.join(str_line))
+                data_file.write('\n')
+            data_file.write('\n')
+
+            np.savetxt(data_file, np.reshape(x_mask, (x_mask.shape[0], x_mask.shape[1])).T, delimiter=', ', fmt='%.2f')
+            data_file.write('\n')
+
+            reshaped_y = np.reshape(y, (y.shape[0], y.shape[1])).T
+            np.savetxt(data_file, reshaped_y, delimiter=', ', fmt='%6d')
+            data_file.write('\n')
+
+            for line in reshaped_y:
+                str_line = []
+                for word in line:
+                    str_word = target_idict[word]
+                    if str_word == ',':
+                        str_word = '<comma>'
+                    if str_word == '.':
+                        str_word = '<period>'
+                    str_line.append(str_word)
+                data_file.write(', '.join(str_line))
+                data_file.write('\n')
+            data_file.write('\n')
+
+            np.savetxt(data_file, np.reshape(y_mask, (y_mask.shape[0], y_mask.shape[1])).T, delimiter=', ', fmt='%.2f')
+            data_file.write('\n')
+            data_file.flush()
+
         valid_count += 1
 
-    return valid_cost / valid_count
+    if x_expected_error_tot_0 == 0.0:
+        x_expected_error_tot_0 = 1.0
+    if x_expected_error_tot_1 == 0.0:
+        x_expected_error_tot_1 = 1.0
+    if y_expected_error_tot_0 == 0.0:
+        y_expected_error_tot_0 = 1.0
+    if y_expected_error_tot_1 == 0.0:
+        y_expected_error_tot_1 = 1.0
+
+    return (
+        valid_cost / valid_count,
+        encoder_per / valid_count,
+        decoder_per / valid_count,
+        1.0 - x_expected_error_num_0 / x_expected_error_tot_0,
+        1.0 - x_expected_error_num_1 / x_expected_error_tot_1,
+        1.0 - y_expected_error_num_0 / y_expected_error_tot_0,
+        1.0 - y_expected_error_num_1 / y_expected_error_tot_1,
+    )
 
 
 def train(dim_word=100,  # word vector dimensionality
           dim=1000,  # the number of LSTM units
-          encoder='gru',
-          decoder='gru_cond',
+          # encoder='gru',
+          # decoder='gru_cond',
           n_words_src=30000,
           n_words=30000,
           patience=10,  # early stopping patience
@@ -85,10 +268,14 @@ def train(dim_word=100,  # word vector dimensionality
           saveto='model.npz',
           saveFreq=1000,  # save the parameters after every saveFreq updates
           validFreq=2500,
+          bleuFreq=5000,
+          bleu_start_id=0,
           datasets=('/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.en.tok',
                     '/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.fr.tok'),
           valid_datasets=('./data/dev/dev_en.tok',
                           './data/dev/dev_fr.tok'),
+          test_datasets=('./data/test/test_en-fr.en.tok',
+                         './data/test/test_en-fr.fr.tok'),
           small_train_datasets=('./data/train/small_en-fr.en',
                                 './data/train/small_en-fr.fr'),
           use_dropout=False,
@@ -110,7 +297,11 @@ def train(dim_word=100,  # word vector dimensionality
           encoder_many_bidirectional=True,
 
           attention_layer_id=0,
+
           unit='gru',
+          encoder_unit=None,
+          decoder_unit=None,
+
           residual_enc=None,
           residual_dec=None,
           use_zigzag=False,
@@ -135,6 +326,19 @@ def train(dim_word=100,  # word vector dimensionality
           task='en-fr',
 
           fine_tune_patience=8,
+
+          # for hmrnn
+
+          bottom_lstm=False,
+          use_mask=False,
+          boundary_type_str='ST',
+          hard_sigmoid_a_schedule=5.0,
+          temperature_schedule=1.0,
+          benefit_0_boundary=False,
+          use_explicit_boundary=False,
+          use_all_one_boundary=False,
+          enc_boundary_regularization=0.0,
+          dec_boundary_regularization=0.0,
           ):
     model_options = locals().copy()
 
@@ -158,11 +362,36 @@ def train(dim_word=100,  # word vector dimensionality
     print 'Use {}, worker id: {}'.format('multiverso' if dist_type == 'mv' else 'mpi' if dist_recover_lr_iter else 'none', worker_id)
     sys.stdout.flush()
 
+    current_time_str = time.strftime('%m-%d-%H-%M-%S')
+
+    print 'Logging file name:', \
+        'log/complete/e{}d{}_res{}_att{}_worker{}_task{}_{}.txt'.format(
+            n_encoder_layers, n_decoder_layers, residual_enc, attention_layer_id,
+            worker_id, task, current_time_str,
+        )
     # Set logging file
     set_logging_file('log/complete/e{}d{}_res{}_att{}_worker{}_task{}_{}.txt'.format(
         n_encoder_layers, n_decoder_layers, residual_enc, attention_layer_id,
-        worker_id, task, time.strftime('%m-%d-%H-%M-%S'),
+        worker_id, task, current_time_str,
     ))
+    if 'hmrnn' in encoder_unit:
+        encoder_boundary_save_file = open('log/complete/boundaries/boundary_encoder_{}.csv'.format(current_time_str), 'w')
+        encoder_boundary_before_sigmoid_save_file = open('log/complete/boundaries/boundary_encoder_before_sigmoid_{}.csv'.format(current_time_str), 'w')
+        encoder_r_boundary_before_sigmoid_save_file = \
+            None if bottom_lstm else open('log/complete/boundaries/boundary_encoder_r_before_sigmoid_{}.csv'.format(current_time_str), 'w')
+    else:
+        encoder_boundary_save_file = None
+        encoder_boundary_before_sigmoid_save_file = None
+        encoder_r_boundary_before_sigmoid_save_file = None
+
+    if 'hmrnn' in decoder_unit:
+        decoder_boundary_save_file = open('log/complete/boundaries/boundary_decoder_{}.csv'.format(current_time_str), 'w')
+        decoder_boundary_before_sigmoid_save_file = open('log/complete/boundaries/boundary_decoder_before_sigmoid_{}.csv'.format(current_time_str), 'w')
+    else:
+        decoder_boundary_save_file = None
+        decoder_boundary_before_sigmoid_save_file = None
+
+    data_file = open('log/complete/boundaries/data_{}.csv'.format(current_time_str), 'w')
 
     log('''\
 Start Time = {}
@@ -211,7 +440,26 @@ Start Time = {}
         small_train_datasets[0], small_train_datasets[1],
         vocab_filenames[0], vocab_filenames[1],
         batch_size, maxlen, n_words_src, n_words,
+        # print_data_file=open('log/complete/data_raw_{}.txt'.format(current_time_str), 'w')
     )
+
+    test_iterator = TextIterator(
+        test_datasets[0], test_datasets[1],
+        vocab_filenames[0], vocab_filenames[1],
+        valid_batch_size, maxlen, n_words_src, n_words,
+    )
+
+    with open(vocab_filenames[0], 'rb') as f:
+        source_dict = pkl.load(f)
+        source_idict = {v: k for k, v in source_dict.iteritems()}
+        source_idict[0] = '<eos>'
+        source_idict[1] = 'UNK'
+
+    with open(vocab_filenames[1], 'rb') as f:
+        target_dict = pkl.load(f)
+        target_idict = {v: k for k, v in target_dict.iteritems()}
+        target_idict[0] = '<eos>'
+        target_idict[1] = 'UNK'
 
     print 'Building model'
     model = NMTModel(model_options)
@@ -234,21 +482,73 @@ Start Time = {}
     model.init_tparams(params)
 
     # Build model
-    trng, use_noise, \
+    trng, use_noise, boundary_type, hard_sigmoid_a, temperature,\
         x, x_mask, y, y_mask, \
-        opt_ret, \
-        cost, x_emb = model.build_model()
+        explicit_boundary_y, opt_ret, \
+        cost, x_emb, \
+        encoder_boundary, decoder_boundary,\
+        stochastic_updates = model.build_model()
+
+    boundary_type.set_value(boundary_dict[boundary_type_str])
+    hard_sigmoid_a.set_value(hard_sigmoid_a_schedule)
+
+
+    if 'hmrnn' in encoder_unit:
+        encoder_boundary_before_sigmoid = model.encoder_boundary_before_sigmoid
+        if not bottom_lstm:
+            encoder_r_boundary_before_sigmoid = model.encoder_r_boundary_before_sigmoid
+        encoder_boundary_percent = (encoder_boundary * x_mask[:, :, None]).sum(0).flatten() / x_mask.sum(0)
+
+    if 'hmrnn' in decoder_unit:
+        decoder_boundary_before_sigmoid = model.decoder_boundary_before_sigmoid
+        decoder_boundary_percent = (decoder_boundary * y_mask[:, :, None]).sum(0).flatten() / y_mask.sum(0)
+
+    all_stochastic_updates = OrderedUpdates()
+    for updates in stochastic_updates:
+        all_stochastic_updates.update(updates)
+
     inps = [x, x_mask, y, y_mask]
+
+    if 'hmrnn' in decoder_unit and use_explicit_boundary:
+        inps.append(explicit_boundary_y)
+
+    # FIXME add explicit_boundary_y to inputs
+
+    print 'Building f_get_boundary...',
+    get_boundary_outputs = []
+
+    if 'hmrnn' in encoder_unit:
+        get_boundary_outputs.append(encoder_boundary)
+        get_boundary_outputs.append(encoder_boundary_before_sigmoid)
+        if not bottom_lstm:
+            get_boundary_outputs.append(encoder_r_boundary_before_sigmoid)
+
+    if 'hmrnn' in decoder_unit:
+        get_boundary_outputs.append(decoder_boundary)
+        get_boundary_outputs.append(decoder_boundary_before_sigmoid)
+
+    f_get_boundary = theano.function(
+        inps,
+        get_boundary_outputs,
+        profile=profile, updates=all_stochastic_updates) \
+        if get_boundary_outputs else None
+
+    print 'Done'
 
     print 'Building sampler'
     # f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise)
-    f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise, batch_mode=True)
+    f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise, batch_mode=True,
+                                         dropout=model_options['use_dropout'], boundary_type=boundary_type,
+                                         use_explicit_boundary=model_options['use_explicit_boundary'],
+                                         hard_sigmoid_a=hard_sigmoid_a, temperature=temperature)
 
     # before any regularizer
     print 'Building f_log_probs...',
-    f_log_probs = theano.function(inps, cost, profile=profile)
-    f_x_emb = theano.function([x, x_mask], x_emb, profile=profile)
+    f_log_probs = theano.function(inps, cost, profile=profile, updates=all_stochastic_updates)
+    # f_x_emb = theano.function([x, x_mask], x_emb, profile=profile, updates=all_stochastic_updates)
     print 'Done'
+
+
     sys.stdout.flush()
     cost = cost.mean()
 
@@ -256,8 +556,29 @@ Start Time = {}
 
     cost = regularize_alpha_weights(cost, alpha_c, model_options, x_mask, y_mask, opt_ret)
 
+    decoder_boundary_regularization_cost = None
+
+    if enc_boundary_regularization > 0.0:
+        if 'hmrnn' in encoder_unit:
+            encoder_boundary_regularization_cost = \
+                enc_boundary_regularization * ((encoder_boundary * x_mask[:, :, None])**2).mean()
+            cost += encoder_boundary_regularization_cost
+
+    if dec_boundary_regularization > 0.0:
+        if 'hmrnn' in decoder_unit:
+            decoder_boundary_regularization_cost = \
+                dec_boundary_regularization * ((decoder_boundary * y_mask[:, :, None])**2).mean()
+            cost += decoder_boundary_regularization_cost
+
     print 'Building f_cost...',
-    f_cost = theano.function(inps, cost, profile=profile)
+    cost_outputs = [cost]
+    if 'hmrnn' in encoder_unit:
+        cost_outputs.append(encoder_boundary_percent)
+        cost_outputs.append(encoder_boundary)
+    if 'hmrnn' in decoder_unit:
+        cost_outputs.append(decoder_boundary_percent)
+        cost_outputs.append(decoder_boundary)
+    f_cost = theano.function(inps, cost_outputs, profile=profile, updates=all_stochastic_updates)
     print 'Done'
 
     if plot_graph is not None:
@@ -270,7 +591,7 @@ Start Time = {}
         print 'Done'
 
     print 'Computing gradient...',
-    grads = tensor.grad(cost, wrt=itemlist(model.P))
+    grads = tensor.grad(cost, wrt=itemlist(model.P), disconnected_inputs='warn')
 
     clip_shared = theano.shared(np.array(clip_c, dtype=fX), name='clip_shared')
     grads, g2 = clip_grad_remove_nan(grads, clip_shared, model.P)
@@ -282,7 +603,8 @@ Start Time = {}
     given_imm_data = get_adadelta_imm_data(optimizer, given_imm, saveto)
 
     f_grad_shared, f_update, grads_shared, imm_shared = Optimizers[optimizer](
-        lr, model.P, grads, inps, cost, g2=g2, given_imm_data=given_imm_data, dump_imm=dump_imm)
+        lr, model.P, grads, inps, cost, g2=g2, given_imm_data=given_imm_data, dump_imm=dump_imm,
+        stochastic_updates=all_stochastic_updates, extra_costs=decoder_boundary_regularization_cost)
     print 'Done'
 
     print 'Optimization'
@@ -325,6 +647,80 @@ Start Time = {}
 
     start_time = time.time()
 
+    def print_cost():
+        use_noise.set_value(0.)
+        small_train_cost, \
+            small_train_enc_per, small_train_dec_per, \
+            small_train_enc_exp_0, small_train_enc_exp_1, \
+            small_train_dec_exp_0, small_train_dec_exp_1 = \
+            validation(small_train_iterator, f_cost, maxlen=maxlen,
+                       encoder_unit=encoder_unit, decoder_unit=decoder_unit, use_explicit_boundary=use_explicit_boundary,
+                       source_idict=source_idict, target_idict=target_idict,
+                       f_get_boundary=f_get_boundary,
+                       encoder_boundary_save_file=encoder_boundary_save_file,
+                       decoder_boundary_save_file=decoder_boundary_save_file,
+                       encoder_boundary_before_sigmoid_save_file=encoder_boundary_before_sigmoid_save_file,
+                       encoder_r_boundary_before_sigmoid_save_file=encoder_r_boundary_before_sigmoid_save_file,
+                       decoder_boundary_before_sigmoid_save_file=decoder_boundary_before_sigmoid_save_file,
+                       data_file=data_file)
+
+        message('Small train cost {:.5f}'.format(small_train_cost))
+        message('Small train boundary percentage: encoder {:.3f}, decoder {:.3f}'
+                .format(small_train_enc_per, small_train_dec_per))
+        message('Small train expected boundary percentage: encoder {:.3f}-{:.3f}, decoder {:.3f}-{:.3f}'
+                .format(small_train_enc_exp_0, small_train_enc_exp_1,
+                        small_train_dec_exp_0, small_train_dec_exp_1))
+
+        valid_cost, \
+            valid_enc_per, valid_dec_per, \
+            valid_enc_exp_0, valid_enc_exp_1, \
+            valid_dec_exp_0, valid_dec_exp_1 = \
+            validation(valid_iterator, f_cost, encoder_unit=encoder_unit, decoder_unit=decoder_unit,
+                       use_explicit_boundary=use_explicit_boundary,
+                       source_idict=source_idict, target_idict=target_idict, maxlen=maxlen)
+        message('Valid cost {:.5f}'.format(valid_cost))
+        message('Valid boundary percentage: encoder {:.3f}, decoder {:.3f}'.format(valid_enc_per, valid_dec_per))
+        message('Valid expected boundary percentage: encoder {:.3f}-{:.3f}, decoder {:.3f}-{:.3f}'
+                .format(valid_enc_exp_0, valid_enc_exp_1, valid_dec_exp_0, valid_dec_exp_1))
+
+        test_cost, \
+            test_enc_per, test_dec_per, \
+            test_enc_exp_0, test_enc_exp_1, \
+            test_dec_exp_0, test_dec_exp_1 = \
+            validation(test_iterator, f_cost, encoder_unit=encoder_unit, decoder_unit=decoder_unit,
+                       use_explicit_boundary=use_explicit_boundary,
+                       source_idict=source_idict, target_idict=target_idict, maxlen=maxlen)
+        message('Test cost {:.5f}'.format(test_cost))
+        message('Test boundary percentage: encoder {:.3f}, decoder {:.3f}'.format(test_enc_per, test_dec_per))
+        message('Test expected boundary percentage: encoder {:.3f}-{:.3f}, decoder {:.3f}-{:.3f}'
+                .format(test_enc_exp_0, test_enc_exp_1, test_dec_exp_0, test_dec_exp_1))
+
+        ST_test_cost = test_cost
+
+        if ('hmrnn' in encoder_unit or 'hmrnn' in decoder_unit) and boundary_type_str != 'ST':
+            boundary_type.set_value(boundary_dict['ST'])
+
+            ST_test_cost, \
+            ST_test_enc_per, ST_test_dec_per, \
+            ST_test_enc_exp_0, ST_test_enc_exp_1, \
+            ST_test_dec_exp_0, ST_test_dec_exp_1 = \
+                validation(test_iterator, f_cost, encoder_unit=encoder_unit, decoder_unit=decoder_unit,
+                           use_explicit_boundary=use_explicit_boundary,
+                           source_idict=source_idict, target_idict=target_idict, maxlen=maxlen)
+            message('ST Test cost {:.5f}'.format(ST_test_cost))
+            message(
+                'ST Test boundary percentage: encoder {:.3f}, decoder {:.3f}'.format(ST_test_enc_per, ST_test_dec_per))
+            message('ST Test expected boundary percentage: encoder {:.3f}-{:.3f}, decoder {:.3f}-{:.3f}'
+                    .format(ST_test_enc_exp_0, ST_test_enc_exp_1, ST_test_dec_exp_0, ST_test_dec_exp_1))
+
+            boundary_type.set_value(boundary_dict[boundary_type_str])
+
+        sys.stdout.flush()
+        message('Bias of boundary:', model.P['decoder_b'].get_value()[:, 4*dim])
+        return small_train_cost, valid_cost, test_cost, ST_test_cost
+
+    print_cost()
+
     for eidx in xrange(max_epochs):
         if shuffle_data:
             text_iterator = load_shuffle_text_iterator(
@@ -343,6 +739,10 @@ Start Time = {}
 
             x, x_mask, y, y_mask = prepare_data(x, y, maxlen=maxlen)
 
+            inps = [x, x_mask, y, y_mask]
+            if 'hmrnn' in decoder_unit and use_explicit_boundary:
+                inps.append(prepare_explicit_boundary(y, target_idict))
+
             if x is None:
                 print 'Minibatch with zero sample under length ', maxlen
                 uidx -= 1
@@ -352,7 +752,9 @@ Start Time = {}
             ud_start = time.time()
 
             # compute cost, grads and copy grads to shared variables
-            cost, g2_value = f_grad_shared(x, x_mask, y, y_mask)
+            cost, g2_value = f_grad_shared(*inps)
+
+            # print 'Compute cost finished'
 
             if dist_type == 'mpi_reduce' and uidx % sync_batch == 0:
                 reduce_start = time.time()
@@ -431,22 +833,37 @@ Start Time = {}
                 dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto)
 
             if np.mod(uidx, validFreq) == 0:
-                valid_cost = validation(valid_iterator, f_cost, maxlen=maxlen)
-                small_train_cost = validation(small_train_iterator, f_cost, maxlen=maxlen)
-                message('Valid cost {:.5f} Small train cost {:.5f}'.format(valid_cost, small_train_cost))
+                small_train_cost, valid_cost, test_cost, ST_test_cost = print_cost()
+
+            # Fine-tune based on dev BLEU
+            if bleuFreq > 0 and np.mod(uidx, bleuFreq) == 0 and uidx >= bleu_start_id:
+
+                valid_bleu = translate_dev_get_bleu(model, f_init, f_next, trng, use_noise)
+                message('BLEU Valid = {:.2f} at iteration {}'.format(valid_bleu, uidx))
                 sys.stdout.flush()
 
-                # Fine-tune based on dev BLEU
-                if fine_tune_patience > 0:
-                    new_bleu = translate_dev_get_bleu(model, f_init, f_next, trng, use_noise)
+                test_bleu = translate_test_get_bleu(model, f_init, f_next, trng, use_noise)
+                message('BLEU Test = {:.2f} at iteration {}'.format(test_bleu, uidx))
+                sys.stdout.flush()
 
-                    print 'BLEU = {:.2f} at iteration {}'.format(new_bleu, uidx)
+                if ('hmrnn' in encoder_unit or 'hmrnn' in decoder_unit) and boundary_type_str != 'ST':
+                    boundary_type.set_value(boundary_dict['ST'])
+
+                    ST_test_bleu = translate_test_get_bleu(model, f_init, f_next, trng, use_noise)
+                    message('BLEU ST Test = {:.2f} at iteration {}'.format(ST_test_bleu, uidx))
+
+                    boundary_type.set_value(boundary_dict[boundary_type_str])
+                    sys.stdout.flush()
+
+                if fine_tune_patience > 0:
+                    new_bleu = test_bleu
 
                     if new_bleu > best_bleu:
                         bad_counter = 0
                         best_bleu = new_bleu
                     else:
                         bad_counter += 1
+
                         if bad_counter >= fine_tune_patience:
                             print 'Fine tune:',
                             lrate *= 0.5

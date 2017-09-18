@@ -15,6 +15,8 @@ import numpy as np
 import cPickle as pkl
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
+from theano.updates import OrderedUpdates
+
 from constants import fX, profile
 from config import DefaultOptions
 from utils import *
@@ -33,29 +35,45 @@ class ParameterInitializer(object):
         np_parameters[name] = normal_weight(n_in, n_out)
 
     def init_encoder(self, np_parameters):
-        if self.O['encoder_many_bidirectional']:
+        if 'hmrnn' in self.O['encoder_unit']:
+            if self.O['bottom_lstm']:
+                n_in = self.O['dim_word']
+
+                np_parameters = get_init('lstm')(self.O, np_parameters, prefix='encoder_lstm', nin=n_in,
+                                                         dim=self.O['dim'], layer_id=0)
+                np_parameters = get_init('lstm')(self.O, np_parameters, prefix='encoder_lstm_r', nin=n_in,
+                                                         dim=self.O['dim'], layer_id=0)
+                np_parameters = get_init(self.O['encoder_unit'])(self.O, np_parameters, prefix='encoder', nin=2*self.O['dim'],
+                                                         dim=2*self.O['dim'], n_layers=self.O['n_encoder_layers'])
+            else:
+                n_in = self.O['dim_word']
+                np_parameters = get_init(self.O['encoder_unit'])(self.O, np_parameters, prefix='encoder', nin=n_in,
+                                                         dim=self.O['dim'], n_layers=self.O['n_encoder_layers'])
+                np_parameters = get_init(self.O['encoder_unit'])(self.O, np_parameters, prefix='encoder_r', nin=n_in,
+                                                         dim=self.O['dim'], n_layers=self.O['n_encoder_layers'])
+
+        elif self.O['encoder_many_bidirectional']:
             for layer_id in xrange(self.O['n_encoder_layers']):
                 if layer_id == 0:
                     n_in = self.O['dim_word']
                 else:
                     n_in = self.O['dim']
-                np_parameters = get_init(self.O['unit'])(self.O, np_parameters, prefix='encoder', nin=n_in,
+                np_parameters = get_init(self.O['encoder_unit'])(self.O, np_parameters, prefix='encoder', nin=n_in,
                                                          dim=self.O['dim'], layer_id=layer_id)
-                np_parameters = get_init(self.O['unit'])(self.O, np_parameters, prefix='encoder_r', nin=n_in,
+                np_parameters = get_init(self.O['encoder_unit'])(self.O, np_parameters, prefix='encoder_r', nin=n_in,
                                                          dim=self.O['dim'], layer_id=layer_id)
         else:
             for layer_id in xrange(self.O['n_encoder_layers']):
                 if layer_id == 0:
                     n_in = self.O['dim_word']
-                    np_parameters = get_init(self.O['unit'])(self.O, np_parameters, prefix='encoder', nin=n_in,
+                    np_parameters = get_init(self.O['encoder_unit'])(self.O, np_parameters, prefix='encoder', nin=n_in,
                                                              dim=self.O['dim'], layer_id=0)
-                    np_parameters = get_init(self.O['unit'])(self.O, np_parameters, prefix='encoder_r', nin=n_in,
+                    np_parameters = get_init(self.O['encoder_unit'])(self.O, np_parameters, prefix='encoder_r', nin=n_in,
                                                              dim=self.O['dim'], layer_id=0)
                 else:
                     n_in = 2 * self.O['dim']
-                    np_parameters = get_init(self.O['unit'])(self.O, np_parameters, prefix='encoder', nin=n_in,
+                    np_parameters = get_init(self.O['encoder_unit'])(self.O, np_parameters, prefix='encoder', nin=n_in,
                                                              dim=n_in, layer_id=layer_id)
-
         return np_parameters
 
     def init_decoder(self, np_parameters):
@@ -67,32 +85,36 @@ class ParameterInitializer(object):
 
         # init_state, init_cell
         np_parameters = self.init_feed_forward(np_parameters, prefix='ff_state', nin=context_dim, nout=self.O['dim'])
-
-        if all_att:
-            # All decoder layers have attention.
-            for layer_id in xrange(0, n_layers):
-                np_parameters = get_init(self.O['unit'] + '_cond')(
-                    self.O, np_parameters, prefix='decoder',
-                    nin=self.O['dim_word'] if layer_id == 0 else self.O['dim'],
-                    dim=self.O['dim'], dimctx=context_dim, layer_id=layer_id)
+        if 'hmrnn' in self.O['decoder_unit']:
+            np_parameters = get_init(self.O['decoder_unit'] + '_cond')(
+                self.O, np_parameters, prefix='decoder', nin=self.O['dim_word'],
+                dim=self.O['dim'], dimctx=context_dim, n_layers=n_layers)
         else:
-            # Layers before attention layer
-            for layer_id in xrange(0, attention_layer_id):
-                np_parameters = get_init(self.O['unit'])(
-                    self.O, np_parameters, prefix='decoder', nin=self.O['dim_word'] if layer_id == 0 else self.O['dim'],
-                    dim=self.O['dim'], layer_id=layer_id, context_dim=None)
+            if all_att:
+                # All decoder layers have attention.
+                for layer_id in xrange(0, n_layers):
+                    np_parameters = get_init(self.O['decoder_unit'] + '_cond')(
+                        self.O, np_parameters, prefix='decoder',
+                        nin=self.O['dim_word'] if layer_id == 0 else self.O['dim'],
+                        dim=self.O['dim'], dimctx=context_dim, layer_id=layer_id)
+            else:
+                # Layers before attention layer
+                for layer_id in xrange(0, attention_layer_id):
+                    np_parameters = get_init(self.O['decoder_unit'])(
+                        self.O, np_parameters, prefix='decoder', nin=self.O['dim_word'] if layer_id == 0 else self.O['dim'],
+                        dim=self.O['dim'], layer_id=layer_id, context_dim=None)
 
-            # Attention layer
-            np_parameters = get_init(self.O['unit'] + '_cond')(
-                self.O, np_parameters, prefix='decoder',
-                nin=self.O['dim_word'] if attention_layer_id == 0 else self.O['dim'],
-                dim=self.O['dim'], dimctx=context_dim, layer_id=attention_layer_id)
+                # Attention layer
+                np_parameters = get_init(self.O['decoder_unit'] + '_cond')(
+                    self.O, np_parameters, prefix='decoder',
+                    nin=self.O['dim_word'] if attention_layer_id == 0 else self.O['dim'],
+                    dim=self.O['dim'], dimctx=context_dim, layer_id=attention_layer_id)
 
-            # Layers after attention layer
-            for layer_id in xrange(attention_layer_id + 1, n_layers):
-                np_parameters = get_init(self.O['unit'])(
-                    self.O, np_parameters, prefix='decoder', nin=self.O['dim'],
-                    dim=self.O['dim'], layer_id=layer_id, context_dim=context_dim)
+                # Layers after attention layer
+                for layer_id in xrange(attention_layer_id + 1, n_layers):
+                    np_parameters = get_init(self.O['decoder_unit'])(
+                        self.O, np_parameters, prefix='decoder', nin=self.O['dim'],
+                        dim=self.O['dim'], layer_id=layer_id, context_dim=context_dim)
 
         return np_parameters
 
@@ -191,8 +213,13 @@ class ParameterInitializer(object):
 
         # Readout
         context_dim = 2 * self.O['dim']
-        np_parameters = self.init_feed_forward(np_parameters, prefix='ff_logit_lstm', nin=self.O['dim'],
-                                               nout=self.O['dim_word'], orthogonal=False)
+        if 'hmrnn' in self.O['decoder_unit']:
+            np_parameters = self.init_feed_forward(np_parameters, prefix='ff_logit_lstm',
+                                                   nin=self.O['dim']*self.O['n_decoder_layers'],
+                                                   nout=self.O['dim_word'], orthogonal=False)
+        else:
+            np_parameters = self.init_feed_forward(np_parameters, prefix='ff_logit_lstm', nin=self.O['dim'],
+                                                   nout=self.O['dim_word'], orthogonal=False)
         np_parameters = self.init_feed_forward(np_parameters, prefix='ff_logit_prev', nin=self.O['dim_word'],
                                                nout=self.O['dim_word'], orthogonal=False)
         np_parameters = self.init_feed_forward(np_parameters, prefix='ff_logit_ctx', nin=context_dim,
@@ -333,43 +360,47 @@ class NMTModel(object):
 
         # Encoder
         context = self.encoder(src_embedding, src_embedding_r, x_mask, x_mask_r,
-                               dropout_params=kwargs.pop('dropout_params', None))
+                               dropout_params=kwargs.pop('dropout_params', None),
+                               trng=kwargs.pop('trng', None),
+                               boundary_type=kwargs.pop('boundary_type', 0),
+                               hard_sigmoid_a=kwargs.pop('hard_sigmoid_a', 5.0),
+                               temperature=kwargs.pop('temperature', 1.0))
 
         return [x, x_mask, y, y_mask], context
 
-    def input_to_decoder_context(self, given_input=None):
-        """Build the part of the model that from input to context vector of decoder.
-
-        :param given_input: List of input Theano tensors or None
-            If None, this method will create them by itself.
-        :return: tuple of input list and output
-        """
-
-        (x, x_mask, y, y_mask), context = self.input_to_context(given_input)
-
-        n_timestep, n_timestep_tgt, n_samples = self.input_dimensions(x, y)
-
-        # Mean of the context (across time) will be used to initialize decoder rnn
-        context_mean = self.get_context_mean(context, x_mask)
-        # Initial decoder state
-        init_decoder_state = self.feed_forward(context_mean, prefix='ff_state', activation=tanh)
-
-        # Word embedding (target), we will shift the target sequence one time step
-        # to the right. This is done because of the bi-gram connections in the
-        # readout and decoder rnn. The first target will be all zeros and we will
-        # not condition on the last output.
-        tgt_embedding = self.embedding(y, n_timestep_tgt, n_samples, 'Wemb_dec')
-        emb_shifted = T.zeros_like(tgt_embedding)
-        emb_shifted = T.set_subtensor(emb_shifted[1:], tgt_embedding[:-1])
-        tgt_embedding = emb_shifted
-
-        # Decoder - pass through the decoder conditional gru with attention
-        hidden_decoder, context_decoder, _, _ = self.decoder(
-            tgt_embedding, y_mask, init_decoder_state, context, x_mask,
-            dropout_params=None,
-        )
-
-        return [x, x_mask, y, y_mask], hidden_decoder, context_decoder
+    # def input_to_decoder_context(self, given_input=None):
+    #     """Build the part of the model that from input to context vector of decoder.
+    #
+    #     :param given_input: List of input Theano tensors or None
+    #         If None, this method will create them by itself.
+    #     :return: tuple of input list and output
+    #     """
+    #
+    #     (x, x_mask, y, y_mask), context = self.input_to_context(given_input)
+    #
+    #     n_timestep, n_timestep_tgt, n_samples = self.input_dimensions(x, y)
+    #
+    #     # Mean of the context (across time) will be used to initialize decoder rnn
+    #     context_mean = self.get_context_mean(context, x_mask)
+    #     # Initial decoder state
+    #     init_decoder_state = self.feed_forward(context_mean, prefix='ff_state', activation=tanh)
+    #
+    #     # Word embedding (target), we will shift the target sequence one time step
+    #     # to the right. This is done because of the bi-gram connections in the
+    #     # readout and decoder rnn. The first target will be all zeros and we will
+    #     # not condition on the last output.
+    #     tgt_embedding = self.embedding(y, n_timestep_tgt, n_samples, 'Wemb_dec')
+    #     emb_shifted = T.zeros_like(tgt_embedding)
+    #     emb_shifted = T.set_subtensor(emb_shifted[1:], tgt_embedding[:-1])
+    #     tgt_embedding = emb_shifted
+    #
+    #     # Decoder - pass through the decoder conditional gru with attention
+    #     hidden_decoder, context_decoder, _, _ = self.decoder(
+    #         tgt_embedding, y_mask, init_decoder_state, context, x_mask,
+    #         dropout_params=None,
+    #     )
+    #
+    #     return [x, x_mask, y, y_mask], hidden_decoder, context_decoder
 
     def init_tparams(self, np_parameters):
         self.P, self.dupP = init_tparams(np_parameters, use_mv= self.O['dist_type'] == 'mv')
@@ -381,18 +412,34 @@ class NMTModel(object):
         """Build a training model."""
 
         dropout_rate = self.O['use_dropout']
-
+        use_explicit_boundary = self.O['use_explicit_boundary']
         opt_ret = {}
 
         trng = RandomStreams(1234)
         use_noise = theano.shared(np.float32(0.))
+        boundary_type = theano.shared(np.int32(0))
+
+        hard_sigmoid_a = theano.shared(np.float32(5.0))
+        temperature = theano.shared(np.float32(1.0))
 
         if dropout_rate is not False:
             dropout_params = [use_noise, trng, dropout_rate]
         else:
             dropout_params = None
 
-        (x, x_mask, y, y_mask), context = self.input_to_context(dropout_params=dropout_params)
+        (x, x_mask, y, y_mask), context = \
+            self.input_to_context(dropout_params=dropout_params, trng=trng,
+                                  boundary_type=boundary_type, hard_sigmoid_a=hard_sigmoid_a, temperature=temperature)
+
+        # explicit_boundary_x = T.tensor3('explicit_boundary_x', dtype=fX)
+        explicit_boundary_y = T.tensor3('explicit_boundary_y', dtype=fX) \
+            if use_explicit_boundary and 'hmrnn' in self.O['decoder_unit'] else None
+
+        encoder_updates = []
+        if 'hmrnn' in self.O['encoder_unit']:
+            context, encoder_updates = context
+
+        encoder_boundary = context[1] if isinstance(context, tuple) else None
 
         n_timestep, n_timestep_tgt, n_samples = self.input_dimensions(x, y)
 
@@ -409,11 +456,28 @@ class NMTModel(object):
         emb_shifted = T.set_subtensor(emb_shifted[1:], tgt_embedding[:-1])
         tgt_embedding = emb_shifted
 
+        explicit_boundary_y_shifted = None
+        if use_explicit_boundary:
+            assert explicit_boundary_y is not None
+            explicit_boundary_y_shifted = T.ones_like(explicit_boundary_y)
+            explicit_boundary_y_shifted = T.set_subtensor(explicit_boundary_y_shifted[1:], explicit_boundary_y[:-1])
+
         # Decoder - pass through the decoder conditional gru with attention
-        hidden_decoder, context_decoder, opt_ret['dec_alphas'], _ = self.decoder(
+        hidden_decoder, context_decoder, opt_ret['dec_alphas'], kw_ret_dec = self.decoder(
             tgt_embedding, y_mask=y_mask, init_state=init_decoder_state, context=context, x_mask=x_mask,
-            dropout_params=dropout_params, one_step=False,
+            dropout_params=dropout_params, one_step=False, trng=trng,
+            boundary_type=boundary_type, hard_sigmoid_a=hard_sigmoid_a, temperature=temperature,
+            explicit_boundary=explicit_boundary_y_shifted
         )
+
+        decoder_boundary = None
+
+        decoder_updates = []
+        if 'hmrnn' in self.O['decoder_unit']:
+            decoder_updates = [kw_ret_dec['updates']]
+
+        if 'all_layer_z' in kw_ret_dec:
+            decoder_boundary = kw_ret_dec['all_layer_z'][:, -2]
 
         trng, use_noise, probs = self.get_word_probability(hidden_decoder, context_decoder, tgt_embedding,
                                                            trng=trng, use_noise=use_noise)
@@ -434,7 +498,9 @@ class NMTModel(object):
             # Unused now
             self.x, self.x_mask, self.y, self.y_mask = x, x_mask, y, y_mask
 
-        return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost, context_mean
+        return trng, use_noise, boundary_type, hard_sigmoid_a, temperature, x, x_mask, y, y_mask, \
+               explicit_boundary_y, opt_ret, cost, context_mean,\
+               encoder_boundary, decoder_boundary, encoder_updates + decoder_updates
 
     def build_sampler(self, **kwargs):
         """Build a sampler."""
@@ -443,8 +509,19 @@ class NMTModel(object):
         trng = kwargs.pop('trng', RandomStreams(1234))
         use_noise = kwargs.pop('use_noise', theano.shared(np.float32(0.)))
         get_gates = kwargs.pop('get_gates', False)
+        boundary_type = kwargs.pop('boundary_type', 0)
+        dropout_rate = kwargs.pop('dropout', False)
+        hard_sigmoid_a = kwargs.pop('hard_sigmoid_a', 5.0),
+        temperature = kwargs.pop('temperature', 1.0)
+        use_explicit_boundary = kwargs.pop('use_explicit_boundary', False)
+        explicit_boudary_y = T.fmatrix('explicit_boudary_y_sampler') if use_explicit_boundary else None
+        if dropout_rate is not False:
+            dropout_params = [use_noise, trng, dropout_rate]
+        else:
+            dropout_params = None
 
-        unit = self.O['unit']
+        encoder_unit = self.O['encoder_unit']
+        decoder_unit = self.O['decoder_unit']
 
         x = T.matrix('x', dtype='int64')
         xr = x[::-1]
@@ -463,11 +540,33 @@ class NMTModel(object):
         ctx = self.encoder(
             src_embedding, src_embedding_r,
             x_mask if batch_mode else None, xr_mask if batch_mode else None,
-            dropout_params=None,
+            dropout_params=dropout_params, trng=trng, boundary_type=boundary_type,
+            hard_sigmoid_a=hard_sigmoid_a, temperature=temperature
         )
 
+        encoder_updates = []
+        if 'hmrnn' in encoder_unit:
+            ctx, encoder_updates = ctx
+
+        all_encoder_updates = OrderedUpdates()
+        for updates in encoder_updates:
+            all_encoder_updates.update(updates)
+
         # Get the input for decoder rnn initializer mlp
-        ctx_mean = ctx.mean(0)
+        if batch_mode:
+            ctx_mean = self.get_context_mean(ctx, x_mask)
+            if 'hmrnn' in encoder_unit:
+                ctx, z_mask = ctx
+            else:
+                z_mask = None
+        else:
+            if 'hmrnn' in encoder_unit:
+                ctx, z_mask = ctx
+                ctx_mean = (ctx*z_mask).sum(0) / z_mask.sum(0)
+                # ctx_mean = ctx.mean(0)
+            else:
+                ctx_mean = ctx.mean(0)
+                z_mask = None
         init_state = self.feed_forward(ctx_mean, prefix='ff_state', activation=tanh)
 
         print('Building f_init...', end='')
@@ -475,33 +574,59 @@ class NMTModel(object):
         if batch_mode:
             inps.append(x_mask)
         outs = [init_state, ctx]
-        f_init = theano.function(inps, outs, name='f_init', profile=profile)
+        if 'hmrnn' in encoder_unit:
+            outs.append(z_mask)
+        f_init = theano.function(inps, outs, name='f_init', profile=profile, updates=all_encoder_updates)
         print('Done')
 
         # x: 1 x 1
         y = T.vector('y_sampler', dtype='int64')
         init_state = T.tensor3('init_state', dtype=fX)
         init_memory = T.tensor3('init_memory', dtype=fX)
-
+        init_boundary = T.tensor3('init_boundary', dtype=fX)
+        init_boundary = T.addbroadcast(init_boundary, 2)
         # If it's the first word, emb should be all zero and it is indicated by -1
         emb = T.switch(y[:, None] < 0,
                        T.alloc(0., 1, self.P['Wemb_dec'].shape[1]),
                        self.P['Wemb_dec'][y])
 
+        # from hmrnn import print_all
+        # emb = print_all("emb: ")(emb)
+
         # Apply one step of conditional gru with attention
         hidden_decoder, context_decoder, _, kw_ret = self.decoder(
-            emb, y_mask=None, init_state=init_state, context=ctx,
+            emb, y_mask=None, init_state=init_state,
+            context=(ctx, z_mask) if 'hmrnn' in encoder_unit else ctx,
             x_mask=x_mask if batch_mode else None,
-            dropout_params=None, one_step=True, init_memory=init_memory,
-            get_gates=get_gates,
+            dropout_params=dropout_params, one_step=True,
+            init_memory=init_memory, init_boundary=init_boundary,
+            get_gates=get_gates, trng=trng, boundary_type=boundary_type,
+            hard_sigmoid_a=hard_sigmoid_a, temperature=temperature,
+            use_explicit_boundary=use_explicit_boundary, explicit_boundary=explicit_boudary_y
         )
+        # hidden_decoder = print_all("hidden_decoder: ")(hidden_decoder)
+        # context_decoder = print_all("context_decoder: ")(context_decoder)
+
+        all_decoder_updates = OrderedUpdates()
+        for updates in kw_ret.get('updates', []):
+            all_decoder_updates.update(updates)
 
         # Get memory_out and hiddens_without_dropout
         # FIXME: stack list into a single tensor
         memory_out = None
-        hiddens_without_dropout = T.stack(kw_ret['hiddens_without_dropout'])
-        if 'lstm' in unit:
-            memory_out = T.stack(kw_ret['memory_outputs'])
+        boundary_out = None
+        if 'hmrnn' in decoder_unit:
+            hiddens_without_dropout = kw_ret['all_layer_h']
+            memory_out = kw_ret['all_layer_c']
+            boundary_out = kw_ret['all_layer_z']
+        else:
+            hiddens_without_dropout = T.stack(kw_ret['hiddens_without_dropout'])
+            if 'lstm' in decoder_unit:
+                memory_out = T.stack(kw_ret['memory_outputs'])
+
+        # hiddens_without_dropout = print_all("hiddens_without_dropout: ")(hiddens_without_dropout)
+        # memory_out = print_all("memory_out: ")(memory_out)
+        # boundary_out = print_all("boundary_out: ")(boundary_out)
 
         logit_lstm = self.feed_forward(hidden_decoder, prefix='ff_logit_lstm', activation=linear)
         logit_prev = self.feed_forward(emb, prefix='ff_logit_prev', activation=linear)
@@ -524,9 +649,17 @@ class NMTModel(object):
         if batch_mode:
             inps.insert(2, x_mask)
         outs = [next_probs, next_sample, hiddens_without_dropout]
-        if 'lstm' in unit:
+        if 'hmrnn' in encoder_unit:
+            inps.append(z_mask)
+        if 'lstm' in decoder_unit:
             inps.append(init_memory)
             outs.append(memory_out)
+        if 'hmrnn' in decoder_unit:
+            inps += [init_memory, init_boundary]
+            outs += [memory_out, boundary_out]
+        if 'hmrnn' in decoder_unit and use_explicit_boundary:
+            inps += [explicit_boudary_y]
+
         if get_gates:
             outs.extend([
                 T.stack(kw_ret['input_gates']),
@@ -536,7 +669,7 @@ class NMTModel(object):
                 kw_ret['forget_gates_att'],
                 kw_ret['output_gates_att'],
             ])
-        f_next = theano.function(inps, outs, name='f_next', profile=profile)
+        f_next = theano.function(inps, outs, name='f_next', profile=profile, updates=all_decoder_updates)
         print('Done')
 
         return f_init, f_next
@@ -562,8 +695,8 @@ class NMTModel(object):
             kw_ret['state_list'] = []
             kw_ret['memory_list'] = []
 
-        unit = self.O['unit']
-
+        encoder_unit = self.O['encoder_unit']
+        decoder_unit = self.O['decoder_unit']
         # k is the beam size we have
         if k > 1:
             assert not stochastic, 'Beam search does not support stochastic sampling'
@@ -583,20 +716,30 @@ class NMTModel(object):
         # get initial state of decoder rnn and encoder context
         ret = f_init(x)
         next_state, ctx0 = ret[0], ret[1]
+        z_mask = ret[2] if 'hmrnn' in encoder_unit else None
+
         next_w = -1 * np.ones((1,), dtype='int64')  # bos indicator
         next_state = np.tile(next_state[None, :, :], (self.O['n_decoder_layers'], 1, 1))
         next_memory = np.zeros((self.O['n_decoder_layers'], next_state.shape[1], next_state.shape[2]), dtype=fX)
+        next_boundary = np.zeros((self.O['n_decoder_layers'], next_state.shape[1], 1), dtype=fX)
 
         for ii in xrange(maxlen):
             ctx = np.tile(ctx0, [live_k, 1])
+            z_mask_extended = np.tile(z_mask, [live_k, 1])
             inps = [next_w, ctx, next_state]
-            if 'lstm' in unit:
+            if 'hmrnn' in encoder_unit:
+                inps.append(z_mask_extended)
+            if 'lstm' in decoder_unit:
                 inps.append(next_memory)
-
+            if 'hmrnn' in decoder_unit:
+                inps += [next_memory, next_boundary]
             ret = f_next(*inps)
             next_p, next_w, next_state = ret[0], ret[1], ret[2]
-            if 'lstm' in unit:
+            if 'lstm' in decoder_unit:
                 next_memory = ret[3]
+            elif 'hmrnn' in decoder_unit:
+                next_memory = ret[3]
+                next_boundary = ret[4]
 
             if get_gates:
                 kw_ret['input_gates_list'].append(ret[-6])
@@ -606,7 +749,7 @@ class NMTModel(object):
                 kw_ret['forget_gates_att_list'].append(ret[-2])
                 kw_ret['output_gates_att_list'].append(ret[-1])
                 kw_ret['state_list'].append(next_state)
-                if 'lstm' in unit:
+                if 'lstm' in decoder_unit:
                     kw_ret['memory_list'].append(ret[3])
 
             if stochastic:
@@ -632,12 +775,14 @@ class NMTModel(object):
                 new_hyp_scores = np.zeros(k - dead_k).astype(fX)
                 new_hyp_states = []
                 new_hyp_memories = []
+                new_hyp_boundaries = []
 
                 for idx, [ti, wi] in enumerate(zip(trans_indices, word_indices)):
                     new_hyp_samples.append(hyp_samples[ti] + [wi])
                     new_hyp_scores[idx] = copy.copy(costs[idx])
                     new_hyp_states.append(copy.copy(next_state[:, ti, :]))
                     new_hyp_memories.append(copy.copy(next_memory[:, ti, :]))
+                    new_hyp_boundaries.append(copy.copy(next_boundary[:, ti, :]))
 
                 # check the finished samples
                 new_live_k = 0
@@ -645,6 +790,7 @@ class NMTModel(object):
                 hyp_scores = []
                 hyp_states = []
                 hyp_memories = []
+                hyp_boundaries = []
 
                 for idx in xrange(len(new_hyp_samples)):
                     if new_hyp_samples[idx][-1] == 0:
@@ -657,6 +803,8 @@ class NMTModel(object):
                         hyp_scores.append(new_hyp_scores[idx])
                         hyp_states.append(new_hyp_states[idx])
                         hyp_memories.append(new_hyp_memories[idx])
+                        hyp_boundaries.append(new_hyp_boundaries[idx])
+
                 hyp_scores = np.array(hyp_scores)
                 live_k = new_live_k
 
@@ -668,6 +816,7 @@ class NMTModel(object):
                 next_w = np.array([w[-1] for w in hyp_samples])
                 next_state = np.concatenate([xx[:, None, :] for xx in hyp_states], axis=1)
                 next_memory = np.concatenate([xx[:, None, :] for xx in hyp_memories], axis=1)
+                next_boundary = np.concatenate([xx[:, None, :] for xx in hyp_boundaries], axis=1)
 
         if not stochastic:
             # dump every remaining one
@@ -680,7 +829,8 @@ class NMTModel(object):
             return sample, sample_score, kw_ret
         return sample, sample_score
 
-    def gen_batch_sample(self, f_init, f_next, x, x_mask, trng=None, k=1, maxlen=30, eos_id=0, **kwargs):
+    def gen_batch_sample(self, f_init, f_next, x, x_mask, trng=None, k=1, maxlen=30,
+                         eos_id=0, target_idict=None, **kwargs):
         """
         Only used for Batch Beam Search;
         Do not Support Stochastic Sampling
@@ -693,7 +843,9 @@ class NMTModel(object):
         if ret_memory:
             kw_ret['memory'] = []
 
-        unit = self.O['unit']
+        encoder_unit = self.O['encoder_unit']
+        decoder_unit = self.O['decoder_unit']
+        use_explicit_boundary = self.O['use_explicit_boundary']
 
         batch_size = x.shape[1]
         sample = [[] for _ in xrange(batch_size)]
@@ -708,37 +860,82 @@ class NMTModel(object):
         # get initial state of decoder rnn and encoder context
         ret = f_init(x, x_mask)
         next_state, ctx0 = ret[0], ret[1]
+        z_mask = ret[2] if 'hmrnn' in encoder_unit else None
+        # print('print_all take effect')
+
+        # print("next_state.shape =", next_state.shape)
+        # print("ctx0.shape =", ctx0.shape)
+        # print("z_mask.shape =", z_mask.shape)
+
         next_w = np.array([-1] * batch_size, dtype='int64')     # bos indicator
         next_state = np.tile(next_state[None, :, :], (self.O['n_decoder_layers'], 1, 1))
         next_memory = np.zeros((self.O['n_decoder_layers'], next_state.shape[1], next_state.shape[2]), dtype=fX)
+        next_boundary = np.zeros((self.O['n_decoder_layers'], next_state.shape[1], 1), dtype=fX)
+
+        # print("next_w.shape =", next_w.shape)
+        # print("next_state.shape =", next_state.shape)
+        # print("next_memory.shape =", next_memory.shape)
+        # print("next_boundary.shape =", next_boundary.shape)
 
         for ii in xrange(maxlen):
+            # print("ii =", ii)
+            # print("lives_k =", lives_k)
             ctx = np.repeat(ctx0, lives_k, axis=1)
             x_extend_masks = np.repeat(x_mask, lives_k, axis=1)
+            if 'hmrnn' in encoder_unit:
+                z_extend_masks = np.repeat(z_mask, lives_k, axis=1)
+
+            # print("ctx.shape =", ctx.shape)
+            # print("x_extend_masks.shape =", x_extend_masks.shape)
+            # print("z_extend_masks.shape =", z_extend_masks.shape)
+
             cursor_start, cursor_end = 0, lives_k[0]
             for jj in xrange(batch_size):
                 if lives_k[jj] > 0:
                     ctx[:, cursor_start: cursor_end, :] = np.repeat(ctx0[:, jj, :][:, None, :], lives_k[jj], axis=1)
                     x_extend_masks[:, cursor_start: cursor_end] = np.repeat(x_mask[:, jj][:, None], lives_k[jj], axis=1)
+                    if 'hmrnn' in encoder_unit:
+                        z_extend_masks[:, cursor_start:cursor_end, :] = np.repeat(z_mask[:, jj, :][:, None, :], lives_k[jj], axis=1)
+
                 if jj < batch_size - 1:
                     cursor_start = cursor_end
                     cursor_end += lives_k[jj + 1]
 
+            # print("ctx.shape =", ctx.shape)
+            # print("x_extend_masks.shape =", x_extend_masks.shape)
+            # print("z_extend_masks.shape =", z_extend_masks.shape)
+
             inps = [next_w, ctx, x_extend_masks, next_state]
-            if 'lstm' in unit:
+            if 'hmrnn' in encoder_unit:
+                inps.append(z_extend_masks)
+            if 'lstm' in decoder_unit:
                 inps.append(next_memory)
+            if 'hmrnn' in decoder_unit:
+                inps += [next_memory, next_boundary]
+            if 'hmrnn' in decoder_unit and use_explicit_boundary:
+                explicit_boundary_y = np.ones((next_w.shape[0], 1), dtype=fX)
+                for i in xrange(next_w.shape[0]):
+                    if next_w[i] >= 0 and target_idict[next_w[i]][-2:] == '@@':
+                        explicit_boundary_y[i][0] = 0.0
+                inps.append(explicit_boundary_y)
+            # print("going in f_next")
 
             ret = f_next(*inps)
 
-            if 'lstm' in unit:
-                next_memory = ret[3]
+            # print("going out f_next")
 
+            if 'lstm' in decoder_unit:
+                next_memory = ret[3]
                 if ret_memory:
                     kw_ret['memory'].append(next_memory)
+            elif 'hmrnn' in decoder_unit:
+                next_memory = ret[3]
+                next_boundary = ret[4]
 
             next_w_list = []
             next_state_list = []
             next_memory_list = []
+            next_boundary_list = []
 
             next_p, next_state = ret[0], ret[2]
             cursor_start, cursor_end = 0, lives_k[0]
@@ -752,7 +949,12 @@ class NMTModel(object):
                 cand_scores = batch_hyp_scores[jj][:, None] - np.log(next_p[index_range, :])
                 cand_flat = cand_scores.flatten()
 
-                ranks_flat = bottleneck.argpartsort(cand_flat, k - deads_k[jj])[:k - deads_k[jj]]
+                try:
+                    from bottleneck import argpartition as part_sort
+                    ranks_flat = part_sort(cand_flat, kth=k - deads_k[jj] - 1)[:k - deads_k[jj]]
+                except ImportError:
+                    from bottleneck import argpartsort as part_sort
+                    ranks_flat = part_sort(cand_flat, k - deads_k[jj])[:k - deads_k[jj]]
 
                 voc_size = next_p.shape[1]
                 trans_indices = ranks_flat / voc_size
@@ -763,12 +965,14 @@ class NMTModel(object):
                 new_hyp_scores = np.zeros(k - deads_k[jj]).astype('float32')
                 new_hyp_states = []
                 new_hyp_memories = []
+                new_hyp_boundaries = []
 
                 for idx, [ti, wi] in enumerate(zip(trans_indices, word_indices)):
                     new_hyp_samples.append(batch_hyp_samples[jj][ti] + [wi])
                     new_hyp_scores[idx] = copy.copy(costs[idx])
                     new_hyp_states.append(copy.copy(next_state[:, cursor_start + ti, :]))
                     new_hyp_memories.append(copy.copy(next_memory[:, cursor_start + ti, :]))
+                    new_hyp_boundaries.append(copy.copy(next_boundary[:, cursor_start + ti, :]))
 
                 # check the finished samples
                 new_live_k = 0
@@ -776,6 +980,7 @@ class NMTModel(object):
                 hyp_scores = []
                 hyp_states = []
                 hyp_memories = []
+                hyp_boundaries = []
 
                 for idx in xrange(len(new_hyp_samples)):
                     if new_hyp_samples[idx][-1] == eos_id:
@@ -788,6 +993,7 @@ class NMTModel(object):
                         hyp_scores.append(new_hyp_scores[idx])
                         hyp_states.append(new_hyp_states[idx])
                         hyp_memories.append(new_hyp_memories[idx])
+                        hyp_boundaries.append(new_hyp_boundaries[idx])
 
                 batch_hyp_scores[jj] = np.array(hyp_scores)
                 lives_k[jj] = new_live_k
@@ -800,11 +1006,13 @@ class NMTModel(object):
                     next_w_list += [w[-1] for w in batch_hyp_samples[jj]]
                     next_state_list += [xx[:, None, :] for xx in hyp_states]
                     next_memory_list += [xx[:, None, :] for xx in hyp_memories]
+                    next_boundary_list += [xx[:, None, :] for xx in hyp_boundaries]
 
             if np.array(lives_k).sum() > 0:
                 next_w = np.array(next_w_list)
                 next_state = np.concatenate(next_state_list[:], axis=1)
                 next_memory = np.concatenate(next_memory_list[:], axis=1)
+                next_boundary = np.concatenate(next_boundary_list[:], axis=1)
             else:
                 break
 
@@ -891,179 +1099,368 @@ class NMTModel(object):
         Or you can use the last state of forward + backward encoder RNNs
             # return concatenate([proj[0][-1], projr[0][-1]], axis=proj[0].ndim-2)
         """
+        if isinstance(context, tuple):
+            context, z_mask = context
+            # z_mask = theano.gradient.disconnected_grad(z_mask)
+            # z_mask = T.ones_like(z_mask, dtype=fX)
+            return (context * x_mask[:, :, None] * z_mask).sum(0) / (x_mask[:, :, None] * z_mask).sum(0)
+            # return (context * x_mask[:, :, None]).sum(0) / x_mask.sum(0)[:, None]
+        else:
+            return (context * x_mask[:, :, None]).sum(0) / x_mask.sum(0)[:, None]
 
-        return (context * x_mask[:, :, None]).sum(0) / x_mask.sum(0)[:, None]
-
-    def encoder(self, src_embedding, src_embedding_r, x_mask, xr_mask, dropout_params=None):
+    def encoder(self, src_embedding, src_embedding_r, x_mask, xr_mask, dropout_params=None, trng=None,
+                boundary_type=0, hard_sigmoid_a=5.0, temperature=1.0):
         """GRU encoder layer: source embedding -> encoder context
         
         :return Context vector: Theano tensor
             Shape: ([Ts], [BS], [Hc])
         """
 
-        unit = self.O['unit']
+        unit = self.O['encoder_unit']
         n_layers = self.O['n_encoder_layers']
         residual = self.O['residual_enc']
         use_zigzag = self.O['use_zigzag']
+        bottom_lstm = self.O['bottom_lstm']
+
+        use_mask = self.O['use_mask']
 
         input_ = src_embedding
         input_r = src_embedding_r
 
-        # List of inputs and outputs of each layer (for residual)
-        inputs = []
-        outputs = []
-
-        # First layer (bidirectional)
-        inputs.append((input_, input_r))
-
-        h_last = get_build(unit)(self.P, inputs[-1][0], self.O, prefix='encoder', mask=x_mask, layer_id=0,
-                                 dropout_params=dropout_params)[0]
-        h_last_r = get_build(unit)(self.P, inputs[-1][1], self.O, prefix='encoder_r', mask=xr_mask,
-                                   layer_id=0, dropout_params=dropout_params)[0]
-
-        if self.O['encoder_many_bidirectional']:
-            # First layer output
-            outputs.append((h_last, h_last_r))
-
-            # Other layers (bidirectional)
-            for layer_id in xrange(1, n_layers):
-                if layer_id == 1:
-                    inputs.append(outputs[-1])
+        if 'hmrnn' in unit:
+            if bottom_lstm:
+                if x_mask is not None:
+                    end_mask = T.zeros_like(x_mask, dtype=fX)
+                    end_mask = T.set_subtensor(end_mask[:-1], x_mask[1:])
+                    end_mask = x_mask - end_mask
                 else:
-                    if residual == 'layer_wise':
-                        # output of layer before + input of layer before
-                        inputs.append((
-                            outputs[-1][0] + inputs[-1][0],
-                            outputs[-1][1] + inputs[-1][1],
-                        ))
-                    elif residual == 'last' and layer_id == n_layers - 1:
-                        # only for last layer:
-                        # output of layer before + mean of inputs of all layers before (except layer 0)
-                        inputs.append((
-                            outputs[-1][0] + average([inputs[i][0] for i in xrange(1, len(inputs))]),
-                            outputs[-1][1] + average([inputs[i][1] for i in xrange(1, len(inputs))]),
-                        ))
-                    else:
-                        inputs.append(outputs[-1])
+                    end_mask = None
 
-                # Zig-zag
-                x_mask_, xr_mask_ = x_mask, xr_mask
-                if use_zigzag:
-                    inputs[-1] = (inputs[-1][0][::-1], inputs[-1][1][::-1])
-                    if layer_id % 2 == 1:
-                        x_mask_, xr_mask_ = xr_mask, x_mask
+                h_last = get_build('lstm')(self.P, src_embedding, self.O, prefix='encoder_lstm', mask=x_mask, layer_id=0,
+                                           dropout_params=dropout_params)[0]
+                h_last_r = get_build('lstm')(self.P, src_embedding_r, self.O, prefix='encoder_lstm_r', mask=xr_mask,
+                                             layer_id=0, dropout_params=dropout_params)[0]
 
-                h_last = get_build(unit)(self.P, inputs[-1][0], self.O, prefix='encoder', mask=x_mask_,
-                                         layer_id=layer_id, dropout_params=dropout_params)[0]
-                h_last_r = get_build(unit)(self.P, inputs[-1][1], self.O, prefix='encoder_r', mask=xr_mask_,
-                                           layer_id=layer_id, dropout_params=dropout_params)[0]
+                h_last = concatenate([h_last, h_last_r[::-1]], axis=h_last.ndim - 1)
 
+                output = get_build(unit)(self.P, h_last, self.O, prefix='encoder', mask=x_mask,
+                                         end_mask=end_mask, dropout_params=dropout_params, n_layers=n_layers,
+                                         use_mask=use_mask, boundary_type=boundary_type, trng=trng,
+                                         hard_sigmoid_a=hard_sigmoid_a, temperature=temperature)
+
+                self.encoder_boundary_before_sigmoid = output[2]['all_layer_z_before_sigmoid'][:, -2]
+
+                return (output[0], output[1]), [output[2]['updates']]
+
+            else:
+                if x_mask is not None:
+                    end_mask = T.zeros_like(x_mask, dtype=fX)
+                    end_mask = T.set_subtensor(end_mask[:-1], x_mask[1:])
+                    end_mask = x_mask - end_mask
+
+                    end_mask_r = T.zeros_like(xr_mask, dtype=fX)
+                    end_mask_r = T.set_subtensor(end_mask_r[-1], T.ones_like(end_mask_r[-1], dtype=fX))
+                else:
+                    end_mask = None
+                    end_mask_r = None
+                output = get_build(unit)(self.P, src_embedding, self.O, prefix='encoder', mask=x_mask,
+                                         end_mask=end_mask, dropout_params=dropout_params, n_layers=n_layers,
+                                         use_mask=use_mask, boundary_type=boundary_type, trng=trng,
+                                         hard_sigmoid_a=hard_sigmoid_a, temperature=temperature)
+                output_r = get_build(unit)(self.P, src_embedding_r, self.O, prefix='encoder_r', mask=xr_mask,
+                                           end_mask=end_mask_r, dropout_params=dropout_params, n_layers=n_layers,
+                                           use_mask=use_mask, boundary_type=boundary_type, trng=trng,
+                                           hard_sigmoid_a=hard_sigmoid_a, temperature=temperature)
+
+                h_last = output[0]
+                h_last_r = output_r[0]
+                z_last = output[1]
+                z_last_r = output_r[1]
+                h_last = concatenate([h_last, h_last_r[::-1]], axis=h_last.ndim - 1)
+                z_last = 1.0 - (1.0 - z_last) * (1.0 - z_last_r[::-1])
+
+                self.encoder_boundary_before_sigmoid = output[2]['all_layer_z_before_sigmoid'][:, -2]
+                self.encoder_r_boundary_before_sigmoid = output_r[2]['all_layer_z_before_sigmoid'][:, -2][::-1]
+
+                return (h_last, z_last), [output[2]['updates'], output_r[2]['updates']]
+        else:
+            # List of inputs and outputs of each layer (for residual)
+            inputs = []
+            outputs = []
+
+            # First layer (bidirectional)
+            inputs.append((input_, input_r))
+
+            h_last = get_build(unit)(self.P, inputs[-1][0], self.O, prefix='encoder', mask=x_mask, layer_id=0,
+                                     dropout_params=dropout_params)[0]
+            h_last_r = get_build(unit)(self.P, inputs[-1][1], self.O, prefix='encoder_r', mask=xr_mask,
+                                       layer_id=0, dropout_params=dropout_params)[0]
+            if self.O['encoder_many_bidirectional']:
+                # First layer output
                 outputs.append((h_last, h_last_r))
 
-            # Context will be the concatenation of forward and backward RNNs
-            if use_zigzag and n_layers % 2 == 0:
-                context = concatenate([outputs[-1][0][::-1], outputs[-1][1]], axis=h_last.ndim - 1)
-            else:
-                context = concatenate([outputs[-1][0], outputs[-1][1][::-1]], axis=h_last.ndim - 1)
-        else:
-            # First layer output
-            h_last = concatenate([h_last, h_last_r[::-1]], axis=h_last.ndim - 1)
-
-            outputs.append(h_last)
-
-            # Other layers (forward)
-            for layer_id in xrange(1, n_layers):
-                if layer_id == 1:
-                    inputs.append(outputs[-1])
-                else:
-                    if residual == 'layer_wise':
-                        # output of layer before + input of layer before
-                        inputs.append(outputs[-1] + inputs[-1])
-                    elif residual == 'last' and layer_id == n_layers - 1:
-                        # only for last layer:
-                        # output of layer before + mean of inputs of all layers before (except layer 0)
-                        inputs.append(outputs[-1] + average(inputs[1:]))
-                    else:
+                # Other layers (bidirectional)
+                for layer_id in xrange(1, n_layers):
+                    if layer_id == 1:
                         inputs.append(outputs[-1])
+                    else:
+                        if residual == 'layer_wise':
+                            # output of layer before + input of layer before
+                            inputs.append((
+                                outputs[-1][0] + inputs[-1][0],
+                                outputs[-1][1] + inputs[-1][1],
+                            ))
+                        elif residual == 'last' and layer_id == n_layers - 1:
+                            # only for last layer:
+                            # output of layer before + mean of inputs of all layers before (except layer 0)
+                            inputs.append((
+                                outputs[-1][0] + average([inputs[i][0] for i in xrange(1, len(inputs))]),
+                                outputs[-1][1] + average([inputs[i][1] for i in xrange(1, len(inputs))]),
+                            ))
+                        else:
+                            inputs.append(outputs[-1])
 
-                x_mask_ = x_mask
-                if use_zigzag:
-                    inputs[-1] = inputs[-1][::-1]
-                    if layer_id % 2 == 1:
-                        x_mask_ = xr_mask
+                    # Zig-zag
+                    x_mask_, xr_mask_ = x_mask, xr_mask
+                    if use_zigzag:
+                        inputs[-1] = (inputs[-1][0][::-1], inputs[-1][1][::-1])
+                        if layer_id % 2 == 1:
+                            x_mask_, xr_mask_ = xr_mask, x_mask
 
-                # FIXME: mask modified from None to x_mask
-                h_last = get_build(self.O['unit'])(self.P, inputs[-1], self.O, prefix='encoder', mask=x_mask_,
-                                                   layer_id=layer_id, dropout_params=dropout_params)[0]
+                    h_last = get_build(unit)(self.P, inputs[-1][0], self.O, prefix='encoder', mask=x_mask_,
+                                             layer_id=layer_id, dropout_params=dropout_params)[0]
+                    h_last_r = get_build(unit)(self.P, inputs[-1][1], self.O, prefix='encoder_r', mask=xr_mask_,
+                                               layer_id=layer_id, dropout_params=dropout_params)[0]
+
+                    outputs.append((h_last, h_last_r))
+
+                # Context will be the concatenation of forward and backward RNNs
+                if use_zigzag and n_layers % 2 == 0:
+                    context = concatenate([outputs[-1][0][::-1], outputs[-1][1]], axis=h_last.ndim - 1)
+                else:
+                    context = concatenate([outputs[-1][0], outputs[-1][1][::-1]], axis=h_last.ndim - 1)
+            else:
+                # First layer output
+                h_last = concatenate([h_last, h_last_r[::-1]], axis=h_last.ndim - 1)
 
                 outputs.append(h_last)
 
-            # Zig-zag
-            if use_zigzag and n_layers % 2 == 0:
-                context = outputs[-1][::-1]
-            else:
-                context = outputs[-1]
+                # Other layers (forward)
+                for layer_id in xrange(1, n_layers):
+                    if layer_id == 1:
+                        inputs.append(outputs[-1])
+                    else:
+                        if residual == 'layer_wise':
+                            # output of layer before + input of layer before
+                            inputs.append(outputs[-1] + inputs[-1])
+                        elif residual == 'last' and layer_id == n_layers - 1:
+                            # only for last layer:
+                            # output of layer before + mean of inputs of all layers before (except layer 0)
+                            inputs.append(outputs[-1] + average(inputs[1:]))
+                        else:
+                            inputs.append(outputs[-1])
+
+                    x_mask_ = x_mask
+                    if use_zigzag:
+                        inputs[-1] = inputs[-1][::-1]
+                        if layer_id % 2 == 1:
+                            x_mask_ = xr_mask
+
+                    # FIXME: mask modified from None to x_mask
+                    h_last = get_build(unit)(self.P, inputs[-1], self.O, prefix='encoder', mask=x_mask_,
+                                             layer_id=layer_id, dropout_params=dropout_params)[0]
+
+                    outputs.append(h_last)
+
+                # Zig-zag
+                if use_zigzag and n_layers % 2 == 0:
+                    context = outputs[-1][::-1]
+                else:
+                    context = outputs[-1]
 
         return context
 
     def decoder(self, tgt_embedding, y_mask, init_state, context, x_mask,
-                dropout_params=None, one_step=False, init_memory=None, **kwargs):
+                dropout_params=None, one_step=False, init_memory=None, init_boundary=None, trng=None,
+                boundary_type=0, hard_sigmoid_a=5.0, temperature=1.0, explicit_boundary=None, **kwargs):
         """Multi-layer GRU decoder.
 
         :return Decoder context vector and hidden states and others (kw_ret)
         """
 
         n_layers = self.O['n_decoder_layers']
-        unit = self.O['unit']
+        unit = self.O['decoder_unit']
         attention_layer_id = self.O['attention_layer_id']
         residual = self.O['residual_dec']
         all_att = self.O['decoder_all_attention']
         avg_ctx = self.O['average_context']
+
+        use_mask = self.O['use_mask']
+        use_explicit_boundary = self.O['use_explicit_boundary']
+        benefit_0_boundary = self.O['benefit_0_boundary']
+        use_all_one_boundary = self.O['use_all_one_boundary']
+        if use_explicit_boundary:
+            assert explicit_boundary is not None
+
         # FIXME: Add get_gates for only common mode (one attention) here.
         get_gates = kwargs.pop('get_gates', False)
+        if 'hmrnn' in unit:
+            # from hmrnn import print_all
+            if not one_step:
+                if init_state is not None:
+                    init_state = T.stack([init_state for _ in xrange(n_layers)], axis=0)
+                if init_memory is not None:
+                    init_memory = T.stack([init_memory for _ in xrange(n_layers)], axis=0)
+                if init_boundary is not None:
+                    init_boundary = T.stack([init_boundary for _ in xrange(n_layers)], axis=0)
 
-        # List of inputs and outputs of each layer (for residual)
-        inputs = []
-        outputs = []
-        hiddens_without_dropout = []
-        memory_outputs = []
+            # if init_state is not None:
+            #     init_state = print_all("init_state:")(init_state)
+            # if init_memory is not None:
+            #     init_memory = print_all("init_memory:")(init_memory)
+            # if init_boundary is not None:
+            #     init_boundary = print_all("init_boundary:")(init_boundary)
 
-        # Return many things in a dict.
-        kw_ret = {
-            'hiddens_without_dropout': hiddens_without_dropout,
-            'memory_outputs': memory_outputs,
-        }
+            if isinstance(context, tuple):
+                context, z_mask = context
+                z_mask = z_mask.reshape([z_mask.shape[0], z_mask.shape[1]])
+                context_mask = z_mask * x_mask if x_mask is not None else z_mask
+            else:
+                context_mask = x_mask if x_mask is not None else None
 
-        if get_gates:
-            kw_ret['input_gates'] = []
-            kw_ret['forget_gates'] = []
-            kw_ret['output_gates'] = []
+            # x_mask = print_all("x_mask in decoder:")(x_mask)
+            # z_mask = print_all("z_mask in decoder:")(z_mask)
+            # context = print_all("context:")(context)
+            # context_mask = print_all("context_mask:")(context_mask)
 
-        # FIXME: init_state and init_memory
-        # In training mode (one_step is False), init_state and init_memory are single state (and often None),
-        #   each layer just use a copy of them.
-        # In sample mode (one_step is True), init_state and init_memory are list of states,
-        #   each layer use the state of its index.
-        if not one_step:
-            init_state = [init_state for _ in xrange(n_layers)]
-            init_memory = [init_memory for _ in xrange(n_layers)]
+            hidden_decoder, context_decoder, alpha_decoder, kw_ret_att = get_build(unit + '_cond')(
+                self.P, tgt_embedding, self.O, prefix='decoder', mask=y_mask, context=context,
+                context_mask=context_mask, one_step=one_step, init_state=init_state,
+                dropout_params=dropout_params, init_memory=init_memory, init_boundary=init_boundary,
+                n_layers=n_layers, use_mask=use_mask, boundary_type=boundary_type, trng=trng,
+                hard_sigmoid_a=hard_sigmoid_a, temperature=temperature,
+                explicit_boundary=explicit_boundary if use_explicit_boundary else None,
+                use_explicit_boundary=use_explicit_boundary,
+                benefit_0_boundary=benefit_0_boundary, all_att=all_att, use_all_one_boundary=use_all_one_boundary,
+            )
+            self.decoder_boundary_before_sigmoid = kw_ret_att['all_layer_z_before_sigmoid'][:, -2]
+            # the last dimension of  hidden_decoder
+            return hidden_decoder, context_decoder, alpha_decoder, kw_ret_att
+        else:
+            # List of inputs and outputs of each layer (for residual)
+            inputs = []
+            outputs = []
+            hiddens_without_dropout = []
+            memory_outputs = []
 
-        if all_att:
-            # All decoder layers have attention.
-            context_decoder_list = []
-            context_decoder = None
-            alpha_decoder = None
+            # Return many things in a dict.
+            kw_ret = {
+                'hiddens_without_dropout': hiddens_without_dropout,
+                'memory_outputs': memory_outputs,
+            }
 
-            for layer_id in xrange(0, n_layers):
-                # [NOTE] Do not add residual on layer 0 and 1
-                if layer_id == 0:
+            if get_gates:
+                kw_ret['input_gates'] = []
+                kw_ret['forget_gates'] = []
+                kw_ret['output_gates'] = []
+
+            # FIXME: init_state and init_memory
+            # In training mode (one_step is False), init_state and init_memory are single state (and often None),
+            #   each layer just use a copy of them.
+            # In sample mode (one_step is True), init_state and init_memory are list of states,
+            #   each layer use the state of its index.
+            if not one_step:
+                init_state = [init_state for _ in xrange(n_layers)]
+                init_memory = [init_memory for _ in xrange(n_layers)]
+
+            if all_att:
+                # All decoder layers have attention.
+                context_decoder_list = []
+                context_decoder = None
+                alpha_decoder = None
+
+                for layer_id in xrange(0, n_layers):
+                    # [NOTE] Do not add residual on layer 0 and 1
+                    if layer_id == 0:
+                        inputs.append(tgt_embedding)
+                    elif layer_id == 1:
+                        inputs.append(outputs[-1])
+                    else:
+                        if residual == 'layer_wise':
+                            inputs.append(outputs[-1] + inputs[-1])
+                        elif residual == 'last' and layer_id == n_layers - 1:
+                            # only for last layer:
+                            # output of layer before + mean of inputs of all layers before (except layer 0)
+                            inputs.append(outputs[-1] + average(inputs[1:]))
+                        else:
+                            inputs.append(outputs[-1])
+
+                    hidden_decoder, context_decoder, alpha_decoder, kw_ret_att = get_build(unit + '_cond')(
+                        self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, context=context,
+                        context_mask=x_mask, one_step=one_step, init_state=init_state[layer_id],
+                        dropout_params=dropout_params, layer_id=layer_id,
+                        init_memory=init_memory[layer_id],
+                    )
+
+                    context_decoder_list.append(context_decoder)
+
+                    hiddens_without_dropout.append(kw_ret_att['hidden_without_dropout'])
+                    if 'lstm' in unit:
+                        memory_outputs.append(kw_ret_att['memory_output'])
+
+                    outputs.append(hidden_decoder)
+
+                if avg_ctx:
+                    ctx_output = T.mean(T.stack(context_decoder_list, axis=0), axis=0)
+                else:
+                    ctx_output = context_decoder
+                return outputs[-1], ctx_output, alpha_decoder, kw_ret
+
+            else:
+                # Layers before attention layer
+                for layer_id in xrange(0, attention_layer_id):
+                    # [NOTE] Do not add residual on layer 0 and 1
+                    if layer_id == 0:
+                        inputs.append(tgt_embedding)
+                    elif layer_id == 1:
+                        inputs.append(outputs[-1])
+                    else:
+                        if residual == 'layer_wise':
+                            # output of layer before + input of layer before
+                            inputs.append(outputs[-1] + inputs[-1])
+                        elif residual == 'last' and layer_id == n_layers - 1:
+                            # only for last layer:
+                            # output of layer before + mean of inputs of all layers before (except layer 0)
+                            inputs.append(outputs[-1] + average(inputs[1:]))
+                        else:
+                            inputs.append(outputs[-1])
+
+                    layer_out = get_build(unit)(
+                        self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
+                        dropout_params=dropout_params, one_step=one_step, init_state=init_state[layer_id], context=None,
+                        init_memory=init_memory[layer_id], get_gates=get_gates,
+                    )
+                    kw_ret_layer = layer_out[-1]
+
+                    hiddens_without_dropout.append(kw_ret_layer['hidden_without_dropout'])
+                    if 'lstm' in unit:
+                        memory_outputs.append(layer_out[1])
+                    if get_gates:
+                        kw_ret['input_gates'].append(kw_ret_layer['input_gates'])
+                        kw_ret['forget_gates'].append(kw_ret_layer['forget_gates'])
+                        kw_ret['output_gates'].append(kw_ret_layer['output_gates'])
+
+                    outputs.append(layer_out[0])
+
+                # Attention layer
+                if attention_layer_id == 0:
                     inputs.append(tgt_embedding)
-                elif layer_id == 1:
+                elif attention_layer_id == 1:
                     inputs.append(outputs[-1])
                 else:
                     if residual == 'layer_wise':
                         inputs.append(outputs[-1] + inputs[-1])
-                    elif residual == 'last' and layer_id == n_layers - 1:
+                    elif residual == 'last' and attention_layer_id == n_layers - 1:
                         # only for last layer:
                         # output of layer before + mean of inputs of all layers before (except layer 0)
                         inputs.append(outputs[-1] + average(inputs[1:]))
@@ -1072,135 +1469,61 @@ class NMTModel(object):
 
                 hidden_decoder, context_decoder, alpha_decoder, kw_ret_att = get_build(unit + '_cond')(
                     self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, context=context,
-                    context_mask=x_mask, one_step=one_step, init_state=init_state[layer_id],
-                    dropout_params=dropout_params, layer_id=layer_id,
-                    init_memory=init_memory[layer_id],
+                    context_mask=x_mask, one_step=one_step, init_state=init_state[attention_layer_id],
+                    dropout_params=dropout_params, layer_id=attention_layer_id, init_memory=init_memory[attention_layer_id],
+                    get_gates=get_gates,
                 )
-
-                context_decoder_list.append(context_decoder)
 
                 hiddens_without_dropout.append(kw_ret_att['hidden_without_dropout'])
                 if 'lstm' in unit:
                     memory_outputs.append(kw_ret_att['memory_output'])
+                if get_gates:
+                    kw_ret['input_gates'].append(kw_ret_att['input_gates'])
+                    kw_ret['forget_gates'].append(kw_ret_att['forget_gates'])
+                    kw_ret['output_gates'].append(kw_ret_att['output_gates'])
+                    kw_ret['input_gates_att'] = kw_ret_att['input_gates_att']
+                    kw_ret['forget_gates_att'] = kw_ret_att['forget_gates_att']
+                    kw_ret['output_gates_att'] = kw_ret_att['output_gates_att']
 
                 outputs.append(hidden_decoder)
 
-            if avg_ctx:
-                ctx_output = T.mean(T.stack(context_decoder_list, axis=0), axis=0)
-            else:
-                ctx_output = context_decoder
-            return outputs[-1], ctx_output, alpha_decoder, kw_ret
-
-        else:
-            # Layers before attention layer
-            for layer_id in xrange(0, attention_layer_id):
-                # [NOTE] Do not add residual on layer 0 and 1
-                if layer_id == 0:
-                    inputs.append(tgt_embedding)
-                elif layer_id == 1:
-                    inputs.append(outputs[-1])
-                else:
-                    if residual == 'layer_wise':
-                        # output of layer before + input of layer before
-                        inputs.append(outputs[-1] + inputs[-1])
-                    elif residual == 'last' and layer_id == n_layers - 1:
-                        # only for last layer:
-                        # output of layer before + mean of inputs of all layers before (except layer 0)
-                        inputs.append(outputs[-1] + average(inputs[1:]))
-                    else:
+                # Layers after attention layer
+                for layer_id in xrange(attention_layer_id + 1, n_layers):
+                    if layer_id <= 1:
                         inputs.append(outputs[-1])
-
-                layer_out = get_build(unit)(
-                    self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
-                    dropout_params=dropout_params, one_step=one_step, init_state=init_state[layer_id], context=None,
-                    init_memory=init_memory[layer_id], get_gates=get_gates,
-                )
-                kw_ret_layer = layer_out[-1]
-
-                hiddens_without_dropout.append(kw_ret_layer['hidden_without_dropout'])
-                if 'lstm' in unit:
-                    memory_outputs.append(layer_out[1])
-                if get_gates:
-                    kw_ret['input_gates'].append(kw_ret_layer['input_gates'])
-                    kw_ret['forget_gates'].append(kw_ret_layer['forget_gates'])
-                    kw_ret['output_gates'].append(kw_ret_layer['output_gates'])
-
-                outputs.append(layer_out[0])
-
-            # Attention layer
-            if attention_layer_id == 0:
-                inputs.append(tgt_embedding)
-            elif attention_layer_id == 1:
-                inputs.append(outputs[-1])
-            else:
-                if residual == 'layer_wise':
-                    inputs.append(outputs[-1] + inputs[-1])
-                elif residual == 'last' and attention_layer_id == n_layers - 1:
-                    # only for last layer:
-                    # output of layer before + mean of inputs of all layers before (except layer 0)
-                    inputs.append(outputs[-1] + average(inputs[1:]))
-                else:
-                    inputs.append(outputs[-1])
-
-            hidden_decoder, context_decoder, alpha_decoder, kw_ret_att = get_build(unit + '_cond')(
-                self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, context=context,
-                context_mask=x_mask, one_step=one_step, init_state=init_state[attention_layer_id],
-                dropout_params=dropout_params, layer_id=attention_layer_id, init_memory=init_memory[attention_layer_id],
-                get_gates=get_gates,
-            )
-
-            hiddens_without_dropout.append(kw_ret_att['hidden_without_dropout'])
-            if 'lstm' in unit:
-                memory_outputs.append(kw_ret_att['memory_output'])
-            if get_gates:
-                kw_ret['input_gates'].append(kw_ret_att['input_gates'])
-                kw_ret['forget_gates'].append(kw_ret_att['forget_gates'])
-                kw_ret['output_gates'].append(kw_ret_att['output_gates'])
-                kw_ret['input_gates_att'] = kw_ret_att['input_gates_att']
-                kw_ret['forget_gates_att'] = kw_ret_att['forget_gates_att']
-                kw_ret['output_gates_att'] = kw_ret_att['output_gates_att']
-
-            outputs.append(hidden_decoder)
-
-            # Layers after attention layer
-            for layer_id in xrange(attention_layer_id + 1, n_layers):
-                if layer_id <= 1:
-                    inputs.append(outputs[-1])
-                else:
-                    if residual == 'layer_wise':
-                        inputs.append(outputs[-1] + inputs[-1])
-                    elif residual == 'last' and layer_id == n_layers - 1:
-                        # only for last layer:
-                        # output of layer before + mean of inputs of all layers before (except layer 0)
-                        inputs.append(outputs[-1] + average(inputs[1:]))
                     else:
-                        inputs.append(outputs[-1])
+                        if residual == 'layer_wise':
+                            inputs.append(outputs[-1] + inputs[-1])
+                        elif residual == 'last' and layer_id == n_layers - 1:
+                            # only for last layer:
+                            # output of layer before + mean of inputs of all layers before (except layer 0)
+                            inputs.append(outputs[-1] + average(inputs[1:]))
+                        else:
+                            inputs.append(outputs[-1])
 
-                layer_out = get_build(unit)(
-                    self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
-                    dropout_params=dropout_params, context=context_decoder, init_state=init_state[layer_id],
-                    one_step=one_step, init_memory=init_memory[layer_id], get_gates=get_gates,
-                )
-                kw_ret_layer = layer_out[-1]
+                    layer_out = get_build(unit)(
+                        self.P, inputs[-1], self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
+                        dropout_params=dropout_params, context=context_decoder, init_state=init_state[layer_id],
+                        one_step=one_step, init_memory=init_memory[layer_id], get_gates=get_gates,
+                    )
+                    kw_ret_layer = layer_out[-1]
 
-                hiddens_without_dropout.append(kw_ret_layer['hidden_without_dropout'])
-                if 'lstm' in unit:
-                    memory_outputs.append(layer_out[1])
-                if get_gates:
-                    kw_ret['input_gates'].append(kw_ret_layer['input_gates'])
-                    kw_ret['forget_gates'].append(kw_ret_layer['forget_gates'])
-                    kw_ret['output_gates'].append(kw_ret_layer['output_gates'])
+                    hiddens_without_dropout.append(kw_ret_layer['hidden_without_dropout'])
+                    if 'lstm' in unit:
+                        memory_outputs.append(layer_out[1])
+                    if get_gates:
+                        kw_ret['input_gates'].append(kw_ret_layer['input_gates'])
+                        kw_ret['forget_gates'].append(kw_ret_layer['forget_gates'])
+                        kw_ret['output_gates'].append(kw_ret_layer['output_gates'])
 
-                outputs.append(layer_out[0])
+                    outputs.append(layer_out[0])
 
-            return outputs[-1], context_decoder, alpha_decoder, kw_ret
+                return outputs[-1], context_decoder, alpha_decoder, kw_ret
 
     def get_word_probability(self, hidden_decoder, context_decoder, tgt_embedding, **kwargs):
         """Compute word probabilities."""
-
         trng = kwargs.pop('trng', RandomStreams(1234))
         use_noise = kwargs.pop('use_noise', theano.shared(np.float32(0.)))
-
         logit_lstm = self.feed_forward(hidden_decoder, prefix='ff_logit_lstm', activation=linear)
         logit_prev = self.feed_forward(tgt_embedding, prefix='ff_logit_prev', activation=linear)
         logit_ctx = self.feed_forward(context_decoder, prefix='ff_logit_ctx', activation=linear)
