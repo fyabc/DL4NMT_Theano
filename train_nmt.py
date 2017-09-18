@@ -23,8 +23,6 @@ def main():
                         help='Plot filename, default is None (not plot) (deprecated).')
     parser.add_argument('--save_freq', action='store', default=10000, type=int, dest='save_freq',
                         help='Model save frequency, default is %(default)s')
-    parser.add_argument('--dev_bleu_freq', action='store', default=20000, type=int, dest='dev_bleu_freq',
-                        help='Get dev set BLEU frequency, default is %(default)s')
     parser.add_argument('--dim', action='store', default=512, type=int, dest='dim',
                         help='Dim of hidden units, default is %(default)s')
     parser.add_argument('--bs', action='store', default=128, type=int, dest='batch_size',
@@ -142,6 +140,8 @@ def main():
                         help='Fix previous dropout bug, default to False, set to True')
     parser.add_argument('--abandon_imm', action="store_true", default=False, dest='abandon_imm',
                         help='Whether to load previous immediate params, default to True, set to False')
+    parser.add_argument('--start_from_histo_data', action="store_true", default=False, dest='start_from_histo_data',
+                        help='Whether to start from previous untrained data, as calculated by uidx. Default to False, set to True')
     parser.add_argument('--reader_buffer_size', action='store', default=40, type=int, dest='buffer_size',
                         help='The buffer size in data reader, default to 40')
     parser.add_argument('--start_epoch', action='store', default=00, type=int, dest='start_epoch',
@@ -290,10 +290,10 @@ def main():
         tgt_vocab_map_file= args.tgt_vocab_map_file,
 
         trg_attention_layer_id=args.trg_attention_layer_id,
-        dev_bleu_freq = args.dev_bleu_freq,
         fix_dp_bug= args.fix_dp_bug,
         io_buffer_size= args.buffer_size,
         start_epoch= args.start_epoch,
+        start_from_histo_data =  args.start_from_histo_data,
         fix_rnn_weights= args.fix_rnn_weights,
         use_LN = args.use_LN,
         densely_connected = args.densely_connected,

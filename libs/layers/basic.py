@@ -105,7 +105,7 @@ def _attention(h1, projected_context_, context_, context_mask=None, dense_attent
             pctx__ = T.tanh(pctx__)
             alpha = T.dot(pctx__, U_att) + c_tt
             alpha = alpha.reshape([alpha.shape[0], alpha.shape[1]])
-            alpha = T.exp(alpha)
+            alpha = T.exp(alpha - alpha.max(axis=0, keepdims=True))
             if context_mask:
                 alpha = alpha * context_mask
             alpha = alpha / alpha.sum(0, keepdims=True)
@@ -123,7 +123,7 @@ def _attention(h1, projected_context_, context_, context_mask=None, dense_attent
 
         alpha = T.dot(pctx__, U_att) + c_tt
         alpha = alpha.reshape([alpha.shape[0], alpha.shape[1]])
-        alpha = T.exp(alpha)
+        alpha = T.exp(alpha - alpha.max(axis=0, keepdims=True))
         if context_mask:
             alpha = alpha * context_mask
         alpha = alpha / alpha.sum(0, keepdims=True)

@@ -8,10 +8,10 @@ __author__ = 'fyabc'
 profile = False
 fX = 'float32'
 
-ImmediateFilenameBackup = '{}_imm.pkl'
-ImmediateFilenameBackup2 = '{}_imm.pkl.gz'
-ImmediateFilename = '{}_imm.npz'
-TempImmediateFilename = '{}_imm_tmp.npz'
+ImmediateFilename = '{}_imm.iter{}.npz'
+TempImmediateFilename = '{}_imm_tmp.iter{}.npz'
+BestImmediateFilename = '{}_imm.npz'
+BestTempImmediateFilename = '{}_imm_tmp.npz'
 
 # Cycle of shuffle data.
 ShuffleCycle = 7

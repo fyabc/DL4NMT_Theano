@@ -19,7 +19,7 @@ class TextIterator:
                  n_words_source=-1,
                  n_words_target=-1,
                  maxlen=1000000,
-                 k = 40):
+                 k = 40, safe_maxlen=64):
         self.source = fopen(source, 'r')
         self.target = fopen(target, 'r')
         with open(source_dict, 'rb') as f:
@@ -72,7 +72,7 @@ class TextIterator:
             # sort by target buffer
             tlen = numpy.array([len(t) for t in self.target_buffer])
             tidx = tlen.argsort()
-
+            #FIX?
             _sbuf = [self.source_buffer[i] for i in tidx]
             _tbuf = [self.target_buffer[i] for i in tidx]
 

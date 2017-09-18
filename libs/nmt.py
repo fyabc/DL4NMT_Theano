@@ -90,7 +90,6 @@ def train(dim_word=100,  # word vector dimensionality
           saveto='model.npz',
           saveFreq=1000,  # save the parameters after every saveFreq updates
           validFreq=2500,
-          dev_bleu_freq=20000,
           datasets=('/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.en.tok',
                     '/data/lisatmp3/chokyun/europarl/europarl-v7.fr-en.fr.tok'),
           valid_datasets=('./data/dev/dev_en.tok',
@@ -147,6 +146,7 @@ def train(dim_word=100,  # word vector dimensionality
           fix_dp_bug = False,
           io_buffer_size = 40,
           start_epoch = 0,
+          start_from_histo_data = False,
           fix_rnn_weights = False,
           use_LN = False,
           densely_connected = False,
@@ -311,7 +311,8 @@ Start Time = {}
     lr = tensor.scalar(name='lr')
     print 'Building optimizers...',
 
-    given_imm_data = get_adadelta_imm_data(optimizer, given_imm, preload)
+    uidx = search_start_uidx(reload_, preload)
+    given_imm_data = get_adadelta_imm_data(optimizer, given_imm, preload, uidx)
 
     f_grad_shared, f_update, grads_shared, imm_shared = Optimizers[optimizer](
         lr, model.P, grads, inps, cost, g2=g2, given_imm_data=given_imm_data, alpha = ada_alpha, word_params_only = fix_rnn_weights)
@@ -335,12 +336,9 @@ Start Time = {}
     best_valid_cost = 1e6
     best_p = None
     bad_counter = 0
-    uidx = search_start_uidx(reload_, preload)
 
     epoch_n_batches = 0
     pass_batches = 0
-
-    print 'worker', worker_id, 'uidx', uidx, 'l_rate', lrate, 'ada_alpha', ada_alpha, 'n_batches', epoch_n_batches, 'start_epoch', start_epoch, 'pass_batches', pass_batches
 
     start_uidx = uidx
 
@@ -365,12 +363,31 @@ Start Time = {}
     best_bleu = translate_dev_get_bleu(model, f_init, f_next, trng, use_noise) if reload_ else 0
     message('Worker id {}, Initial Valid cost {:.5f} Small train cost {:.5f} Valid BLEU {:.2f}'.format(worker_id, best_valid_cost, small_train_cost, best_bleu))
 
+    best_bleu = 0
+    best_valid_cost = 1e5 #do not let initial state affect the training process
+
     commu_time_sum = 0.0
     cp_time_sum =0.0
     reduce_time_sum = 0.0
 
     start_time = time.time()
     finetune_cnt = 0
+    last_saveto_paths = []
+
+    if start_from_histo_data:
+        if uidx != 0:
+            epoch_n_batches = get_epoch_batch_cnt(dataset_src, dataset_tgt, vocab_filenames, batch_size, maxlen, n_words_src, n_words) \
+                if worker_id == 0 else None
+        else:
+            epoch_n_batches = 1 #avoid heavy data IO
+
+        if dist_type == 'mpi_reduce':
+            epoch_n_batches = mpi_communicator.bcast(epoch_n_batches, root = 0)
+
+        start_epoch = start_epoch + uidx / epoch_n_batches
+        pass_batches = uidx % epoch_n_batches
+
+    print 'worker', worker_id, 'uidx', uidx, 'l_rate', lrate, 'ada_alpha', ada_alpha, 'n_batches', epoch_n_batches, 'start_epoch', start_epoch, 'pass_batches', pass_batches
 
     for eidx in xrange(start_epoch, max_epochs):
         if shuffle_data:
@@ -476,8 +493,7 @@ Start Time = {}
                     sys.stdout.flush()
 
                 # save immediate data in adadelta
-                saveto_imm_path = '{}_latest.npz'.format(os.path.splitext(saveto)[0])
-                dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto_imm_path)
+                dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto, uidx)
 
             if np.mod(uidx, validFreq) == 0:
                 valid_cost = validation(valid_iterator, f_cost, use_noise)
