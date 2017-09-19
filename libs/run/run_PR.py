@@ -139,10 +139,10 @@ def predict(modelpath,
                     for i, k in enumerate(k_list):
                         try:
                             from bottleneck import argpartsort as part_sort
-                            _predict = part_sort(probs, k, axis=1)
+                            _predict = part_sort(-probs, k, axis=1)
                         except ImportError:
                             from bottleneck import argpartition as part_sort
-                            _predict = part_sort(probs, k - 1, axis=1)
+                            _predict = part_sort(-probs, k - 1, axis=1)
                         _predict = _predict.reshape((y.shape[0], y.shape[1], _predict.shape[-1]))
 
                         for s_idx in xrange(y.shape[1]):
