@@ -3,6 +3,7 @@
 
 import os
 import cPickle as pkl
+from time import time
 
 import numpy as np
 import theano
@@ -99,6 +100,8 @@ def predict(modelpath,
         m_block = (len(valid_src) + valid_batch_size - 1) // valid_batch_size
 
         for curidx in xrange(start_idx, end_idx + 1, step_idx):
+            start_time = time()
+
             params = load_params(os.path.splitext(os.path.splitext(modelpath)[0])[0] +
                                  '.iter' + str(curidx) + '.npz', params)
             for (kk, vv) in params.iteritems():
@@ -161,7 +164,9 @@ def predict(modelpath,
                             if 'r' in action:
                                 all_recalls_list[i].append(len(R.intersection(T_n)) * 1.0 / len(R))
 
+            end_time = time()
             message('Iteration:', curidx)
+            message('Time passed: {:.6f}s'.format(end_time - start_time))
 
             if 'a' in action:
                 message('Accuracy:')
@@ -219,6 +224,8 @@ def predict(modelpath,
                                              dropout=model_options['use_dropout'])
 
         for curidx in xrange(start_idx, end_idx + 1, step_idx):
+            start_time = time()
+
             params = load_params(os.path.splitext(os.path.splitext(modelpath)[0])[0] +
                                  '.iter' + str(curidx) + '.npz', {})
             for (kk, vv) in params.iteritems():
@@ -265,7 +272,9 @@ def predict(modelpath,
                 if 'r' in action:
                     all_recalls.append(len(R.intersection(T_n)) * 1.0 / len(R))
 
+            end_time = time()
             message('Iteration:', curidx)
+            message('Time passed: {:.6f}s'.format(end_time - start_time))
 
             if 'a' in action:
                 message('Accuracy:')
