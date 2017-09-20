@@ -100,6 +100,7 @@ def predict(modelpath,
         m_block = (len(valid_src) + valid_batch_size - 1) // valid_batch_size
 
         for curidx in xrange(start_idx, end_idx + 1, step_idx):
+            translation_time = 0.0
             start_time = time()
 
             params = load_params(os.path.splitext(os.path.splitext(modelpath)[0])[0] +
@@ -114,11 +115,15 @@ def predict(modelpath,
             sample_translation = None
 
             for block_id in xrange(m_block):
+                translation_start = time()
+
                 seqx = valid_src[block_id * valid_batch_size: (block_id + 1) * valid_batch_size]
                 seqy = valid_trg[block_id * valid_batch_size: (block_id + 1) * valid_batch_size]
                 x, x_mask, y, y_mask = prepare_data(seqx, seqy)
                 y_pos_ = np.repeat(np.arange(y.shape[0])[:, None], y.shape[1], axis=1).astype('int64')
                 cost, probs = f_predictor(x, x_mask, y, y_mask, y_pos_)
+
+                translation_time += time() - translation_start
 
                 if 'a' in action or 's' in action:
                     _predict = probs.argmax(axis=1).reshape((y.shape[0], y.shape[1]))
@@ -166,7 +171,10 @@ def predict(modelpath,
 
             end_time = time()
             message('Iteration:', curidx)
-            message('Time passed: {:.6f}s'.format(end_time - start_time))
+            message('Time passed: {:.6f}s, translation time: {:.6f}s'.format(
+                end_time - start_time,
+                translation_time,
+            ))
 
             if 'a' in action:
                 message('Accuracy:')
@@ -223,7 +231,11 @@ def predict(modelpath,
         f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise, batch_mode=True,
                                              dropout=model_options['use_dropout'])
 
+        with open(dictionary_target, 'rb') as f:
+            word_dict_trg = pkl.load(f)
+
         for curidx in xrange(start_idx, end_idx + 1, step_idx):
+            translation_time = 0.0
             start_time = time()
 
             params = load_params(os.path.splitext(os.path.splitext(modelpath)[0])[0] +
@@ -231,18 +243,19 @@ def predict(modelpath,
             for (kk, vv) in params.iteritems():
                 model.P[kk].set_value(vv)
 
+            translation_start = time()
             trans_str, all_cand_trans_str = translate_whole(
                 model, f_init, f_next, trng, dictionary, dictionary_target, valid_datasets[0], k=k, normalize=True,
                 src_trg_table=None, zhen=False, n_words_src=model_options['n_words_src'], echo=False, batch_size=32,
             )
 
-            with open(dictionary_target, 'rb') as f:
-                word_dict_trg = pkl.load(f)
             with open(valid_datasets[1], 'r') as f:
                 y_seqs = words2seqs(list(f), word_dict_trg, model_options['n_words'])
 
             trans = words2seqs(trans_str, word_dict_trg, model_options['n_words'])
             all_cand_trans = words2seqs(all_cand_trans_str, word_dict_trg, model_options['n_words'])
+
+            translation_time += time() - translation_start
 
             all_sample = [0 for _ in xrange(model_options['maxlen'] + 2)]
             correct_sample = [0 for _ in xrange(model_options['maxlen'] + 2)]
@@ -274,7 +287,10 @@ def predict(modelpath,
 
             end_time = time()
             message('Iteration:', curidx)
-            message('Time passed: {:.6f}s'.format(end_time - start_time))
+            message('Time passed: {:.6f}s, translation time: {:.6f}s'.format(
+                end_time - start_time,
+                translation_time,
+            ))
 
             if 'a' in action:
                 message('Accuracy:')
