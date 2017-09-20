@@ -257,8 +257,8 @@ def predict(modelpath,
 
             translation_time += time() - translation_start
 
-            all_sample = [0 for _ in xrange(model_options['maxlen'] + 2)]
-            correct_sample = [0 for _ in xrange(model_options['maxlen'] + 2)]
+            all_sample = [0.0 for _ in xrange(model_options['maxlen'] + 2)]
+            correct_sample = [0.0 for _ in xrange(model_options['maxlen'] + 2)]
             all_precisions = []
             all_recalls = []
 
