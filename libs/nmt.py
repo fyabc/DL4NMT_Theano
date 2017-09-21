@@ -511,8 +511,8 @@ Start Time = {}
                     prev_params = load_params(saveto, params)
                     zipp(prev_params, model.P)
                     saveto_imm_path = '{}.npz'.format(os.path.splitext(saveto)[0])
-                    prev_imm_data = get_adadelta_imm_data(optimizer, True, saveto_imm_path)
-                    adadelta_set_imm_data(optimizer, prev_imm_data, imm_shared)
+                    prev_imm_data = get_optimizer_imm_data(optimizer, True, saveto_imm_path)
+                    set_optimizer_imm_data(optimizer, prev_imm_data, imm_shared)
 
             # discount learning rate
             # FIXME: Do NOT enable this and fine-tune at the same time

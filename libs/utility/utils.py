@@ -670,12 +670,13 @@ def dump_optimizer_imm_data(optimizer, imm_shared, dump_imm, saveto, iteration=N
         imm_filename = ImmediateFilename.format(os.path.splitext(saveto)[0], iteration)
 
     # Dump to temp file
-    message('Dumping adadelta immediate data to temp file...', end='')
     if optimizer == 'adadelta':
+        message('Dumping adadelta immediate data to temp file...', end='')
         np.savez(tmp_filename,
                  np.array([g.get_value() for g in imm_shared[0]] +
                           [g.get_value() for g in imm_shared[1]], dtype=object))
     elif optimizer == 'adam':
+        message('Dumping adadelta immediate data to temp file...', end='')
         np.savez(tmp_filename,
                  np.array([imm_shared[0].get_value()] +
                           [g.get_value() for g in imm_shared[1]] +
