@@ -268,8 +268,10 @@ Start Time = {}
         cost, test_cost, x_emb = model.build_model()
     inps = [x, x_mask, y, y_mask]
 
-    print 'Building sampler'
+    print 'Building sampler...'
     f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise, batch_mode=True)
+    print 'Done'
+    sys.stdout.flush()
 
     # before any regularizer
     print 'Building f_log_probs...',
@@ -287,6 +289,7 @@ Start Time = {}
     print 'Building f_cost...',
     f_cost = theano.function(inps, test_cost, profile=profile)
     print 'Done'
+    sys.stdout.flush()
 
     if plot_graph is not None:
         print 'Plotting post-compile graph...',
@@ -306,22 +309,24 @@ Start Time = {}
         grads, g2 = clip_grad_remove_nan(grads, clip_shared, model.P)
     else: #do the grads clip after gradients aggregation
         g2 = None
+    print 'Done'
+    sys.stdout.flush()
+
 
     # compile the optimizer, the actual computational graph is compiled here
     lr = tensor.scalar(name='lr')
     print 'Building optimizers...',
-
     uidx = search_start_uidx(reload_, preload)
     given_imm_data = get_optimizer_imm_data(optimizer, given_imm, preload, uidx)
-
     f_grad_shared, f_update, grads_shared, imm_shared = Optimizers[optimizer](
         lr, model.P, grads, inps, cost, g2=g2, given_imm_data=given_imm_data, alpha = ada_alpha)
     print 'Done'
+    sys.stdout.flush()
 
     if dist_type == 'mpi_reduce':
         f_grads_clip = make_grads_clip_func(grads_shared = grads_shared, mt_tparams= model.P, clip_c_shared = clip_shared)
 
-    print 'Optimization'
+    print 'Optimization...'
     log('Preparation Done\n@Current Time = {}'.format(time.time()))
 
     if dist_type == 'mv':
@@ -329,6 +334,8 @@ Start Time = {}
     elif dist_type == 'mpi_reduce':
         #create receive buffers for mpi allreduce
         rec_grads = [np.zeros_like(p.get_value()) for p in model.P.itervalues()]
+    print 'Done'
+    sys.stdout.flush()
 
     estop = False
     history_errs = []
@@ -395,6 +402,48 @@ Start Time = {}
                 eidx, worker_id, text_iterator_list,
                 datasets, vocab_filenames, batch_size, maxlen, n_words_src, n_words, buffer_size=io_buffer_size
             )
+        # Allocate GPU memory in advance for batch data, by feeding in all-zeros data with shape[maxlen+1,batch_size]
+        print 'Allocating GPU memory in advance for batch data...',
+        x, x_mask, y, y_mask = get_batch_place_holder(batch_size, maxlen)
+        if dist_type != 'mpi_reduce':
+            cost, g2_value = f_grad_shared(x, x_mask, y, y_mask)
+        else:
+            cost = f_grad_shared(x, x_mask, y, y_mask)
+
+        ud_start = time.time()
+
+        if dist_type == 'mpi_reduce':
+            reduce_start = time.time()
+            commu_time = 0
+            gpucpu_cp_time = 0
+            if not nccl:
+                commu_time, gpucpu_cp_time = all_reduce_params(grads_shared, rec_grads)
+            else:
+                commu_time, gpucpu_cp_time = all_reduce_params_nccl(nccl_comm, grads_shared)
+            reduce_time = time.time() - reduce_start
+            commu_time_sum += commu_time
+            reduce_time_sum += reduce_time
+            cp_time_sum += gpucpu_cp_time
+
+            g2_value = f_grads_clip()
+            print '@Worker = {}, Reduce time = {:.5f}, Commu time = {:.5f}, Copy time = {:.5f}'.format(worker_id, reduce_time, commu_time, gpucpu_cp_time)
+
+        curr_lr = 0.0
+        f_update(curr_lr)
+
+        ud = time.time() - ud_start
+
+        if np.isnan(cost) or np.isinf(cost):
+            message('NaN detected')
+            sys.stdout.flush()
+
+        message('Worker {} allocate gpu memory for batch data, Cost {:.5f} G2 {:.5f} UD {:.5f} Time {:.5f} s'.format(
+                worker_id, eidx, uidx, float(cost), float(g2_value), ud, time.time() - start_time,
+        ))
+        print 'Done'
+        sys.stdout.flush()
+        # Finish, now begin real training
+
         n_samples = 0
         if dist_type == 'mpi_reduce':
             mpi_communicator.Barrier()

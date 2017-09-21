@@ -767,6 +767,15 @@ def get_epoch_batch_cnt(dataset_src, dataset_tgt, vocab_filenames, batch_size, m
         n_batches += 1
     return n_batches
 
+def get_batch_place_holder(batch_size, maxlen):
+    x = np.zeros((maxlen + 1, batch_size)).astype('int64')
+    y = np.zeros((maxlen + 1, batch_size)).astype('int64')
+    x_mask = np.zeros((maxlen + 1, batch_size)).astype('float32')
+    x_mask[:1,:] = 1.
+    y_mask = np.zeros((maxlen + 1, batch_size)).astype('float32')
+    y_mask[:1,:] = 1.
+    return x, x_mask, y, y_mask
+
 __all__ = [
     'set_logging_file',
     'get_logging_file',
@@ -808,4 +817,5 @@ __all__ = [
     'load_shuffle_text_iterator',
     'make_grads_clip_func',
     'set_optimizer_imm_data',
+    'get_batch_place_holder',
 ]

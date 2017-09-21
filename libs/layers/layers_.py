@@ -16,9 +16,6 @@ layers = {
     'multi_gru_cond': (param_init_gru_cond, gru_cond_layer),
     'lstm': (param_init_lstm, lstm_layer),
     'lstm_cond': (param_init_lstm_cond, lstm_cond_layer),
-    'lstm_srctrgattn_layer': ('', lstm_srctrgattn_layer),
-    'lstm_trgattn_beforesrc': ('', lstm_trgattn_beforesrc),
-    'lstm_trgattn_aftersrc': ('', lstm_trgattn_aftersrc),
     'multi_lstm': (param_init_lstm, lstm_layer),
     'multi_lstm_cond': (param_init_lstm_cond, lstm_cond_layer),
 }

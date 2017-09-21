@@ -292,7 +292,6 @@ def main():
         io_buffer_size= args.buffer_size,
         start_epoch= args.start_epoch,
         start_from_histo_data =  args.start_from_histo_data,
-        fix_rnn_weights= args.fix_rnn_weights,
         use_LN = args.use_LN,
         densely_connected = args.densely_connected,
         dense_attention = args.dense_attention,
