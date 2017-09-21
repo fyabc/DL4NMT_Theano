@@ -21,8 +21,6 @@ from pprint import pprint
 
 import matplotlib.cm as cm
 import matplotlib.pyplot as plt
-plt.switch_backend('agg')
-
 import numpy as np
 import theano
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
@@ -50,16 +48,11 @@ OuterGates = Gates[3:]  # Outer gates, after tanh, (-1.0, 1.0)
 InnerGateLabels = '$i_t$', '$f_t$', '$o_t$'
 OuterGateLabels = '$h_t$', '$c_t$'
 
-FigureSize = (18, 10)
 FontSize = 20
 TextFontSize = 14
+InnerColorMap = cm.bwr
+OuterColorMap = cm.gray
 ScatterColors = ['b', 'r', 'y', 'g']
-
-
-def _config_figure(args):
-    figure = plt.gcf()
-    figure.set_tight_layout(True)
-    figure.set_size_inches(*args.figure_size)
 
 
 def load_options(model_name):
@@ -67,12 +60,12 @@ def load_options(model_name):
     with open('%s.pkl' % model_name, 'rb') as f:
         options = DefaultOptions.copy()
         options.update(pkl.load(f))
-
+        if 'fix_dp_bug' not in options:
+            options['fix_dp_bug'] = False
         print 'Options:'
         pprint(options)
 
     return options
-
 
 def seq2words(tgt_seq, tgt_dict):
     words = []
@@ -363,12 +356,12 @@ def plot_values(results, args):
 
     # Image
     for layer_id, value_array in enumerate(inner_value_arrays):
-        plt.imshow(value_array, cmap=args.cm_inner, interpolation='none', vmin=0.0, vmax=1.0,
+        plt.imshow(value_array, cmap=InnerColorMap, interpolation='none', vmin=0.0, vmax=1.0,
                    extent=(-0.5, _size_i - 1 + 0.5,
                            n_gates * (layer_id + 1) + 1.5 - len(InnerGates), n_gates * (layer_id + 1) + 1.5))
     if not is_encoder:
         for layer_id, value_array in enumerate(outer_value_arrays):
-            plt.imshow(value_array, cmap=args.cm_outer, interpolation='none',
+            plt.imshow(value_array, cmap=OuterColorMap, interpolation='none',
                        extent=(-0.5, _size_o - 1 + 0.5,
                                n_gates * layer_id + 1.5, n_gates * (layer_id + 1) + 1.5 - len(InnerGates)))
 
@@ -384,10 +377,7 @@ def plot_values(results, args):
 
     plt.grid()
 
-    _config_figure(args)
-
     plt.show()
-    plt.savefig(args.saveto)
 
 
 def plot_count(results, args):
@@ -456,10 +446,7 @@ def plot_count(results, args):
         plt.subplot('1{}{}'.format(n_inner_gates, i + 1))
         _saturation_plot(gate_name)
 
-    _config_figure(args)
-
     plt.show()
-    plt.savefig(args.saveto)
 
 
 def real_main(model_name, dictionary, dictionary_target, source_file, args, k=5, normalize=False, chr_level=False):
@@ -519,16 +506,8 @@ def main():
                         help='Dump translate result, default is %(default)s')
     parser.add_argument('-l', '--load', metavar='FILE', action='store', type=str, default=None, dest='load',
                         help='Load exist translate result, default is %(default)s')
-    parser.add_argument('-saveto', '--saveto', metavar='FILE', action='store', type=str, default='vis/lstm_weight.pdf', dest='saveto',
-                        help='The path to save plotted graph, default is %(default)s')
     parser.add_argument('-V', '--value', metavar='type', action='store', type=str, default='mean', dest='get_value',
                         help='How to get value, default is %(default)s, can be set to "mean", "random" or number')
-    parser.add_argument('-cm-inner', action='store', metavar='type', type=str, default='bwr', dest='cm_inner',
-                        help='Color map of inner gates, default is %(default)s')
-    parser.add_argument('-cm-outer', action='store', metavar='type', type=str, default='gray', dest='cm_outer',
-                        help='Color map of outer gates, default is %(default)s')
-    parser.add_argument('-s', '-size', action='store', metavar='axb', type=str, default='30x10', dest='figure_size',
-                        help='Figure size, format is "axb" (inches), default is "%(default)s"')
 
     args = parser.parse_args()
 
@@ -544,10 +523,6 @@ def main():
             args.target = os.path.join('data', 'dev', dataset[5])
         else:
             args.source = os.path.join('data', 'test', dataset[6])
-
-    args.cm_inner = eval('cm.{}'.format(args.cm_inner))
-    args.cm_outer = eval('cm.{}'.format(args.cm_outer))
-    args.figure_size = int(args.figure_size.split('x')[0]), int(args.figure_size.split('x')[1])
 
     plt.rcParams['font.sans-serif'] = ['SimHei']  # 用来正常显示中文标签
     plt.rcParams['axes.unicode_minus'] = False  # 用来正常显示负号

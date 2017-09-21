@@ -21,10 +21,9 @@ import numpy as np
 
 from ..constants import *
 from .data_iterator import TextIterator
+from libs.config import DefaultOptions
 
 _fp_log = None
-
-emb_para_names = {'Wemb','Wemb_dec', 'ff_logit_W', 'ff_logit_b'}
 
 def set_logging_file(logging_filename):
     path, filename = os.path.split(logging_filename)
@@ -84,10 +83,9 @@ def unzip(zipped):
     return new_params
 
 
-def itemlist(tparams, word_params_only = False):
+def itemlist(tparams):
     """Get the list of parameters: Note that tparams must be OrderedDict"""
-    return [vv for kk, vv in tparams.iteritems() if kk in emb_para_names] if word_params_only \
-        else [vv for kk, vv in tparams.iteritems()]
+    return [vv for kk, vv in tparams.iteritems()]
 
 
 def _p(*args, **kwargs):
@@ -100,6 +98,16 @@ def _p(*args, **kwargs):
 
     return '_'.join(str(arg) for arg in args)
 
+def load_options_test(model_name):
+    # load model model_options
+    with open('%s.pkl' % model_name, 'rb') as f:
+        options = DefaultOptions.copy()
+        options.update(pkl.load(f))
+        if 'fix_dp_bug' not in options:
+            options['fix_dp_bug'] = False
+        print('Options:')
+        pprint(options)
+    return options
 
 # These parameters should be duplicated for multiverso.
 dup_shared_var_list = ['decoder_c_tt']
@@ -359,14 +367,14 @@ def apply_gradient_clipping(clip_c, grads, clip_shared=None):
         grads = new_grads
     return grads, g2
 
-def clip_grad_remove_nan(grads, clip_c_shared, mt_tparams, word_params_only):
+def clip_grad_remove_nan(grads, clip_c_shared, mt_tparams):
     g2 = 0.
     for g in grads:
         g2 += (g*g).sum()
     not_finite = tensor.or_(tensor.isnan(g2), tensor.isinf(g2))
     if clip_c_shared.get_value() > 0.:
         new_grads = []
-        for g, p in zip(grads, itemlist(mt_tparams, word_params_only)):
+        for g, p in zip(grads, itemlist(mt_tparams)):
             tmpg = tensor.switch(g2 > (clip_c_shared*clip_c_shared),
                                  g / tensor.sqrt(g2) * clip_c_shared,
                                  g)
@@ -376,9 +384,9 @@ def clip_grad_remove_nan(grads, clip_c_shared, mt_tparams, word_params_only):
     else:
         return grads, tensor.sqrt(g2)
 
-def make_grads_clip_func(grads_shared, mt_tparams, clip_c_shared, word_params_only):
+def make_grads_clip_func(grads_shared, mt_tparams, clip_c_shared):
 
-    new_grads, g2_sqrt = clip_grad_remove_nan(grads_shared, clip_c_shared, mt_tparams, word_params_only)
+    new_grads, g2_sqrt = clip_grad_remove_nan(grads_shared, clip_c_shared, mt_tparams)
 
     zgup = [(zg, g) for zg, g in zip(grads_shared, new_grads)]
     f_grads_clip = theano.function([], g2_sqrt, updates=zgup, on_unused_input='ignore', profile=profile)
@@ -590,7 +598,7 @@ def check_options(options):
         assert options['unit_size'] > 0 and options['cond_unit_size'] > 0, 'Unit size must > 0'
 
     if options['reload_']:
-        assert os.path.exists(options['preload'])
+        assert os.path.exists(options['preload']), 'preload file {} does not exist'.format(options['preload'])
 
 
 def search_start_uidx(reload_, preload):
@@ -615,7 +623,7 @@ def make_f_train(f_grad_shared, f_update):
     return f_train
 
 
-def get_adadelta_imm_data(optimizer, given_imm, preload, iteration=None):
+def get_optimizer_imm_data(optimizer, given_imm, preload, iteration=None):
     if given_imm:
         # [NOTE] preload filename format: filename.iter10000.npz
         _real_filename = os.path.splitext(os.path.splitext(preload)[0])[0]
@@ -623,7 +631,7 @@ def get_adadelta_imm_data(optimizer, given_imm, preload, iteration=None):
             given_imm_filename = BestImmediateFilename.format(_real_filename)
         else:
             given_imm_filename = ImmediateFilename.format(_real_filename, iteration)
-        
+
         if os.path.exists(given_imm_filename):
             message('Loading adadelta immediate data')
             with np.load(given_imm_filename) as data:
@@ -647,7 +655,7 @@ def get_adadelta_imm_data(optimizer, given_imm, preload, iteration=None):
     return None
 
 
-def dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto, iteration=None):
+def dump_optimizer_imm_data(optimizer, imm_shared, dump_imm, saveto, iteration=None):
     if optimizer == 'sgd':
         return
 
@@ -658,8 +666,8 @@ def dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto, iteration=No
         tmp_filename = BestTempImmediateFilename.format(os.path.splitext(saveto)[0])
         imm_filename = BestImmediateFilename.format(os.path.splitext(saveto)[0])
     else:
-        tmp_filename = TempImmediateFilename.format(os.path.splitext(saveto)[0])
-        imm_filename = ImmediateFilename.format(os.path.splitext(saveto)[0])
+        tmp_filename = TempImmediateFilename.format(os.path.splitext(saveto)[0], iteration)
+        imm_filename = ImmediateFilename.format(os.path.splitext(saveto)[0], iteration)
 
     # Dump to temp file
     message('Dumping adadelta immediate data to temp file...', end='')
@@ -688,14 +696,17 @@ def dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto, iteration=No
     os.rename(tmp_filename, imm_filename)
     message('Done')
 
-def adadelta_set_imm_data(optimizer, given_imm_data, imm_shared):
-    if optimizer == 'adadelta':
-        running_up2, running_grads2 = imm_shared[0], imm_shared[1]
-        for (ru, rg, ru_given, rg_given) in zip(running_up2, running_grads2, given_imm_data[0], given_imm_data[1]):
-            ru.set_value(ru_given)
-            rg.set_value(rg_given)
-    else: #TODO: add adam support
-        return
+def set_optimizer_imm_data(optimizer, given_imm_data, imm_shared):
+    imm_model_start_idx = 0 if optimizer == 'adadelta' else 1
+    for (imm_0, imm_1, imm0_given, imm1_given) in zip(imm_shared[imm_model_start_idx], imm_shared[imm_model_start_idx + 1], given_imm_data[imm_model_start_idx], given_imm_data[imm_model_start_idx + 1]):
+        imm_0.set_value(imm0_given)
+        imm_1.set_value(imm1_given)
+
+    if optimizer == 'adam':
+        imm_shared[0].set_value(given_imm_data[0])
+    else:
+        pass
+    return
 
 def create_shuffle_data(datasets_orig, dataset_src, dataset_tgt):
     orig_src, orig_tgt = datasets_orig[0], datasets_orig[1]
@@ -792,10 +803,9 @@ __all__ = [
     'check_options',
     'search_start_uidx',
     'make_f_train',
-    'get_adadelta_imm_data',
-    'dump_adadelta_imm_data',
+    'get_optimizer_imm_data',
+    'dump_optimizer_imm_data',
     'load_shuffle_text_iterator',
     'make_grads_clip_func',
-    'adadelta_set_imm_data',
-    'emb_para_names',
+    'set_optimizer_imm_data',
 ]

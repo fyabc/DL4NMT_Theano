@@ -298,12 +298,12 @@ Start Time = {}
         print 'Done'
 
     print 'Computing gradient...',
-    grads = tensor.grad(cost, wrt=itemlist(model.P, fix_rnn_weights))
+    grads = tensor.grad(cost, wrt=itemlist(model.P))
 
     clip_shared = theano.shared(np.array(clip_c, dtype=fX), name='clip_shared')
 
     if dist_type != 'mpi_reduce': #build grads clip into computational graph
-        grads, g2 = clip_grad_remove_nan(grads, clip_shared, model.P, fix_rnn_weights)
+        grads, g2 = clip_grad_remove_nan(grads, clip_shared, model.P)
     else: #do the grads clip after gradients aggregation
         g2 = None
 
@@ -312,14 +312,14 @@ Start Time = {}
     print 'Building optimizers...',
 
     uidx = search_start_uidx(reload_, preload)
-    given_imm_data = get_adadelta_imm_data(optimizer, given_imm, preload, uidx)
+    given_imm_data = get_optimizer_imm_data(optimizer, given_imm, preload, uidx)
 
     f_grad_shared, f_update, grads_shared, imm_shared = Optimizers[optimizer](
-        lr, model.P, grads, inps, cost, g2=g2, given_imm_data=given_imm_data, alpha = ada_alpha, word_params_only = fix_rnn_weights)
+        lr, model.P, grads, inps, cost, g2=g2, given_imm_data=given_imm_data, alpha = ada_alpha)
     print 'Done'
 
     if dist_type == 'mpi_reduce':
-        f_grads_clip = make_grads_clip_func(grads_shared = grads_shared, mt_tparams= model.P, clip_c_shared = clip_shared, word_params_only= fix_rnn_weights)
+        f_grads_clip = make_grads_clip_func(grads_shared = grads_shared, mt_tparams= model.P, clip_c_shared = clip_shared)
 
     print 'Optimization'
     log('Preparation Done\n@Current Time = {}'.format(time.time()))
@@ -367,7 +367,7 @@ Start Time = {}
     best_valid_cost = 1e5 #do not let initial state affect the training process
 
     commu_time_sum = 0.0
-    cp_time_sum =0.0
+    cp_time_sum = 0.0
     reduce_time_sum = 0.0
 
     start_time = time.time()
@@ -450,7 +450,7 @@ Start Time = {}
             if np.isnan(cost) or np.isinf(cost):
                 message('NaN detected')
                 sys.stdout.flush()
-                clip_shared.set_value(np.float32(clip_shared.get_value() * 0.9))
+                clip_shared.set_value(np.float32(clip_shared.get_value() * 0.8))
                 message('Discount clip value to {} at iteration {}'.format(clip_shared.get_value(), uidx))
 
                 #reload the best saved model
@@ -493,7 +493,7 @@ Start Time = {}
                     sys.stdout.flush()
 
                 # save immediate data in adadelta
-                dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto, uidx)
+                dump_optimizer_imm_data(optimizer, imm_shared, dump_imm, saveto, uidx)
 
             if np.mod(uidx, validFreq) == 0:
                 valid_cost = validation(valid_iterator, f_cost, use_noise)
@@ -511,15 +511,15 @@ Start Time = {}
                         if worker_id == 0:
                             message('Dump the the best model so far at uidx {}'.format(uidx))
                             model.save_model(saveto, history_errs)
-                            dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto)
+                            dump_optimizer_imm_data(optimizer, imm_shared, dump_imm, saveto)
                     else:
                         bad_counter += 1
                         if bad_counter >= fine_tune_patience:
                             print 'Fine tune:',
                             if finetune_cnt % 2 == 0:
-                                lrate = np.float32(lrate * 0.5)
+                                lrate = np.float32(lrate * 0.1)
                                 message('Discount learning rate to {} at iteration {} at workder {}'.format(lrate, uidx, worker_id))
-                                if lrate <= 0.08:
+                                if lrate <= 0.005:
                                     message('Learning rate decayed to {:.5f}, task completed'.format(lrate))
                                     return 1., 1., 1.
                             else:

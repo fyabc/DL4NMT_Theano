@@ -13,6 +13,7 @@ import os
 import copy
 
 import bottleneck
+import numexpr as ne
 import theano
 import theano.tensor as T
 import numpy as np
@@ -360,7 +361,7 @@ class NMTModel(object):
         # Dict of options
         self.O = options
         if 'fix_dp_bug' not in options:
-            self.O['fix_dp_bug'] = False
+            self.O['fix_dp_bug'] = False	
         if 'cost_normalization' not in options:
             self.O['cost_normalization'] = 1
         if 'use_LN' not in options:

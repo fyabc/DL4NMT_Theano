@@ -97,7 +97,7 @@ def main():
     parser.add_argument('-z', '--zigzag', action='store_false', default=True, dest='use_zigzag',
                         help='Use zigzag in encoder, default is True, set to False')
     parser.add_argument('--dropout', action="store", metavar="dropout", dest="dropout", type=float, default=False,
-                        help='Dropout rate, default is False (not use dropout)')
+                        help='Dropout rate for rnn hidden states, default is False (not use dropout)')
     parser.add_argument('--unit_size', action='store', default=2, type=int, dest='unit_size',
                         help='Number of unit size, default is %(default)s')
     # TODO: rename this option to decoder_unit_size in future
@@ -139,15 +139,13 @@ def main():
     parser.add_argument('--fix_dp_bug', action="store_true", default=False, dest='fix_dp_bug',
                         help='Fix previous dropout bug, default to False, set to True')
     parser.add_argument('--abandon_imm', action="store_true", default=False, dest='abandon_imm',
-                        help='Whether to load previous immediate params, default to True, set to False')
+                        help='Whether to load previous immediate params, default to False, set to True')
     parser.add_argument('--start_from_histo_data', action="store_true", default=False, dest='start_from_histo_data',
                         help='Whether to start from previous untrained data, as calculated by uidx. Default to False, set to True')
     parser.add_argument('--reader_buffer_size', action='store', default=40, type=int, dest='buffer_size',
                         help='The buffer size in data reader, default to 40')
     parser.add_argument('--start_epoch', action='store', default=00, type=int, dest='start_epoch',
                         help='The starting epoch, default to 0')
-    parser.add_argument('--fix_rnn_weights', action="store_true", default=False, dest='fix_rnn_weights',
-                        help='Fix rnn weights during training, default to False, set to True')
     parser.add_argument('--use_LN', action="store_true", default=False, dest='use_LN',
                         help='Use layer normalization in RNN, default to False, set to True')
     parser.add_argument('--dense', action="store_true", default=False, dest='densely_connected',

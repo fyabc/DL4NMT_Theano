@@ -6,6 +6,7 @@ import os
 import subprocess
 import operator
 import re
+import time
 
 from libs.constants import Datasets
 from libs.utility.translate import de_bpe
@@ -66,6 +67,8 @@ def main():
         trans_model_file = '%s.iter%d.npz' % (os.path.splitext(args.model_prefix)[0], idx * args.interval)
         trans_result_file = '%s.iter%d.txt' % (os.path.splitext(args.result_file)[0], idx * args.interval)
 
+        start_time = time.time()
+
         if not os.path.exists(trans_result_file):
             exec_str = 'python translate_single.py -b 32 -k {} -p 1 -n {} {} {} {} {}\n'.format(
                 args.beam_size, trans_model_file, './data/dic/{}'.format(dic1), './data/dic/{}'.format(dic2),
@@ -74,6 +77,9 @@ def main():
             print 'Translate model {} '.format(trans_model_file)
             print exec_str
             pl_output = subprocess.Popen(exec_str, shell=True, stdout=subprocess.PIPE).stdout.read()
+
+        end_time = time.time()
+        m, s = divmod(end_time - start_time, 60)
 
         if 'tc' in args.dataset:  # first de-truecase, then de-bpe
             exec_str = 'perl scripts/moses/detruecase.perl < {} > {}.detc'.format(trans_result_file, trans_result_file)
@@ -87,10 +93,10 @@ def main():
 
         bleus[idx] = get_bleu('./data/test/{}'.format(test2), trans_result_file)
 
-        print 'model %s, bleu %.2f' % (idx * args.interval, bleus[idx])
+        print 'model %s, bleu %.2f, time %02d:%02d' % (idx * args.interval, bleus[idx], m, s)
 
-    args.result_file = './translated/complete/{}_s{}_e{}.txt'.format(os.path.splitext(model_file_name)[0], args.start,
-                                                                     args.end)
+    args.result_file = './translated/complete/{}_s{}_e{}_bs{}.txt'.format(os.path.splitext(model_file_name)[0], args.start,
+                                                                     args.end, args.beam_size)
     bleu_array = sorted(bleus.items(), key=operator.itemgetter(0), reverse=False)
     with open(args.result_file, 'w') as fout:
         fout.write('\n'.join([str(idx) + '\t' + str(score) for (idx, score) in bleu_array]))
