@@ -291,9 +291,8 @@ class DelibNMT(NMTModel):
         elif self.O['decoder_style'] == 'stackLSTM':
             givens = [
                 (y_pos_, T.repeat(T.arange(n_timestep).dimshuffle(0, 'x'), n_samples, 1)),
-                (y_mask, T.fill(x_mask.shape, 1.0).astype(fX))
+                (y_mask, T.fill(x_mask, 1.0).astype(fX))
             ]
-            # raise NotImplementedError('StackLSTM sampler not implemented yet')
         else:
             raise NotImplementedError('This decoder style not implemented yet')
         print('Build predictor... ', end='')
