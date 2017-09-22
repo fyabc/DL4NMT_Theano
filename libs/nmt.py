@@ -69,7 +69,6 @@ def validation(iterator, f_cost, use_noise):
 
     return valid_cost / valid_count
 
-
 def train(dim_word=100,  # word vector dimensionality
           dim=1000,  # the number of LSTM units
           encoder='gru',
@@ -390,6 +389,14 @@ Start Time = {}
 
     print 'worker', worker_id, 'uidx', uidx, 'l_rate', lrate, 'ada_alpha', ada_alpha, 'n_batches', epoch_n_batches, \
         'start_epoch', start_epoch, 'pass_batches', pass_batches
+
+    print 'Allocating GPU memory in advance for batch data...',
+    x, x_mask, y, y_mask = get_batch_place_holder(batch_size, maxlen)
+    if dist_type != 'mpi_reduce':
+        cost, g2_value = f_grad_shared(x, x_mask, y, y_mask)
+    else:
+        cost = f_grad_shared(x, x_mask, y, y_mask)
+    f_update(np.float32(.0))
 
     for eidx in xrange(start_epoch, max_epochs):
         if shuffle_data:

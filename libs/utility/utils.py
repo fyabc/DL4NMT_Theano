@@ -528,6 +528,14 @@ def prepare_data_x(seqs_x, maxlen=None, pad_eos=True, pad_sos=False, n_word=3000
 
     return x, x_mask
 
+def get_batch_place_holder(batch_size, maxlen):
+    x = np.zeros((maxlen + 1, batch_size)).astype('int64')
+    y = np.zeros((maxlen + 1, batch_size)).astype('int64')
+    x_mask = np.zeros((maxlen + 1, batch_size)).astype('float32')
+    x_mask[:1,:] = 1.
+    y_mask = np.zeros((maxlen + 1, batch_size)).astype('float32')
+    y_mask[:1,:] = 1.
+    return x, x_mask, y, y_mask
 
 def get_minibatches_idx(n, minibatch_size, shuffle=False):
     """
@@ -834,4 +842,5 @@ __all__ = [
     'load_shuffle_text_iterator',
     'make_grads_clip_func',
     'set_optimizer_imm_data',
+    'get_batch_place_holder',
 ]
