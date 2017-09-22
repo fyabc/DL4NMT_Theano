@@ -892,6 +892,9 @@ class NMTModel(object):
                     new_hyp_states.append(copy.copy(next_state[:, cursor_start + ti, :]))
                     new_hyp_memories.append(copy.copy(next_memory[:, cursor_start + ti, :]))
                     if attn_src:
+                        print('idx:', idx)
+                        print(len(attn))
+                        print(cursor_start, ti)
                         new_attn_src_words.append(copy.copy(batch_hyp_attn_src_words[jj][ti] + \
                                                         [attn[cursor_start + ti].argmax()]))
 
