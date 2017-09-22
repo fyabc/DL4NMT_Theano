@@ -854,10 +854,6 @@ class NMTModel(object):
             next_p, next_state = ret[0], ret[2]
             if attn_src:
                 attn = ret[3]
-                print('All shapes')
-                print(next_p.shape)
-                print(next_state.shape)
-                print(attn.shape)
 
             cursor_start, cursor_end = 0, lives_k[0]
 
@@ -896,9 +892,11 @@ class NMTModel(object):
                     new_hyp_states.append(copy.copy(next_state[:, cursor_start + ti, :]))
                     new_hyp_memories.append(copy.copy(next_memory[:, cursor_start + ti, :]))
                     if attn_src:
+                        '''
                         print('idx:', idx)
                         print(len(attn))
                         print(cursor_start, ti)
+                        '''
                         new_attn_src_words.append(copy.copy(batch_hyp_attn_src_words[jj][ti] + \
                                                         [attn[cursor_start + ti].argmax()]))
 

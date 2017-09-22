@@ -236,8 +236,6 @@ def translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target, 
     all_cand_trans = []
     all_cand_trans_str = []
     for bidx, seqs in enumerate(all_src_num_blocks):
-        zh_words = seqs2words(seqs,word_idict)
-        print(zh_words)
         trans, src_words, all_cands = translate_block(seqs, model, f_init, f_next, trng, k, attn_src = zhen)
         all_chosen_trans.extend(trans)
         all_cand_trans.extend(all_cands)
