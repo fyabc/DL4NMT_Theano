@@ -64,6 +64,7 @@ def translate_block(input_, model, f_init, f_next, trng, k, attn_src = False):
         output.append(sample[chosen_idx])
         if len(sample_attn_src_word) != 0:
             all_atten_src_words.append(sample_attn_src_word[chosen_idx])
+            print(sample[chosen_idx].shape, sample_attn_src_word[chosen_idx].shape)
 
         all_cand_trans.extend(sample)
 
