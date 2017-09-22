@@ -858,7 +858,6 @@ class NMTModel(object):
             cursor_start, cursor_end = 0, lives_k[0]
 
             for jj in xrange(batch_size): #iterate over every instance in the batch
-                print('Time', ii, 'batch id', jj, 'lives', lives_k[jj])
                 if cursor_start == cursor_end:
                     if jj < batch_size - 1:
                         cursor_end += lives_k[jj + 1]
