@@ -25,9 +25,6 @@ def main(args=None):
     for key, value in params_sum.iteritems():
         params_dic[key] = value
 
-    Wemb = params_sum['Wemb']
-    print 'w_emb_sum %.4f' % ( Wemb.sum())
-
     for idx in xrange(args.start + 1, args.end + 1):
         model_file = '%s.iter%d.npz' % (os.path.splitext(args.model_prefix)[0], idx * args.interval)
         new_params = np.load(model_file)
