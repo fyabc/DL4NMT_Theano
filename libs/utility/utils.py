@@ -578,7 +578,7 @@ def print_params(params, exit_=False):
         exit(0)
 
 
-def load_options_train(options, reload_=None, preload=None, maintain_vocab_size = False):
+def load_options_train(options, reload_=None, preload=None):
     """Reload options for continuing training"""
 
     reload_ = options['reload_'] if reload_ is None else reload_
@@ -605,9 +605,8 @@ def load_options_train(options, reload_=None, preload=None, maintain_vocab_size 
         options['valid_datasets'] = valid_datasets
         options['vocab_filenames'] = vocab_filenames
 
-        if maintain_vocab_size:
-            options['n_words_src'] = src_vocab_size
-            options['n_words'] = tgt_vocab_size
+        options['n_words_src'] = src_vocab_size
+        options['n_words'] = tgt_vocab_size
 
 def save_options(options, iteration, saveto=None):
     saveto = options['saveto'] if saveto is None else saveto
