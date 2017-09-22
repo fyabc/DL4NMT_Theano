@@ -318,6 +318,20 @@ class NMTModel(object):
         # Instance of ParameterInitializer, init the parameters.
         self.initializer = ParameterInitializer(options)
 
+    def trainable_parameters(self):
+        if self.O['fix_encoder']:
+            # todo: remove encoder parameters, need test
+            params = self.P.copy()
+
+            del params['Wemb']
+
+            encoder_keys = (k for k in params.keys() if 'encoder' in k)
+            for key in encoder_keys:
+                del params[key]
+
+            return params
+        return self.P
+
     def input_to_context(self, given_input=None, **kwargs):
         """Build the part of the model that from input to context vector.
 
@@ -857,7 +871,7 @@ class NMTModel(object):
 
             cursor_start, cursor_end = 0, lives_k[0]
 
-            for jj in xrange(batch_size):
+            for jj in xrange(batch_size): #iterate over every instance in the batch
                 if cursor_start == cursor_end:
                     if jj < batch_size - 1:
                         cursor_end += lives_k[jj + 1]

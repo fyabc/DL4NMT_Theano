@@ -154,6 +154,15 @@ def main():
     parser.add_argument('--start_epoch', action='store', default=00, type=int, dest='start_epoch',
                         help='The starting epoch, default to 0')
 
+    parser.add_argument('--delib', action='store_true', default=False, dest='use_delib',
+                        help='whether use deliberation model')
+    parser.add_argument('--use_attn', action="store_true", default=False, help='whether use attention')
+    parser.add_argument('--use_src_pos', action="store_true", default=False, help='whether use source embedding')
+    parser.add_argument('--decoder_style', type=str, default='stackNN', help='Style of decoder, default is %(default)s')
+    parser.add_argument('--which_word', type=int, default=None, help='')
+    parser.add_argument('--fix_encoder', action='store_true', default=False, dest='fix_encoder',
+                        help='whether to fix encoder when training deliberation model')
+
     args = parser.parse_args()
     print args
 
@@ -296,7 +305,15 @@ def main():
         start_epoch= args.start_epoch,
         start_from_histo_data =  args.start_from_histo_data,
         fine_tune_type= args.finetune_type,
-        zhen = zhen,
+
+        use_delib=args.use_delib,
+        use_attn=args.use_attn,
+        use_src_pos=args.use_src_pos,
+        decoder_style=args.decoder_style,
+        which_word=args.which_word,
+        fix_encoder=args.fix_encoder,
+
+        zhen=zhen,
     )
 
 

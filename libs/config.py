@@ -142,6 +142,16 @@ DefaultOptions = dict(
     # Target attention options
     # Target attention layer id, default is None, means not use target attention.
     trg_attention_layer_id=None,
+
+    # Deliberation model options
+    use_delib=False,
+    use_attn=False,
+    decoder_style='stackNN',
+    use_src_pos=True,
+    which_word=None,
+    fix_encoder=False,
+
+    zhen=False,
 )
 
 

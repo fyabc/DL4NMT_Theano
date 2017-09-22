@@ -48,26 +48,34 @@ def translate_block(input_, model, f_init, f_next, trng, k, attn_src = False):
     """
     x, x_mask = prepare_data_x(input_, maxlen=None, pad_eos=True, pad_sos=False)
 
-    batch_sample, batch_sample_score, sample_attn_src_words = model.gen_batch_sample(
-        f_init, f_next, x, x_mask, trng,
-        k=k, maxlen=200, eos_id=0, attn_src=attn_src,
-    )
-    assert len(batch_sample) == len(batch_sample_score)
+    if type(model).__name__ == 'DelibNMT':
+        output = model.gen_batch_sample(
+            f_init, f_next, x, x_mask, trng,
+            k=k, maxlen=200, eos_id=0, attn_src=attn_src,
+        )
+        return output, [], []
+    else:
+        batch_sample, batch_sample_score, sample_attn_src_words = model.gen_batch_sample(
+            f_init, f_next, x, x_mask, trng,
+            k=k, maxlen=200, eos_id=0, attn_src=attn_src,
+        )
+        assert len(batch_sample) == len(batch_sample_score)
 
-    output = []
-    all_atten_src_words = []
-    all_cand_trans = []
+        output = []
+        all_atten_src_words = []
+        all_cand_trans = []
 
-    for sample, sample_score, sample_attn_src_word in zip(batch_sample, batch_sample_score, sample_attn_src_words):
-        score = sample_score / np.array([len(s) for s in sample])
-        chosen_idx = np.argmin(score)
-        output.append(sample[chosen_idx])
-        if len(sample_attn_src_word) != 0:
-            all_atten_src_words.append(sample_attn_src_word[chosen_idx])
+        for sample, sample_score, sample_attn_src_word in zip(batch_sample, batch_sample_score, sample_attn_src_words):
+            score = sample_score / np.array([len(s) for s in sample])
+            chosen_idx = np.argmin(score)
+            output.append(sample[chosen_idx])
+            if len(sample_attn_src_word) != 0:
+                all_atten_src_words.append(sample_attn_src_word[chosen_idx])
+                print(len(sample[chosen_idx]), len(sample_attn_src_word[chosen_idx]))
 
-        all_cand_trans.extend(sample)
+            all_cand_trans.extend(sample)
 
-    return output, all_atten_src_words, all_cand_trans
+        return output, all_atten_src_words, all_cand_trans
 
 def load_zhen_trans_file(source_file, word_dict, n_words_src):
     """
@@ -164,11 +172,12 @@ def load_translate_data(dictionary, dictionary_target, source_file, batch_mode=F
     return word_dict, word_idict, word_idict_trg, all_src_num_blocks, all_src_str, all_src_hotfixes, m_block
 
 
-def seqs2words(caps, word_idict_trg):
+def seqs2words(caps, word_idict_trg, eos_id=0):
     """Sequences -> Sentences
 
     :param caps: a list of word indices
     :param word_idict_trg: inverted target word dict
+    :param eos_id: id of EOS token, default is 0
     :return: a list of sentences
     """
 
@@ -176,11 +185,39 @@ def seqs2words(caps, word_idict_trg):
     for cc in caps:
         ww = []
         for w in cc:
-            if w == 0:
+            if w == eos_id:
                 break
             ww.append(word_idict_trg[w])
         capsw.append(' '.join(ww))
     return capsw
+
+
+def words2seqs(sentences, word_dict, n_words, unk_id=1, eos_id=0):
+    """Sentences -> Sequences
+
+    Parameters
+    ----------
+    sentences
+        A list of strings
+    word_dict
+        Word dict
+    n_words
+        Vocabulary size
+    unk_id
+        ID of UNK token, default is 1
+    eos_id
+        ID of UNK token, default is 0
+    Returns
+    -------
+        A list of word indices
+    """
+
+    seqs = []
+    for s in sentences:
+        tmp = [word_dict.get(w, unk_id) for w in s.strip().split()]
+        seqs.append([w if w < n_words else unk_id for w in tmp])
+
+    return seqs
 
 def idx2str_attnBasedUNKReplace(trg_idx, src_str, src_trg_table, trg_idict, attn, hotfix):
     result_trg_str = []
@@ -328,5 +365,6 @@ def translate_dev_get_bleu(model, f_init, f_next, trng, use_noise, **kwargs):
 __all__ = [
     'get_bleu',
     'de_bpe',
+    'words2seqs',
     'translate_dev_get_bleu',
 ]
