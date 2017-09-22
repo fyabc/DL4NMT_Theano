@@ -858,6 +858,7 @@ class NMTModel(object):
             cursor_start, cursor_end = 0, lives_k[0]
 
             for jj in xrange(batch_size): #iterate over every instance in the batch
+                print('Time', ii, 'batch id', jj, 'lives', lives_k[jj])
                 if cursor_start == cursor_end:
                     if jj < batch_size - 1:
                         cursor_end += lives_k[jj + 1]
@@ -887,6 +888,7 @@ class NMTModel(object):
                     new_attn_src_words = []
 
                 for idx, [ti, wi] in enumerate(zip(trans_indices, word_indices)):
+                    print('\tTrans idx,', idx, 'ti', ti, 'wi', wi)
                     new_hyp_samples.append(batch_hyp_samples[jj][ti] + [wi])
                     new_hyp_scores[idx] = copy.copy(costs[idx])
                     new_hyp_states.append(copy.copy(next_state[:, cursor_start + ti, :]))
@@ -894,7 +896,6 @@ class NMTModel(object):
                     if attn_src:
                         new_attn_src_words.append(copy.copy(batch_hyp_attn_src_words[jj][ti] + \
                                                         [attn[cursor_start + ti].argmax()]))
-
                 # check the finished samples
                 new_live_k = 0
                 batch_hyp_samples[jj] = []
