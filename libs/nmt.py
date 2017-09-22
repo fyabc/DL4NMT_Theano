@@ -195,7 +195,7 @@ Start Time = {}
         message('Done')
     sys.stdout.flush()
 
-    load_options_train(model_options, reload_, preload, src_vocab_map_file and tgt_vocab_map_file)
+    load_options_train(model_options, reload_, preload)
     check_options(model_options)
     model_options['cost_normalization'] = 1
     ada_alpha = 0.95
