@@ -52,10 +52,10 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
 
     model, _ = build_and_init_model(model, options=options, build=False, model_type=model_type)
 
-    f_init, f_next = model.build_sampler(trng=trng, use_noise = use_noise, batch_mode = batch_mode, dropout=options['use_dropout'])
+    f_init, f_next = model.build_sampler(trng=trng, use_noise = use_noise, batch_mode = batch_mode, dropout=options['use_dropout'], need_srcattn = zhen)
 
     trans, all_cand_trans = translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target, source_file, k, normalize,
-                                src_trg_table = src_trg_table, zhen= zhen, n_words_src = options['n_words_src'], echo= True, batch_size= batch_size)
+                                src_trg_table = src_trg_table, zhen = zhen, n_words_src = options['n_words_src'], echo = True, batch_size = batch_size)
     with open(saveto, 'w') as f:
         print >> f, '\n'.join(trans)
     if dump_all:
