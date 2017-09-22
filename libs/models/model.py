@@ -888,7 +888,6 @@ class NMTModel(object):
                     new_attn_src_words = []
 
                 for idx, [ti, wi] in enumerate(zip(trans_indices, word_indices)):
-                    print('\tTrans idx,', idx, 'ti', ti, 'wi', wi)
                     new_hyp_samples.append(batch_hyp_samples[jj][ti] + [wi])
                     new_hyp_scores[idx] = copy.copy(costs[idx])
                     new_hyp_states.append(copy.copy(next_state[:, cursor_start + ti, :]))
@@ -946,6 +945,7 @@ class NMTModel(object):
                 for idx in xrange(lives_k[jj]):
                     sample[jj].append(batch_hyp_samples[jj][idx])
                     sample_score[jj].append(batch_hyp_scores[jj][idx])
+                    sample_attn_src_words[jj].append(batch_hyp_attn_src_words[jj][idx])
 
         if have_kw_ret:
             return sample, sample_score, sample_attn_src_words, kw_ret
