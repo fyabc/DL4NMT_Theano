@@ -854,10 +854,14 @@ class NMTModel(object):
             next_p, next_state = ret[0], ret[2]
             if attn_src:
                 attn = ret[3]
+                print('All shapes')
+                print(next_p.shape)
+                print(next_state.shape)
+                print(attn.shape)
 
             cursor_start, cursor_end = 0, lives_k[0]
 
-            for jj in xrange(batch_size):
+            for jj in xrange(batch_size): #iterate over every instance in the batch
                 if cursor_start == cursor_end:
                     if jj < batch_size - 1:
                         cursor_end += lives_k[jj + 1]
