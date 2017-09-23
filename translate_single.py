@@ -15,18 +15,6 @@ from libs.models import build_and_init_model
 from libs.utility.utils import load_options_test
 from libs.utility.translate import load_translate_data, seqs2words, translate, translate_block, translate_whole
 
-def translate_model_single(input_, model_name, options, k, normalize):
-    from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
-    trng = RandomStreams(1234)
-    use_noise = theano.shared(np.float32(0.))
-
-    model, _ = build_and_init_model(model_name, options=options, build=False)
-
-    # word index
-    f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise)
-
-    return translate(input_, model, f_init, f_next, trng, k, normalize)
-
 def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
          normalize=False, chr_level=False, batch_size=1, zhen = False, src_trg_table_path=None, dump_all = False, args=None):
     batch_mode = batch_size > 1
