@@ -944,7 +944,8 @@ class NMTModel(object):
                 for idx in xrange(lives_k[jj]):
                     sample[jj].append(batch_hyp_samples[jj][idx])
                     sample_score[jj].append(batch_hyp_scores[jj][idx])
-                    sample_attn_src_words[jj].append(batch_hyp_attn_src_words[jj][idx])
+                    if attn_src:
+                        sample_attn_src_words[jj].append(batch_hyp_attn_src_words[jj][idx])
 
         if have_kw_ret:
             return sample, sample_score, sample_attn_src_words, kw_ret
