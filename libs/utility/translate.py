@@ -15,7 +15,7 @@ from .utils import prepare_data_x
 __author__ = 'fyabc'
 
 def chosen_by_len_alpha(beam_samples, beam_scores, alpha):
-    length_penalty = np.power(5.0 + np.array([len(s) for s in beam_samples]), alpha)
+    length_penalty = np.power(5.0 + np.array([len(s) for s in beam_samples], dtype= np.float32), alpha)
     score = beam_scores / length_penalty
     chosen_idx = np.argmin(score)
     return chosen_idx
@@ -44,8 +44,8 @@ def translate_block(input_, model, f_init, f_next, trng, k, alpha = 0., attn_src
         chosen_trans.append(sample[chosen_idx])
         if len(sample_attn_src_word) != 0:
             all_atten_src_words.append(sample_attn_src_word[chosen_idx])
-        all_cand_trans.extend(sample)
-        all_scores.extend(sample_score)
+        all_cand_trans.append(sample)
+        all_scores.append(sample_score)
 
     return chosen_trans, all_atten_src_words, all_cand_trans, all_scores
 
