@@ -95,4 +95,5 @@ if __name__ == "__main__":
 
     main(args.model, args.dictionary_source, args.dictionary_target, args.source,
          args.saveto, k=args.k, alpha= args.alpha,normalize=args.n,
-         chr_level=args.c, batch_size=args.b, args=args, src_trg_table_path= args.st_table_path if args.zhen else None, zhen= args.zhen, ref_file= args.ref_file, dump_all = args.all)
+         chr_level=args.c, batch_size=args.b, args=args, src_trg_table_path= args.st_table_path if args.zhen else None, zhen= args.zhen,
+         ref_file= args.ref_file, search_all_alphas = args.all_alphas,dump_all = args.all)
