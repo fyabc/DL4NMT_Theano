@@ -48,7 +48,7 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,alpha = 
             for samples, sample_scores in zip(all_cand_ids, all_scores):
                 trans_ids.append(samples[chosen_by_len_alpha(samples, sample_scores, alpha_v)])
             trans_strs = seqs2words(trans_ids, word_idic_tgt)
-            print 'alpha %.2f, bleu %.2f'% (alpha_v, get_bleu(ref_file, trans_strs, type_in = 'string'))
+            print 'alpha %.2f, bleu %.2f'% (alpha_v, get_bleu(ref_file, '\n'.join(trans_strs), type_in = 'string'))
     else:
         with open(saveto, 'w') as f:
             print >> f, '\n'.join(trans)
