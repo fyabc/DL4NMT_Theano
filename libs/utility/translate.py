@@ -14,33 +14,13 @@ from .utils import prepare_data_x
 
 __author__ = 'fyabc'
 
+def chosen_by_len_alpha(beam_samples, beam_scores, alpha):
+    length_penalty = np.power(5.0 + np.array([len(s) for s in beam_samples]), alpha)
+    score = beam_scores / length_penalty
+    chosen_idx = np.argmin(score)
+    return chosen_idx
 
-def translate(input_, model, f_init, f_next, trng, k, normalize):
-    def _trans(seq):
-        # sample given an input sequence and obtain scores
-        sample, score = model.gen_sample(
-            f_init, f_next,
-            np.array(seq).reshape([len(seq), 1]),
-            trng=trng, k=k, maxlen=200,
-            stochastic=False, argmax=False,
-        )
-
-        # normalize scores according to sequence lengths
-        if normalize:
-            lengths = np.array([len(s) for s in sample])
-            score = score / lengths
-        sidx = np.argmin(score)
-        return sample[sidx]
-
-    output = []
-
-    for idx, x in enumerate(input_):
-        output.append(_trans(x))
-
-    return output
-
-
-def translate_block(input_, model, f_init, f_next, trng, k, attn_src = False):
+def translate_block(input_, model, f_init, f_next, trng, k, alpha = 0., attn_src = False):
     """Translate for batch sampler.
 
     :return output: a list of word indices
@@ -54,19 +34,20 @@ def translate_block(input_, model, f_init, f_next, trng, k, attn_src = False):
     )
     assert len(batch_sample) == len(batch_sample_score)
 
-    output = []
+    chosen_trans = []
     all_atten_src_words = []
+    all_scores = []
     all_cand_trans = []
 
-    for sample, sample_score, sample_attn_src_word in zip(batch_sample, batch_sample_score, sample_attn_src_words):
-        score = sample_score / np.array([len(s) for s in sample])
-        chosen_idx = np.argmin(score)
-        output.append(sample[chosen_idx])
+    for sample, sample_score, sample_attn_src_word in zip(batch_sample, batch_sample_score, sample_attn_src_words): #now sample_score is an np array, with length beam_size, sample is a list of translated idxes
+        chosen_idx = chosen_by_len_alpha(sample, sample_score, alpha)
+        chosen_trans.append(sample[chosen_idx])
         if len(sample_attn_src_word) != 0:
             all_atten_src_words.append(sample_attn_src_word[chosen_idx])
         all_cand_trans.extend(sample)
+        all_scores.extend(sample_score)
 
-    return output, all_atten_src_words, all_cand_trans
+    return chosen_trans, all_atten_src_words, all_cand_trans, all_scores
 
 def load_zhen_trans_file(source_file, word_dict, n_words_src):
     """
@@ -218,7 +199,7 @@ def idx2str_attnBasedUNKReplace(trg_idx, src_str, src_trg_table, trg_idict, attn
     return ' '.join(result_trg_str)
 
 def translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target, source_file,
-                     k=5, normalize=False, chr_level=False, src_trg_table = None, **kwargs):
+                     k=5, normalize=False, chr_level=False, src_trg_table = None, alpha = 0.0, **kwargs):
     n_words_src = kwargs.pop('n_words_src', model.O['n_words_src'])
     zhen = kwargs.pop('zhen', False)
     batch_size = kwargs.pop('batch_size', 30)
@@ -232,12 +213,14 @@ def translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target, 
         print('Translating ', source_file, '...')
     all_chosen_trans = []
     all_attn_src_words = []
-    all_cand_trans = []
+    all_cand_trans_ids = []
     all_cand_trans_str = []
+    all_scores = []
     for bidx, seqs in enumerate(all_src_num_blocks):
-        trans, src_words, all_cands = translate_block(seqs, model, f_init, f_next, trng, k, attn_src = zhen)
+        trans, src_words, all_cands, scores = translate_block(seqs, model, f_init, f_next, trng, k, alpha= alpha, attn_src = zhen)
         all_chosen_trans.extend(trans)
-        all_cand_trans.extend(all_cands)
+        all_scores.extend(scores)
+        all_cand_trans_ids.extend(all_cands)
         if zhen:
             all_attn_src_words.extend(src_words)
         if echo:
@@ -245,11 +228,11 @@ def translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target, 
 
     if not zhen:
         trans = seqs2words(all_chosen_trans, word_idict_trg)
-        all_cand_trans_str = seqs2words(all_cand_trans, word_idict_trg)
+        all_cand_trans_str = seqs2words(all_cand_trans_ids, word_idict_trg)
     else:
         trans = [idx2str_attnBasedUNKReplace(trg_idx, src_str, src_trg_table, word_idict_trg, attn, hotfix)
             for (trg_idx, src_str, attn, hotfix) in zip(all_chosen_trans, all_src_str, all_attn_src_words, all_src_hotfixes)]
-    return trans, all_cand_trans_str
+    return trans, all_cand_trans_ids, all_cand_trans_str, all_scores, word_idict_trg
 
 def get_bleu(ref_file, hyp_in=None, type_in='filename', zhen = False):
     """Get BLEU score, it will call script 'multi-bleu.perl'.
@@ -301,7 +284,7 @@ def translate_dev_get_bleu(model, f_init, f_next, trng, use_noise, **kwargs):
 
     use_noise.set_value(0.)
 
-    translated_str_list, all_cands_trans_str = translate_whole(
+    translated_str_list, all_cand_trans_ids, all_cands_trans_str, all_scores, _ = translate_whole(
         model, f_init, f_next, trng,
         dic1, dic2, dev1,
         k=3, batch_mode = True,
