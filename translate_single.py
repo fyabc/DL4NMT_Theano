@@ -81,6 +81,7 @@ if __name__ == "__main__":
                         help='Testing all length penalty alpha values, default to False, set to True')
     parser.add_argument('--trg_att', action='store_true', dest='trg_attention', default=False,
                         help='Use target attention, default is False, set to True')
+    parser.add_argument('--ref_file', action='store', metavar='filename', dest='ref_file', type= str, help = 'The test ref file', default = None)
 
     parser.add_argument('model', type=str, help='The model path')
     parser.add_argument('dictionary_source', type=str, help='The source dict path')
@@ -88,15 +89,10 @@ if __name__ == "__main__":
     parser.add_argument('source', type=str, help='The source input path')
     parser.add_argument('saveto', type=str, help='The translated file output path')
     parser.add_argument('st_table_path', nargs='?', type=str, help = 'The src tgt map file path for zhen', default= None)
-    parser.add_argument('task', nargs = '?', type = str, help = 'The task name for getting test ref file', default = None)
     args = parser.parse_args()
 
-    assert not args.all_alphas or args.task
-
-    ref_file = None
-    if args.all_alphas:
-        train1, train2, small1, small2, dev1, dev2, dev3, test1, ref_file, dic1, dic2 = Datasets[args.task]
+    assert not args.all_alphas or args.ref_file
 
     main(args.model, args.dictionary_source, args.dictionary_target, args.source,
          args.saveto, k=args.k, alpha= args.alpha,normalize=args.n,
-         chr_level=args.c, batch_size=args.b, args=args, src_trg_table_path= args.st_table_path if args.zhen else None, zhen= args.zhen, ref_file= ref_file, dump_all = args.all)
+         chr_level=args.c, batch_size=args.b, args=args, src_trg_table_path= args.st_table_path if args.zhen else None, zhen= args.zhen, ref_file= args.ref_file, dump_all = args.all)
