@@ -49,10 +49,10 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,alpha = 
                 trans_ids.append(samples[chosen_by_len_alpha(samples, sample_scores, alpha_v)])
             trans_strs = '\n'.join(seqs2words(trans_ids, word_idic_tgt))
 
-            if 'tc' in ref_file:
+            if 'tc' in source_file:
                 trans_strs = de_tc(trans_strs)
 
-            if 'bpe' in ref_file:
+            if 'bpe' in source_file:
                 trans_strs = de_bpe(trans_strs)
 
             print 'alpha %.2f, bleu %.2f'% (alpha_v, get_bleu(ref_file, trans_strs, type_in = 'string'))
