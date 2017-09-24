@@ -271,6 +271,13 @@ def get_bleu(ref_file, hyp_in=None, type_in='filename', zhen = False):
 def de_bpe(input_str):
     return re.sub(r'(@@ )|(@@ ?$)', '', input_str)
 
+def de_tc(input_str):
+    return subprocess.Popen(
+            'perl scripts/moses/detruecase.perl',
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=open(os.devnull, 'w'),
+            shell=True,
+        ).communicate(input_str)[0]
+
 def translate_dev_get_bleu(model, f_init, f_next, trng, use_noise, **kwargs):
     dataset = kwargs.pop('dataset', model.O['task'])
 
@@ -297,11 +304,7 @@ def translate_dev_get_bleu(model, f_init, f_next, trng, use_noise, **kwargs):
 
     # first de-truecase, then de-bpe
     if 'tc' in dataset:
-        translated_str = subprocess.Popen(
-            'perl scripts/moses/detruecase.perl',
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=open(os.devnull, 'w'),
-            shell=True,
-        ).communicate(translated_str)[0]
+        translated_str = de_tc(translated_str)
 
     if 'bpe' in dataset:
         translated_str = de_bpe(translated_str)

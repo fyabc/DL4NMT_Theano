@@ -11,7 +11,7 @@ import theano
 from libs.constants import Datasets
 from libs.models import build_and_init_model
 from libs.utility.utils import load_options_test
-from libs.utility.translate import translate_whole, chosen_by_len_alpha, get_bleu, seqs2words
+from libs.utility.translate import translate_whole, chosen_by_len_alpha, get_bleu, seqs2words, de_tc, de_bpe
 
 def main(model, dictionary, dictionary_target, source_file, saveto, k=5,alpha = 0,
          normalize=False, chr_level=False, batch_size=1, zhen = False, src_trg_table_path = None, search_all_alphas = False, ref_file = None, dump_all = False, args = None):
@@ -47,8 +47,15 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,alpha = 
             trans_ids = []
             for samples, sample_scores in zip(all_cand_ids, all_scores):
                 trans_ids.append(samples[chosen_by_len_alpha(samples, sample_scores, alpha_v)])
-            trans_strs = seqs2words(trans_ids, word_idic_tgt)
-            print 'alpha %.2f, bleu %.2f'% (alpha_v, get_bleu(ref_file, '\n'.join(trans_strs), type_in = 'string'))
+            trans_strs = '\n'.join(seqs2words(trans_ids, word_idic_tgt))
+
+            if 'tc' in ref_file:
+                trans_strs = de_tc(trans_strs)
+
+            if 'bpe' in ref_file:
+                trans_strs = de_bpe(trans_strs)
+
+            print 'alpha %.2f, bleu %.2f'% (alpha_v, get_bleu(ref_file, trans_strs, type_in = 'string'))
     else:
         with open(saveto, 'w') as f:
             print >> f, '\n'.join(trans)
