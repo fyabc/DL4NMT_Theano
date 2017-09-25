@@ -19,7 +19,9 @@ class TextIterator:
                  maxlen=100,
                  n_words_source=-1,
                  n_words_target=-1,
-                 print_data_file = None):
+                 print_data_file=None,
+                 enc_explicit_boundary=None,
+                 dec_explicit_boundary=None):
         self.source = fopen(source, 'r')
         self.target = fopen(target, 'r')
         with open(source_dict, 'rb') as f:
@@ -40,12 +42,26 @@ class TextIterator:
         self.end_of_data = False
         self.print_data_file = print_data_file
 
+        self.use_enc_explicit_boundary = enc_explicit_boundary is not None
+        if self.use_enc_explicit_boundary:
+            self.source_boundary = fopen(enc_explicit_boundary, 'r')
+            self.source_boundary_buffer = []
+
+        self.use_dec_explicit_boundary = dec_explicit_boundary is not None
+        if self.use_dec_explicit_boundary:
+            self.target_boundary = fopen(dec_explicit_boundary, 'r')
+            self.target_boundary_buffer = []
+
     def __iter__(self):
         return self
 
     def reset(self):
         self.source.seek(0)
         self.target.seek(0)
+        if self.use_enc_explicit_boundary:
+            self.source_boundary.seek(0)
+        if self.use_dec_explicit_boundary:
+            self.target_boundary.seek(0)
 
     def next(self):
         if self.end_of_data:
@@ -55,6 +71,11 @@ class TextIterator:
 
         source = []
         target = []
+
+        if self.use_enc_explicit_boundary:
+            source_boundary = []
+        if self.use_dec_explicit_boundary:
+            target_boundary = []
 
         # fill buffer, if it's empty
         assert len(self.source_buffer) == len(self.target_buffer), 'Buffer size mismatch!'
@@ -71,6 +92,16 @@ class TextIterator:
                 self.source_buffer.append(ss.strip().split())
                 self.target_buffer.append(tt.strip().split())
 
+                if self.use_enc_explicit_boundary:
+                    s_boundary = self.source_boundary.readline()
+                    s_boundary = [float(x) for x in s_boundary.strip().split()]
+                    self.source_boundary_buffer.append(s_boundary)
+
+                if self.use_dec_explicit_boundary:
+                    t_boundary = self.target_boundary.readline()
+                    t_boundary = [float(y) for y in t_boundary.strip().split()]
+                    self.target_boundary_buffer.append(t_boundary)
+
             # sort by target buffer
             tlen = numpy.array([len(t) for t in self.target_buffer])
             tidx = tlen.argsort()
@@ -80,6 +111,13 @@ class TextIterator:
 
             self.source_buffer = _sbuf
             self.target_buffer = _tbuf
+
+            if self.use_enc_explicit_boundary:
+                _sbbuf = [self.source_boundary_buffer[i] for i in tidx]
+                self.source_boundary_buffer = _sbbuf
+            if self.use_dec_explicit_boundary:
+                _tbbuf = [self.target_boundary_buffer[i] for i in tidx]
+                self.target_boundary_buffer = _tbbuf
 
             if self.print_data_file is not None:
                 print "Print raw data!"
@@ -115,11 +153,22 @@ class TextIterator:
                 if self.n_words_target > 0:
                     tt = [w if w < self.n_words_target else 1 for w in tt]
 
+                if self.use_enc_explicit_boundary:
+                    s_boundary = self.source_boundary_buffer.pop()
+                if self.use_dec_explicit_boundary:
+                    t_boundary = self.target_boundary_buffer.pop()
+
                 if len(ss) > self.maxlen and len(tt) > self.maxlen:
                     continue
 
                 source.append(ss)
                 target.append(tt)
+
+                if self.use_enc_explicit_boundary:
+                    source_boundary.append(s_boundary)
+
+                if self.use_dec_explicit_boundary:
+                    target_boundary.append(t_boundary)
 
                 if len(source) >= self.batch_size or \
                         len(target) >= self.batch_size:
@@ -132,4 +181,10 @@ class TextIterator:
             self.reset()
             raise StopIteration
 
-        return source, target
+        ret = [source, target]
+        if self.use_enc_explicit_boundary:
+            ret.append(source_boundary)
+        if self.use_dec_explicit_boundary:
+            ret.append(target_boundary)
+
+        return ret

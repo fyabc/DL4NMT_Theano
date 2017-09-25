@@ -51,7 +51,10 @@ def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True, norma
     return np.array(probs)
 
 
-def validation(iterator, f_cost, encoder_unit, decoder_unit, use_explicit_boundary=False, maxlen=None,
+def validation(iterator, f_cost, encoder_unit, decoder_unit,
+               use_enc_explicit_boundary=False,
+               use_dec_explicit_boundary=False,
+               maxlen=None,
                source_idict=None, target_idict=None,
                f_get_boundary=None,
                encoder_boundary_save_file=None, decoder_boundary_save_file=None,
@@ -76,15 +79,46 @@ def validation(iterator, f_cost, encoder_unit, decoder_unit, use_explicit_bounda
     y_expected_error_num_1 = 0.0
     y_expected_error_tot_1 = 0.0
 
-    for x, y in iterator:
-        x, x_mask, y, y_mask = prepare_data(x, y, maxlen=maxlen)
+    for iters in iterator:
+
+        x, y = iters[:2]
+        iters = iters[2:]
+
+        if 'hmrnn' in encoder_unit and use_enc_explicit_boundary:
+            explicit_boundary_x = iters[0]
+            iters = iters[1:]
+
+        # if 'hmrnn' in decoder_unit and use_dec_explicit_boundary:
+        #     explicit_boundary_y = iters[0]
+        #     iters = iters[1:]
+
+        # print '\n'
+        # print '\n'.join([' '.join([source_idict[w] for w in line]) for line in x])
+
+        assert len(iters) == 0
+
+        ret = prepare_data(x, y, maxlen=maxlen, explicit_boundary_x=explicit_boundary_x)
+
+        x, x_mask, y, y_mask = ret[:4]
+        ret = ret[4:]
+
+        if 'hmrnn' in encoder_unit and use_enc_explicit_boundary:
+            explicit_boundary_x = ret[0]
+            ret = ret[1:]
+
+
+        assert len(ret) == 0
 
         if x is None:
             continue
         inps = [x, x_mask, y, y_mask]
-        if 'hmrnn' in decoder_unit and use_explicit_boundary:
-            inps.append(prepare_explicit_boundary(y, target_idict))
 
+        if 'hmrnn' in encoder_unit and use_enc_explicit_boundary:
+            inps.append(explicit_boundary_x)
+
+        if 'hmrnn' in decoder_unit and use_dec_explicit_boundary:
+            inps.append(prepare_explicit_boundary(y, target_idict))
+        #FIXME: Fix NaN (explicit_boundary)
         ret = f_cost(*inps)
 
         batch_valid_cost = ret[0]
@@ -103,9 +137,9 @@ def validation(iterator, f_cost, encoder_unit, decoder_unit, use_explicit_bounda
 
             for i in xrange(x.shape[0]):
                 for j in xrange(x.shape[1]):
-                    if i > 0 and source_idict[x[i - 1][j]][-2:] == '@@':
+                    if source_idict[x[i][j]][-2:] == '@@':
                         x_expected_boundary_mask_0[i][j] = 1.0
-                    elif i > 1 and source_idict[x[i - 2][j]][-2:] == '@@' and source_idict[x[i - 1][j]][-2:] != '@@':
+                    elif i > 0 and source_idict[x[i - 1][j]][-2:] == '@@' and source_idict[x[i][j]][-2:] != '@@':
                         x_expected_boundary_mask_1[i][j] = 1.0
 
             x_expected_error_num_0 += (encoder_boundary * x_expected_boundary_mask_0).sum()
@@ -126,7 +160,7 @@ def validation(iterator, f_cost, encoder_unit, decoder_unit, use_explicit_bounda
 
             for i in xrange(y.shape[0]):
                 for j in xrange(y.shape[1]):
-                    if i > 0 and target_idict[y[i-1][j]][-2:] == '@@':
+                    if i > 0 and target_idict[y[i - 1][j]][-2:] == '@@':
                         y_expected_boundary_mask_0[i][j] = 1.0
                     elif i > 1 and target_idict[y[i - 2][j]][-2:] == '@@' and target_idict[y[i - 1][j]][-2:] != '@@':
                         y_expected_boundary_mask_1[i][j] = 1.0
@@ -335,7 +369,8 @@ def train(dim_word=100,  # word vector dimensionality
           hard_sigmoid_a_schedule=5.0,
           temperature_schedule=1.0,
           benefit_0_boundary=False,
-          use_explicit_boundary=False,
+          use_enc_explicit_boundary=False,
+          use_dec_explicit_boundary=False,
           use_all_one_boundary=False,
           enc_boundary_regularization=0.0,
           dec_boundary_regularization=0.0,
@@ -428,18 +463,24 @@ Start Time = {}
             dataset_src, dataset_tgt,
             vocab_filenames[0], vocab_filenames[1],
             batch_size, maxlen, n_words_src, n_words,
+            enc_explicit_boundary= dataset_src + '.boundary' if use_enc_explicit_boundary else None,
+            # dec_explicit_boundary= dataset_tgt + '.boundary' if use_dec_explicit_boundary else None,
         )
 
     valid_iterator = TextIterator(
         valid_datasets[0], valid_datasets[1],
         vocab_filenames[0], vocab_filenames[1],
         valid_batch_size, maxlen, n_words_src, n_words,
+        enc_explicit_boundary= valid_datasets[0] + '.boundary' if use_enc_explicit_boundary else None,
+        # dec_explicit_boundary= valid_datasets[1] + '.boundary' if use_dec_explicit_boundary else None,
     )
 
     small_train_iterator = TextIterator(
         small_train_datasets[0], small_train_datasets[1],
         vocab_filenames[0], vocab_filenames[1],
         batch_size, maxlen, n_words_src, n_words,
+        enc_explicit_boundary= small_train_datasets[0] + '.boundary' if use_enc_explicit_boundary else None,
+        # dec_explicit_boundary= small_train_datasets[1] + '.boundary' if use_dec_explicit_boundary else None,
         # print_data_file=open('log/complete/data_raw_{}.txt'.format(current_time_str), 'w')
     )
 
@@ -447,6 +488,8 @@ Start Time = {}
         test_datasets[0], test_datasets[1],
         vocab_filenames[0], vocab_filenames[1],
         valid_batch_size, maxlen, n_words_src, n_words,
+        enc_explicit_boundary= test_datasets[0] + '.boundary' if use_enc_explicit_boundary else None,
+        # dec_explicit_boundary= test_datasets[1] + '.boundary' if use_dec_explicit_boundary else None,
     )
 
     with open(vocab_filenames[0], 'rb') as f:
@@ -484,7 +527,7 @@ Start Time = {}
     # Build model
     trng, use_noise, boundary_type, hard_sigmoid_a, temperature,\
         x, x_mask, y, y_mask, \
-        explicit_boundary_y, opt_ret, \
+        explicit_boundary_x, explicit_boundary_y, opt_ret, \
         cost, x_emb, \
         encoder_boundary, decoder_boundary,\
         stochastic_updates = model.build_model()
@@ -509,10 +552,11 @@ Start Time = {}
 
     inps = [x, x_mask, y, y_mask]
 
-    if 'hmrnn' in decoder_unit and use_explicit_boundary:
-        inps.append(explicit_boundary_y)
+    if 'hmrnn' in encoder_unit and use_enc_explicit_boundary:
+        inps.append(explicit_boundary_x)
 
-    # FIXME add explicit_boundary_y to inputs
+    if 'hmrnn' in decoder_unit and use_dec_explicit_boundary:
+        inps.append(explicit_boundary_y)
 
     print 'Building f_get_boundary...',
     get_boundary_outputs = []
@@ -539,7 +583,8 @@ Start Time = {}
     # f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise)
     f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise, batch_mode=True,
                                          dropout=model_options['use_dropout'], boundary_type=boundary_type,
-                                         use_explicit_boundary=model_options['use_explicit_boundary'],
+                                         use_enc_explicit_boundary=model_options['use_enc_explicit_boundary'],
+                                         use_dec_explicit_boundary=model_options['use_dec_explicit_boundary'],
                                          hard_sigmoid_a=hard_sigmoid_a, temperature=temperature)
 
     # before any regularizer
@@ -654,7 +699,9 @@ Start Time = {}
             small_train_enc_exp_0, small_train_enc_exp_1, \
             small_train_dec_exp_0, small_train_dec_exp_1 = \
             validation(small_train_iterator, f_cost, maxlen=maxlen,
-                       encoder_unit=encoder_unit, decoder_unit=decoder_unit, use_explicit_boundary=use_explicit_boundary,
+                       encoder_unit=encoder_unit, decoder_unit=decoder_unit,
+                       use_enc_explicit_boundary=use_enc_explicit_boundary,
+                       use_dec_explicit_boundary=use_dec_explicit_boundary,
                        source_idict=source_idict, target_idict=target_idict,
                        f_get_boundary=f_get_boundary,
                        encoder_boundary_save_file=encoder_boundary_save_file,
@@ -676,7 +723,8 @@ Start Time = {}
             valid_enc_exp_0, valid_enc_exp_1, \
             valid_dec_exp_0, valid_dec_exp_1 = \
             validation(valid_iterator, f_cost, encoder_unit=encoder_unit, decoder_unit=decoder_unit,
-                       use_explicit_boundary=use_explicit_boundary,
+                       use_enc_explicit_boundary=use_enc_explicit_boundary,
+                       use_dec_explicit_boundary=use_dec_explicit_boundary,
                        source_idict=source_idict, target_idict=target_idict, maxlen=maxlen)
         message('Valid cost {:.5f}'.format(valid_cost))
         message('Valid boundary percentage: encoder {:.3f}, decoder {:.3f}'.format(valid_enc_per, valid_dec_per))
@@ -688,7 +736,8 @@ Start Time = {}
             test_enc_exp_0, test_enc_exp_1, \
             test_dec_exp_0, test_dec_exp_1 = \
             validation(test_iterator, f_cost, encoder_unit=encoder_unit, decoder_unit=decoder_unit,
-                       use_explicit_boundary=use_explicit_boundary,
+                       use_enc_explicit_boundary=use_enc_explicit_boundary,
+                       use_dec_explicit_boundary=use_dec_explicit_boundary,
                        source_idict=source_idict, target_idict=target_idict, maxlen=maxlen)
         message('Test cost {:.5f}'.format(test_cost))
         message('Test boundary percentage: encoder {:.3f}, decoder {:.3f}'.format(test_enc_per, test_dec_per))
@@ -705,7 +754,8 @@ Start Time = {}
             ST_test_enc_exp_0, ST_test_enc_exp_1, \
             ST_test_dec_exp_0, ST_test_dec_exp_1 = \
                 validation(test_iterator, f_cost, encoder_unit=encoder_unit, decoder_unit=decoder_unit,
-                           use_explicit_boundary=use_explicit_boundary,
+                           use_enc_explicit_boundary=use_enc_explicit_boundary,
+                           use_dec_explicit_boundary=use_dec_explicit_boundary,
                            source_idict=source_idict, target_idict=target_idict, maxlen=maxlen)
             message('ST Test cost {:.5f}'.format(ST_test_cost))
             message(
@@ -726,21 +776,49 @@ Start Time = {}
             text_iterator = load_shuffle_text_iterator(
                 eidx, text_iterator_list,
                 datasets, vocab_filenames, batch_size, maxlen, n_words_src, n_words,
+                use_enc_explicit_boundary=use_enc_explicit_boundary,
+                use_dec_explicit_boundary=use_dec_explicit_boundary,
             )
 
         n_samples = 0
         if dist_type == 'mpi_reduce':
             mpi_communicator.Barrier()
 
-        for i, (x, y) in enumerate(text_iterator):
+        for i, iters in enumerate(text_iterator):
+            x, y = iters[:2]
+            iters = iters[2:]
+
+            if 'hmrnn' in encoder_unit and use_enc_explicit_boundary:
+                explicit_boundary_x = iters[0]
+                iters = iters[1:]
+
+            # if 'hmrnn' in decoder_unit and use_dec_explicit_boundary:
+            #     explicit_boundary_y = iters[0]
+            #     iters = iters[1:]
+
+            assert len(iters) == 0
+
             n_samples += len(x)
             uidx += 1
             use_noise.set_value(1.)
 
-            x, x_mask, y, y_mask = prepare_data(x, y, maxlen=maxlen)
+            #TODO: prepare boundaries while prepare data
+
+            ret = prepare_data(x, y, maxlen=maxlen, explicit_boundary_x=explicit_boundary_x)
+
+            x, x_mask, y, y_mask = ret[:4]
+            ret = ret[4:]
+
+            if 'hmrnn' in encoder_unit and use_enc_explicit_boundary:
+                explicit_boundary_x = ret[0]
+                ret = ret[1:]
+
+            assert len(ret) == 0
 
             inps = [x, x_mask, y, y_mask]
-            if 'hmrnn' in decoder_unit and use_explicit_boundary:
+            if 'hmrnn' in encoder_unit and use_enc_explicit_boundary:
+                inps.append(explicit_boundary_x)
+            if 'hmrnn' in decoder_unit and use_dec_explicit_boundary:
                 inps.append(prepare_explicit_boundary(y, target_idict))
 
             if x is None:
@@ -838,7 +916,9 @@ Start Time = {}
             # Fine-tune based on dev BLEU
             if bleuFreq > 0 and np.mod(uidx, bleuFreq) == 0 and uidx >= bleu_start_id:
 
-                valid_bleu = translate_dev_get_bleu(model, f_init, f_next, trng, use_noise)
+                valid_bleu = translate_dev_get_bleu(
+                    model, f_init, f_next, trng, use_noise
+                )
                 message('BLEU Valid = {:.2f} at iteration {}'.format(valid_bleu, uidx))
                 sys.stdout.flush()
 

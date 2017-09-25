@@ -141,7 +141,9 @@ def main():
                         help="Mask lower layers' hidden state, default is False, set to True")
     parser.add_argument('--use_all_one_boundary', action='store_true', dest='use_all_one_boundary', default=False,
                         help="Use all one boundary in decoder, default is False, set to True")
-    parser.add_argument('--use_explicit_boundary', action='store_true', dest='use_explicit_boundary', default=False,
+    parser.add_argument('--use_enc_explicit_boundary', action='store_true', dest='use_enc_explicit_boundary', default=False,
+                        help="Use explicit boundary in encoder, default is False, set to True")
+    parser.add_argument('--use_dec_explicit_boundary', action='store_true', dest='use_dec_explicit_boundary', default=False,
                         help="Use explicit boundary in decoder, default is False, set to True")
     parser.add_argument('--boundary_type', action = 'store', metavar ='type', dest = 'boundary_type', type = str, default='ST',
                         help='Type of boundaries, default is "ST", candidates are "Gumbel_Softmax", "ST_Gumbel"')
@@ -313,7 +315,8 @@ def main():
         temperature_schedule=args.temperature,
         benefit_0_boundary=args.benefit_0_boundary,
         use_all_one_boundary=args.use_all_one_boundary,
-        use_explicit_boundary=args.use_explicit_boundary,
+        use_enc_explicit_boundary=args.use_enc_explicit_boundary,
+        use_dec_explicit_boundary=args.use_dec_explicit_boundary,
         enc_boundary_regularization=args.enc_boundary_regularization,
         dec_boundary_regularization=args.dec_boundary_regularization,
     )

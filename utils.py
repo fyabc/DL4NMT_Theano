@@ -325,7 +325,7 @@ def regularize_alpha_weights(cost, alpha_c, model_options, x_mask, y_mask, opt_r
 
 
 # batch preparation
-def prepare_data(seqs_x, seqs_y, maxlen=None):
+def prepare_data(seqs_x, seqs_y, maxlen=None, explicit_boundary_x=None, explicit_boundary_y=None):
     # x: a list of sentences
     lengths_x = [len(s) for s in seqs_x]
     lengths_y = [len(s) for s in seqs_y]
@@ -335,19 +335,60 @@ def prepare_data(seqs_x, seqs_y, maxlen=None):
         new_seqs_y = []
         new_lengths_x = []
         new_lengths_y = []
-        for l_x, s_x, l_y, s_y in zip(lengths_x, seqs_x, lengths_y, seqs_y):
+
+        if explicit_boundary_x is not None:
+            new_explicit_boundary_x = []
+        if explicit_boundary_y is not None:
+            new_explicit_boundary_y = []
+
+        iterlist = [lengths_x, seqs_x, lengths_y, seqs_y]
+
+        if explicit_boundary_x is not None:
+            iterlist.append(explicit_boundary_x)
+        if explicit_boundary_y is not None:
+            iterlist.append(explicit_boundary_y)
+
+        for iters in zip(*iterlist):
+            l_x, s_x, l_y, s_y = iters[:4]
+            iters = iters[4:]
+
+            if explicit_boundary_x is not None:
+                b_x = iters[0]
+                iters = iters[1:]
+            if explicit_boundary_y is not None:
+                b_y = iters[0]
+                iters = iters[1:]
+            assert len(iters) == 0
+
+            if explicit_boundary_y is not None:
+                iterlist.append(explicit_boundary_y)
             if l_x < maxlen and l_y < maxlen:
                 new_seqs_x.append(s_x)
                 new_lengths_x.append(l_x)
                 new_seqs_y.append(s_y)
                 new_lengths_y.append(l_y)
+                if explicit_boundary_x is not None:
+                    new_explicit_boundary_x.append(b_x)
+                if explicit_boundary_y is not None:
+                    new_explicit_boundary_y.append(b_y)
+
         lengths_x = new_lengths_x
         seqs_x = new_seqs_x
         lengths_y = new_lengths_y
         seqs_y = new_seqs_y
+        
+        if explicit_boundary_x is not None:
+            explicit_boundary_x = new_explicit_boundary_x
+        if explicit_boundary_y is not None:
+            explicit_boundary_y = new_explicit_boundary_y
 
         if len(lengths_x) < 1 or len(lengths_y) < 1:
-            return None, None, None, None
+            ret = [None, None, None, None]
+            if explicit_boundary_x is not None:
+                ret.append(None)
+            if explicit_boundary_x is not None:
+                ret.append(None)
+            return ret
 
     n_samples = len(seqs_x)
     maxlen_x = np.max(lengths_x) + 1
@@ -357,32 +398,89 @@ def prepare_data(seqs_x, seqs_y, maxlen=None):
     y = np.zeros((maxlen_y, n_samples)).astype('int64')
     x_mask = np.zeros((maxlen_x, n_samples)).astype('float32')
     y_mask = np.zeros((maxlen_y, n_samples)).astype('float32')
-    for idx, [s_x, s_y] in enumerate(zip(seqs_x, seqs_y)):
+
+    if explicit_boundary_x is not None:
+        x_boundary = np.ones((maxlen_x, n_samples)).astype('float32')
+    if explicit_boundary_y is not None:
+        y_boundary = np.ones((maxlen_y, n_samples)).astype('float32')
+
+    iterlist = [seqs_x, seqs_y]
+    if explicit_boundary_x is not None:
+        iterlist.append(explicit_boundary_x)
+    if explicit_boundary_y is not None:
+        iterlist.append(explicit_boundary_y)
+
+    for idx, iters in enumerate(zip(*iterlist)):
+        s_x, s_y = iters[:2]
+        iters = iters[2:]
         x[:lengths_x[idx], idx] = s_x
         x_mask[:lengths_x[idx] + 1, idx] = 1.
         y[:lengths_y[idx], idx] = s_y
         y_mask[:lengths_y[idx] + 1, idx] = 1.
 
-    return x, x_mask, y, y_mask
+        if explicit_boundary_x is not None:
+            b_x = iters[0]
+            iters = iters[1:]
+            x_boundary[:lengths_x[idx], idx] = b_x
+
+        if explicit_boundary_y is not None:
+            b_y = iters[0]
+            iters = iters[1:]
+            y_boundary[:lengths_y[idx], idx] = b_y
 
 
-def prepare_data_x(seqs_x, maxlen=None, pad_eos=True, pad_sos=False, n_word=30000):
+    ret = [x, x_mask, y, y_mask]
+    if explicit_boundary_x is not None:
+        x_boundary = x_boundary.reshape((maxlen_x, n_samples, 1))
+        ret.append(x_boundary)
+    if explicit_boundary_y is not None:
+        y_boundary = y_boundary.reshape((maxlen_y, n_samples, 1))
+        ret.append(y_boundary)
+
+    return ret
+
+
+def prepare_data_x(seqs_x, maxlen=None, pad_eos=True, pad_sos=False, n_word=30000, explicit_boundary_x=None):
     # x: a list of sentences
     lengths_x = [len(s) for s in seqs_x]
 
     if maxlen is not None:
         new_seqs_x = []
         new_lengths_x = []
-        for l_x, s_x in zip(lengths_x, seqs_x):
+
+        if explicit_boundary_x is not None:
+            new_explicit_boundary_x = []
+
+        iterlist = [lengths_x, seqs_x]
+
+        if explicit_boundary_x is not None:
+            iterlist.append(explicit_boundary_x)
+
+        for iters in zip(*iterlist):
+            l_x, s_x = iters[:2]
+
+            if explicit_boundary_x is not None:
+                b_x = iters[0]
+                iters = iters[1:]
+
+            assert len(iters) == 0
+
             if l_x < maxlen:
                 new_seqs_x.append(s_x)
                 new_lengths_x.append(l_x)
+                if explicit_boundary_x is not None:
+                    new_explicit_boundary_x.append(b_x)
 
         lengths_x = new_lengths_x
         seqs_x = new_seqs_x
+        if explicit_boundary_x is not None:
+            explicit_boundary_x = new_explicit_boundary_x
 
         if len(lengths_x) < 1:
-            return None, None,
+            ret = [None, None]
+            if explicit_boundary_x is not None:
+                ret.append(None)
+            return ret
 
     n_samples = len(seqs_x)
     if pad_eos:
@@ -394,12 +492,29 @@ def prepare_data_x(seqs_x, maxlen=None, pad_eos=True, pad_sos=False, n_word=3000
 
     x_mask = np.zeros((maxlen_x, n_samples)).astype('float32')
 
-    for idx, s_x in enumerate(seqs_x):
+    if explicit_boundary_x is not None:
+        x_boundary = np.ones((maxlen_x, n_samples)).astype('float32')
+
+    iterlist = [seqs_x]
+    if explicit_boundary_x is not None:
+        iterlist.append(explicit_boundary_x)
+
+    for idx, iters in enumerate(zip(*iterlist)):
+        s_x = iters[0]
+        iters = iters[1:]
+
         x[:lengths_x[idx], idx] = s_x
         if pad_eos:
             x_mask[:lengths_x[idx]+1, idx] = 1.
         else:
             x_mask[:lengths_x[idx], idx] = 1.
+
+        if explicit_boundary_x is not None:
+            b_x = iters[0]
+            iters = iters[1:]
+            x_boundary[:lengths_x[idx], idx] = b_x
+
+        assert len(iters) == 0
 
     if pad_sos:
         x = np.concatenate((
@@ -409,7 +524,12 @@ def prepare_data_x(seqs_x, maxlen=None, pad_eos=True, pad_sos=False, n_word=3000
             np.full([1, n_samples], 1., dtype='float32'), x_mask
         ), axis=0)
 
-    return x, x_mask
+    ret = [x, x_mask]
+    if explicit_boundary_x is not None:
+        x_boundary = x_boundary.reshape((maxlen_x, n_samples, 1))
+        ret.append(x_boundary)
+
+    return ret
 
 
 def get_minibatches_idx(n, minibatch_size, shuffle=False):
@@ -603,13 +723,21 @@ def dump_adadelta_imm_data(optimizer, imm_shared, dump_imm, saveto):
     message('Done')
 
 
-def create_shuffle_data(datasets_orig, dataset_src, dataset_tgt):
+def create_shuffle_data(datasets_orig, dataset_src, dataset_tgt, dataset_src_boundary=None, dataset_tgt_boundary=None):
     orig_src, orig_tgt = datasets_orig[0], datasets_orig[1]
 
     with open(orig_src) as orig_f_src:
         l_src = list(orig_f_src)
     with open(orig_tgt) as orig_f_tgt:
         l_tgt = list(orig_f_tgt)
+
+    if dataset_src_boundary is not None:
+        with open(orig_src + '.boundary') as orig_f_src_boundary:
+            l_src_boundary = list(orig_f_src_boundary)
+
+    if dataset_tgt_boundary is not None:
+        with open(orig_tgt + '.boundary') as orig_f_tgt_boundary:
+            l_tgt_boundary = list(orig_f_tgt_boundary)
 
     new_idx = range(len(l_src))
     random.shuffle(new_idx)
@@ -619,10 +747,20 @@ def create_shuffle_data(datasets_orig, dataset_src, dataset_tgt):
     with open(dataset_tgt, 'w') as new_f_tgt:
         new_f_tgt.writelines((l_tgt[i] for i in new_idx))
 
+    if dataset_src_boundary is not None:
+        with open(dataset_src_boundary, 'w') as new_f_src_boundary:
+            new_f_src_boundary.writelines((l_src_boundary[i] for i in new_idx))
+
+    if dataset_tgt_boundary is not None:
+        with open(dataset_tgt_boundary, 'w') as new_f_tgt_boundary:
+            new_f_tgt_boundary.writelines((l_tgt_boundary[i] for i in new_idx))
+
 
 def load_shuffle_text_iterator(
         epoch, text_iterator_list,
         datasets, vocab_filenames, batch_size, maxlen, n_words_src, n_words,
+        use_enc_explicit_boundary=False,
+        use_dec_explicit_boundary=False,
 ):
     e = epoch % ShuffleCycle
 
@@ -632,15 +770,26 @@ def load_shuffle_text_iterator(
         dataset_src = '{}_{}'.format(datasets[0], e)
         dataset_tgt = '{}_{}'.format(datasets[1], e)
 
-        if not os.path.exists(dataset_src):
+        dataset_src_boundary = dataset_src + '.boundary' if use_enc_explicit_boundary else None
+        dataset_tgt_boundary = dataset_tgt + '.boundary' if use_dec_explicit_boundary else None
+
+        if not os.path.exists(dataset_src) or \
+            (use_enc_explicit_boundary and not os.path.exists(dataset_src_boundary)) or \
+            (use_dec_explicit_boundary and not os.path.exists(dataset_tgt_boundary)):
+
             message('file "{}" and "{}" not exist, creating...'.format(dataset_src, dataset_tgt), end='')
-            create_shuffle_data(datasets, dataset_src, dataset_tgt)
+
+            create_shuffle_data(datasets, dataset_src, dataset_tgt,
+                                dataset_src_boundary=dataset_src_boundary,
+                                dataset_tgt_boundary=dataset_tgt_boundary)
             message('Done')
 
         text_iterator_list[e] = TextIterator(
             dataset_src, dataset_tgt,
             vocab_filenames[0], vocab_filenames[1],
             batch_size, maxlen, n_words_src, n_words,
+            enc_explicit_boundary=dataset_src_boundary,
+            dec_explicit_boundary=dataset_tgt_boundary,
         )
         message('Done')
         return text_iterator_list[e]

@@ -41,16 +41,25 @@ def translate(input_, model, f_init, f_next, trng, k, normalize):
     return output
 
 
-def translate_block(input_, model, f_init, f_next, trng, k, target_idict=None):
+def translate_block(input_, model, f_init, f_next, trng, k, target_idict=None, explicit_boundary_x=None):
     """Translate for batch sampler.
 
     :return output: a list of word indices
     """
-    x, x_mask = prepare_data_x(input_, maxlen=None, pad_eos=True, pad_sos=False)
+    ret = prepare_data_x(input_, maxlen=None, pad_eos=True, pad_sos=False, explicit_boundary_x=explicit_boundary_x)
+    x, x_mask = ret[:2]
+    ret = ret[2:]
+
+    if explicit_boundary_x is not None:
+        explicit_boundary_x = ret[0]
+        ret = ret[1:]
+
+    assert len(ret) == 0
 
     batch_sample, batch_sample_score = model.gen_batch_sample(
         f_init, f_next, x, x_mask, trng,
-        k=k, maxlen=200, eos_id=0, target_idict=target_idict
+        k=k, maxlen=200, eos_id=0, target_idict=target_idict,
+        explicit_boundary_x=explicit_boundary_x,
     )
     assert len(batch_sample) == len(batch_sample_score)
 
@@ -71,6 +80,8 @@ def load_translate_data(dictionary, dictionary_target, source_file, batch_mode=F
     n_words_src = kwargs.pop('n_words_src', 30000)
     echo = kwargs.pop('echo', True)
     load_input = kwargs.pop('load_input', True)
+
+    use_enc_explicit_boundary = kwargs.pop('use_enc_explicit_boundary', False)
 
     # load source dictionary and invert
     if echo:
@@ -125,17 +136,28 @@ def load_translate_data(dictionary, dictionary_target, source_file, batch_mode=F
         with open(source_file, 'r') as f:
             all_src_sent = [line.strip().split() for line in f]
 
+        if use_enc_explicit_boundary:
+            with open(source_file + '.boundary', 'r') as f:
+                all_src_boundary_sent = [[float(x) for x in line.strip().split()] for line in f]
+
+
         all_src_num = []
         for seg in all_src_sent:
             tmp = [word_dict.get(w, unk_id) for w in seg]
             all_src_num.append([w if w < n_words_src else unk_id for w in tmp])
 
         all_src_blocks = []
+        if use_enc_explicit_boundary:
+            all_src_boundary_blocks = []
         m_block = (len(all_src_num) + batch_size - 1) // batch_size
         for idx in xrange(m_block):
             all_src_blocks.append(all_src_num[batch_size * idx: batch_size * (idx + 1)])
-
-        return word_dict, word_idict, word_idict_trg, all_src_blocks, m_block
+            if use_enc_explicit_boundary:
+                all_src_boundary_blocks.append(all_src_boundary_sent[batch_size * idx: batch_size * (idx + 1)])
+        ret = [word_dict, word_idict, word_idict_trg, all_src_blocks, m_block]
+        if use_enc_explicit_boundary:
+            ret.append(all_src_boundary_blocks)
+        return ret
 
 
 def seqs2words(caps, word_idict_trg):
@@ -177,15 +199,38 @@ def _translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target,
 
         return '\n'.join(trans) + '\n'
     else:
-        word_dict, word_idict, word_idict_trg, all_src_blocks, m_block = load_translate_data(
+        ret = load_translate_data(
             dictionary, dictionary_target, source_file,
             batch_mode=batch_mode, chr_level=chr_level, n_words_src=n_words_src,
-            echo=False, batch_size=30,
+            echo=False, batch_size=30, use_enc_explicit_boundary=model.O['use_enc_explicit_boundary']
         )
+        word_dict, word_idict, word_idict_trg, all_src_blocks, m_block = ret[:5]
+        ret = ret[5:]
+        if model.O['use_enc_explicit_boundary']:
+            explicit_boundary_x_blocks = ret[0]
+            ret = ret[1:]
+        assert len(ret) == 0
+
+        # TODO: pump explicit boundaries into translate_block (explicit_boundary)
+
         start_time = time.time()
         all_sample = []
-        for bidx, seqs in enumerate(all_src_blocks):
-            all_sample.extend(translate_block(seqs, model, f_init, f_next, trng, k, target_idict=word_idict_trg))
+        iterlist = [all_src_blocks]
+        if model.O['use_enc_explicit_boundary']:
+            iterlist.append(explicit_boundary_x_blocks)
+
+        for bidx, iters in enumerate(zip(*iterlist)):
+            seqs = iters[0]
+            iters = iters[1:]
+
+            if model.O['use_enc_explicit_boundary']:
+                explicit_boundary_x = iters[0]
+                iters = iters[1:]
+
+            assert len(iters) == 0
+
+            all_sample.extend(translate_block(seqs, model, f_init, f_next, trng, k, target_idict=word_idict_trg,
+                                              explicit_boundary_x=explicit_boundary_x))
             print(bidx, '/', m_block, 'Done.', 'Time for translation is', time.time() - start_time)
 
         trans = seqs2words(all_sample, word_idict_trg)

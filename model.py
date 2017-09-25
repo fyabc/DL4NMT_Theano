@@ -364,7 +364,8 @@ class NMTModel(object):
                                trng=kwargs.pop('trng', None),
                                boundary_type=kwargs.pop('boundary_type', 0),
                                hard_sigmoid_a=kwargs.pop('hard_sigmoid_a', 5.0),
-                               temperature=kwargs.pop('temperature', 1.0))
+                               temperature=kwargs.pop('temperature', 1.0),
+                               explicit_boundary=kwargs.pop('explicit_boundary', None))
 
         return [x, x_mask, y, y_mask], context
 
@@ -412,7 +413,8 @@ class NMTModel(object):
         """Build a training model."""
 
         dropout_rate = self.O['use_dropout']
-        use_explicit_boundary = self.O['use_explicit_boundary']
+        use_enc_explicit_boundary = self.O['use_enc_explicit_boundary']
+        use_dec_explicit_boundary = self.O['use_dec_explicit_boundary']
         opt_ret = {}
 
         trng = RandomStreams(1234)
@@ -427,13 +429,15 @@ class NMTModel(object):
         else:
             dropout_params = None
 
+        explicit_boundary_x = T.tensor3('explicit_boundary_x', dtype=fX)\
+            if use_enc_explicit_boundary and 'hmrnn' in self.O['encoder_unit'] else None
+
         (x, x_mask, y, y_mask), context = \
-            self.input_to_context(dropout_params=dropout_params, trng=trng,
+            self.input_to_context(dropout_params=dropout_params, trng=trng, explicit_boundary=explicit_boundary_x,
                                   boundary_type=boundary_type, hard_sigmoid_a=hard_sigmoid_a, temperature=temperature)
 
-        # explicit_boundary_x = T.tensor3('explicit_boundary_x', dtype=fX)
         explicit_boundary_y = T.tensor3('explicit_boundary_y', dtype=fX) \
-            if use_explicit_boundary and 'hmrnn' in self.O['decoder_unit'] else None
+            if use_dec_explicit_boundary and 'hmrnn' in self.O['decoder_unit'] else None
 
         encoder_updates = []
         if 'hmrnn' in self.O['encoder_unit']:
@@ -457,7 +461,7 @@ class NMTModel(object):
         tgt_embedding = emb_shifted
 
         explicit_boundary_y_shifted = None
-        if use_explicit_boundary:
+        if use_dec_explicit_boundary and 'hmrnn' in self.O['decoder_unit']:
             assert explicit_boundary_y is not None
             explicit_boundary_y_shifted = T.ones_like(explicit_boundary_y)
             explicit_boundary_y_shifted = T.set_subtensor(explicit_boundary_y_shifted[1:], explicit_boundary_y[:-1])
@@ -499,7 +503,7 @@ class NMTModel(object):
             self.x, self.x_mask, self.y, self.y_mask = x, x_mask, y, y_mask
 
         return trng, use_noise, boundary_type, hard_sigmoid_a, temperature, x, x_mask, y, y_mask, \
-               explicit_boundary_y, opt_ret, cost, context_mean,\
+               explicit_boundary_x, explicit_boundary_y, opt_ret, cost, context_mean,\
                encoder_boundary, decoder_boundary, encoder_updates + decoder_updates
 
     def build_sampler(self, **kwargs):
@@ -513,8 +517,14 @@ class NMTModel(object):
         dropout_rate = kwargs.pop('dropout', False)
         hard_sigmoid_a = kwargs.pop('hard_sigmoid_a', 5.0),
         temperature = kwargs.pop('temperature', 1.0)
-        use_explicit_boundary = kwargs.pop('use_explicit_boundary', False)
-        explicit_boudary_y = T.fmatrix('explicit_boudary_y_sampler') if use_explicit_boundary else None
+
+        use_enc_explicit_boundary = kwargs.pop('use_enc_explicit_boundary', False)
+        use_dec_explicit_boundary = kwargs.pop('use_dec_explicit_boundary', False)
+        explicit_boudary_x = T.ftensor3('explicit_boudary_x_sampler') \
+            if use_enc_explicit_boundary and 'hmrnn' in self.O['encoder_unit'] else None
+        explicit_boudary_y = T.fmatrix('explicit_boudary_y_sampler') \
+            if use_dec_explicit_boundary and 'hmrnn' in self.O['encoder_unit'] else None
+
         if dropout_rate is not False:
             dropout_params = [use_noise, trng, dropout_rate]
         else:
@@ -541,7 +551,8 @@ class NMTModel(object):
             src_embedding, src_embedding_r,
             x_mask if batch_mode else None, xr_mask if batch_mode else None,
             dropout_params=dropout_params, trng=trng, boundary_type=boundary_type,
-            hard_sigmoid_a=hard_sigmoid_a, temperature=temperature
+            hard_sigmoid_a=hard_sigmoid_a, temperature=temperature,
+            explicit_boundary=explicit_boudary_x,
         )
 
         encoder_updates = []
@@ -573,6 +584,9 @@ class NMTModel(object):
         inps = [x]
         if batch_mode:
             inps.append(x_mask)
+        if 'hmrnn' in encoder_unit and use_enc_explicit_boundary:
+            inps += [explicit_boudary_x]
+
         outs = [init_state, ctx]
         if 'hmrnn' in encoder_unit:
             outs.append(z_mask)
@@ -602,7 +616,7 @@ class NMTModel(object):
             init_memory=init_memory, init_boundary=init_boundary,
             get_gates=get_gates, trng=trng, boundary_type=boundary_type,
             hard_sigmoid_a=hard_sigmoid_a, temperature=temperature,
-            use_explicit_boundary=use_explicit_boundary, explicit_boundary=explicit_boudary_y
+            explicit_boundary=explicit_boudary_y
         )
         # hidden_decoder = print_all("hidden_decoder: ")(hidden_decoder)
         # context_decoder = print_all("context_decoder: ")(context_decoder)
@@ -657,7 +671,7 @@ class NMTModel(object):
         if 'hmrnn' in decoder_unit:
             inps += [init_memory, init_boundary]
             outs += [memory_out, boundary_out]
-        if 'hmrnn' in decoder_unit and use_explicit_boundary:
+        if 'hmrnn' in decoder_unit and use_dec_explicit_boundary:
             inps += [explicit_boudary_y]
 
         if get_gates:
@@ -676,7 +690,10 @@ class NMTModel(object):
 
     def gen_sample(self, f_init, f_next, x, trng=None, k=1, maxlen=30,
                    stochastic=True, argmax=False, **kwargs):
-        """Generate sample, either with stochastic sampling or beam search. Note that,
+        """
+        Do not use it! Use gen_batch_sample instead. This function doesn't support some new functions.
+
+        Generate sample, either with stochastic sampling or beam search. Note that,
 
         this function iteratively calls f_init and f_next functions.
         """
@@ -830,7 +847,7 @@ class NMTModel(object):
         return sample, sample_score
 
     def gen_batch_sample(self, f_init, f_next, x, x_mask, trng=None, k=1, maxlen=30,
-                         eos_id=0, target_idict=None, **kwargs):
+                         eos_id=0, target_idict=None, explicit_boundary_x=None, **kwargs):
         """
         Only used for Batch Beam Search;
         Do not Support Stochastic Sampling
@@ -845,7 +862,9 @@ class NMTModel(object):
 
         encoder_unit = self.O['encoder_unit']
         decoder_unit = self.O['decoder_unit']
-        use_explicit_boundary = self.O['use_explicit_boundary']
+
+        use_enc_explicit_boundary = self.O['use_enc_explicit_boundary']
+        use_dec_explicit_boundary = self.O['use_dec_explicit_boundary']
 
         batch_size = x.shape[1]
         sample = [[] for _ in xrange(batch_size)]
@@ -858,7 +877,13 @@ class NMTModel(object):
         batch_hyp_scores = [np.zeros(ii, dtype=fX) for ii in lives_k]
 
         # get initial state of decoder rnn and encoder context
-        ret = f_init(x, x_mask)
+        inps = [x, x_mask]
+
+        if use_enc_explicit_boundary and 'hmrnn' in self.O['encoder_unit']:
+            assert explicit_boundary_x is not None
+            inps.append(explicit_boundary_x)
+
+        ret = f_init(*inps)
         next_state, ctx0 = ret[0], ret[1]
         z_mask = ret[2] if 'hmrnn' in encoder_unit else None
         # print('print_all take effect')
@@ -912,7 +937,7 @@ class NMTModel(object):
                 inps.append(next_memory)
             if 'hmrnn' in decoder_unit:
                 inps += [next_memory, next_boundary]
-            if 'hmrnn' in decoder_unit and use_explicit_boundary:
+            if 'hmrnn' in decoder_unit and use_dec_explicit_boundary:
                 explicit_boundary_y = np.ones((next_w.shape[0], 1), dtype=fX)
                 for i in xrange(next_w.shape[0]):
                     if next_w[i] >= 0 and target_idict[next_w[i]][-2:] == '@@':
@@ -1109,7 +1134,7 @@ class NMTModel(object):
             return (context * x_mask[:, :, None]).sum(0) / x_mask.sum(0)[:, None]
 
     def encoder(self, src_embedding, src_embedding_r, x_mask, xr_mask, dropout_params=None, trng=None,
-                boundary_type=0, hard_sigmoid_a=5.0, temperature=1.0):
+                boundary_type=0, hard_sigmoid_a=5.0, temperature=1.0, explicit_boundary=None):
         """GRU encoder layer: source embedding -> encoder context
         
         :return Context vector: Theano tensor
@@ -1121,7 +1146,7 @@ class NMTModel(object):
         residual = self.O['residual_enc']
         use_zigzag = self.O['use_zigzag']
         bottom_lstm = self.O['bottom_lstm']
-
+        use_explicit_boundary = self.O['use_enc_explicit_boundary']
         use_mask = self.O['use_mask']
 
         input_ = src_embedding
@@ -1146,7 +1171,9 @@ class NMTModel(object):
                 output = get_build(unit)(self.P, h_last, self.O, prefix='encoder', mask=x_mask,
                                          end_mask=end_mask, dropout_params=dropout_params, n_layers=n_layers,
                                          use_mask=use_mask, boundary_type=boundary_type, trng=trng,
-                                         hard_sigmoid_a=hard_sigmoid_a, temperature=temperature)
+                                         hard_sigmoid_a=hard_sigmoid_a, temperature=temperature,
+                                         explicit_boundary=explicit_boundary if use_explicit_boundary else None,
+                                         use_explicit_boundary=use_explicit_boundary)
 
                 self.encoder_boundary_before_sigmoid = output[2]['all_layer_z_before_sigmoid'][:, -2]
 
@@ -1296,7 +1323,7 @@ class NMTModel(object):
         avg_ctx = self.O['average_context']
 
         use_mask = self.O['use_mask']
-        use_explicit_boundary = self.O['use_explicit_boundary']
+        use_explicit_boundary = self.O['use_dec_explicit_boundary']
         benefit_0_boundary = self.O['benefit_0_boundary']
         use_all_one_boundary = self.O['use_all_one_boundary']
         if use_explicit_boundary:
