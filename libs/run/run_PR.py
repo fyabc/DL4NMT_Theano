@@ -92,6 +92,8 @@ def predict(modelpath,
     eos_id = 0
     print_samples = True
 
+    # todo: split predictions into several parts, compute A/P/R for each of them.
+
     if model_options['use_delib']:
         model, valid_src, valid_trg, params, f_predictor, trg_idict = prepare_predict(
             model_options, valid_datasets, dictionary, dictionary_target, logfile,

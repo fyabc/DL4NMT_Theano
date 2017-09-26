@@ -58,6 +58,10 @@ def validation(iterator, f_cost, use_noise, use_delib=False, which_word=None, ma
     valid_count = 0
     for x, y in iterator:
         x, x_mask, y, y_mask = prepare_data(x, y, maxlen=maxlen)
+
+        if x is None:
+            continue
+
         if use_delib:
             y_pos_ = np.repeat(np.arange(y.shape[0])[:, None], y.shape[1], axis=1).astype('int64')
             if which_word is not None:
@@ -70,9 +74,6 @@ def validation(iterator, f_cost, use_noise, use_delib=False, which_word=None, ma
         inputs = [x, x_mask, y, y_mask]
         if use_delib:
             inputs.append(y_pos_)
-
-        if x is None:
-            continue
 
         valid_cost += f_cost(*inputs) * x_mask.shape[1]
         valid_count += x_mask.shape[1]
@@ -453,6 +454,12 @@ Start Time = {}
             use_noise.set_value(1.)
 
             x, x_mask, y, y_mask = prepare_data(x, y, maxlen=maxlen)
+
+            if x is None:
+                print 'Minibatch with zero sample under length ', maxlen
+                uidx -= 1
+                continue
+
             if use_delib:
                 y_pos_ = np.repeat(np.arange(y.shape[0])[:, None], y.shape[1], axis=1).astype('int64')
                 if which_word is not None:
@@ -465,11 +472,6 @@ Start Time = {}
             inputs = [x, x_mask, y, y_mask]
             if use_delib:
                 inputs.append(y_pos_)
-
-            if x is None:
-                print 'Minibatch with zero sample under length ', maxlen
-                uidx -= 1
-                continue
 
             effective_uidx = uidx - start_uidx
             ud_start = time.time()
