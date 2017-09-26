@@ -252,48 +252,55 @@ def load_word_params(params, old_params, src_map = None, tgt_map = None):
     :param src_map: dic mapping new src word id to old src word id
     :param tgt_map: dic mapping new tgt word id to old tgt word id
     """
-    src_vocab_size = params['Wemb'].shape[0]
-    old_src_vocab_size = old_params['Wemb'].shape[0]
-    tgt_vocab_size = params['Wemb_dec'].shape[0]
-    old_tgt_vocab_size = old_params['Wemb_dec'].shape[0]
 
-    if not src_map and not tgt_map and src_vocab_size == old_src_vocab_size and tgt_vocab_size == old_tgt_vocab_size:
-        return params
+    has_src_emb, has_tgt_emb = True, True
+    try:
+        src_vocab_size = params['Wemb'].shape[0]
+        old_src_vocab_size = old_params['Wemb'].shape[0]
+    except KeyError:
+        has_src_emb = False
+    try:
+        tgt_vocab_size = params['Wemb_dec'].shape[0]
+        old_tgt_vocab_size = old_params['Wemb_dec'].shape[0]
+    except KeyError:
+        has_tgt_emb = False
 
     UNK_ID = 1
 
-    Wemb_T = np.tile(old_params['Wemb'][UNK_ID], [src_vocab_size, 1]).T
-    old_Wemb_T = old_params['Wemb'].T #transpose to speed up by more efficient cache, with shape n_dim x old_n_words
-    print(Wemb_T.shape, old_Wemb_T.shape)
+    if has_src_emb:
+        Wemb_T = np.tile(old_params['Wemb'][UNK_ID], [src_vocab_size, 1]).T
+        old_Wemb_T = old_params['Wemb'].T   # transpose to speed up by more efficient cache, with shape n_dim x old_n_words
+        print(Wemb_T.shape, old_Wemb_T.shape)
 
-    if src_map:
-        for (new_word_id, old_word_id) in src_map.iteritems():
-            if new_word_id < src_vocab_size and old_word_id < old_params['Wemb'].shape[0]:
-                Wemb_T[:, new_word_id] = old_Wemb_T[:, old_word_id]
-            sys.stdout.write('\r%d %d' % (new_word_id, old_word_id))
-    elif src_vocab_size != old_src_vocab_size:
-        Wemb_T[:,:old_src_vocab_size] = old_Wemb_T
+        if src_map:
+            for (new_word_id, old_word_id) in src_map.iteritems():
+                if new_word_id < src_vocab_size and old_word_id < old_params['Wemb'].shape[0]:
+                    Wemb_T[:, new_word_id] = old_Wemb_T[:, old_word_id]
+                sys.stdout.write('\r%d %d' % (new_word_id, old_word_id))
+        elif src_vocab_size != old_src_vocab_size:
+            Wemb_T[:,:old_src_vocab_size] = old_Wemb_T
 
-    params['Wemb'] = Wemb_T.T
+        params['Wemb'] = Wemb_T.T
 
-    Wemb_dec_T = np.tile(old_params['Wemb_dec'][UNK_ID], [tgt_vocab_size, 1]).T
-    old_Wemb_dec_T = old_params['Wemb_dec'].T
-    params['ff_logit_W'] = np.tile(old_params['ff_logit_W'][:,UNK_ID], [tgt_vocab_size,1]).T
-    params['ff_logit_b'].fill(old_params['ff_logit_b'][UNK_ID])
-    print(params['Wemb_dec'].shape, params['ff_logit_W'].shape, params['ff_logit_b'].shape)
-    if tgt_map:
-        for (new_word_id, old_word_id) in tgt_map.iteritems():
-            if new_word_id < tgt_vocab_size and old_word_id < old_params['Wemb_dec'].shape[0]:
-                Wemb_dec_T[:,new_word_id] = old_Wemb_dec_T[:,old_word_id]
-                params['ff_logit_W'][:,new_word_id] = old_params['ff_logit_W'][:,old_word_id]
-                params['ff_logit_b'][new_word_id] = old_params['ff_logit_b'][old_word_id]
-            sys.stdout.write('\r%d %d' % (new_word_id, old_word_id))
-    elif tgt_vocab_size != old_tgt_vocab_size:
-        Wemb_dec_T[:,:old_tgt_vocab_size] = old_Wemb_dec_T
-        params['ff_logit_W'][:,:old_tgt_vocab_size] = old_params['ff_logit_W']
-        params['ff_logit_b'][:old_tgt_vocab_size] = old_params['ff_logit_b']
+    if has_tgt_emb:
+        Wemb_dec_T = np.tile(old_params['Wemb_dec'][UNK_ID], [tgt_vocab_size, 1]).T
+        old_Wemb_dec_T = old_params['Wemb_dec'].T
+        params['ff_logit_W'] = np.tile(old_params['ff_logit_W'][:,UNK_ID], [tgt_vocab_size,1]).T
+        params['ff_logit_b'].fill(old_params['ff_logit_b'][UNK_ID])
+        print(params['Wemb_dec'].shape, params['ff_logit_W'].shape, params['ff_logit_b'].shape)
+        if tgt_map:
+            for (new_word_id, old_word_id) in tgt_map.iteritems():
+                if new_word_id < tgt_vocab_size and old_word_id < old_params['Wemb_dec'].shape[0]:
+                    Wemb_dec_T[:,new_word_id] = old_Wemb_dec_T[:,old_word_id]
+                    params['ff_logit_W'][:,new_word_id] = old_params['ff_logit_W'][:,old_word_id]
+                    params['ff_logit_b'][new_word_id] = old_params['ff_logit_b'][old_word_id]
+                sys.stdout.write('\r%d %d' % (new_word_id, old_word_id))
+        elif tgt_vocab_size != old_tgt_vocab_size:
+            Wemb_dec_T[:,:old_tgt_vocab_size] = old_Wemb_dec_T
+            params['ff_logit_W'][:,:old_tgt_vocab_size] = old_params['ff_logit_W']
+            params['ff_logit_b'][:old_tgt_vocab_size] = old_params['ff_logit_b']
 
-    params['Wemb_dec'] = Wemb_dec_T.T
+        params['Wemb_dec'] = Wemb_dec_T.T
 
     print('\nLoad previous word related params done')
     return params
