@@ -54,7 +54,6 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,alpha = 
 
             if 'bpe' in source_file:
                 trans_strs = de_bpe(trans_strs)
-            print trans_strs, '\n'
             print 'alpha %.2f, bleu %.2f'% (alpha_v, get_bleu(ref_file, trans_strs, type_in = 'string'))
     else:
         with open(saveto, 'w') as f:
