@@ -33,7 +33,7 @@ def translate_block(input_, model, f_init, f_next, trng, k, alpha = 0., attn_src
             f_init, f_next, x, x_mask, trng,
             k=k, maxlen=200, eos_id=0, attn_src=attn_src,
         )
-        return output, [], []
+        return output, [], [], []
     else:
         batch_sample, batch_sample_score, sample_attn_src_words = model.gen_batch_sample(
             f_init, f_next, x, x_mask, trng,
