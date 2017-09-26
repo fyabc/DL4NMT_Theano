@@ -430,10 +430,22 @@ Start Time = {}
 
     print 'Allocating GPU memory in advance for batch data...',
     x, x_mask, y, y_mask = get_batch_place_holder(batch_size, maxlen)
+    if use_delib:
+        y_pos_ = np.repeat(np.arange(y.shape[0])[:, None], y.shape[1], axis=1).astype('int64')
+        if which_word is not None:
+            try:
+                y = y[which_word, None]
+                y_mask = y_mask[which_word, None]
+                y_pos_ = y_pos_[which_word, None]
+            except:
+                pass
+    inputs = [x, x_mask, y, y_mask]
+    if use_delib:
+        inputs.append(y_pos_)
     if dist_type != 'mpi_reduce':
-        cost, g2_value = f_grad_shared(x, x_mask, y, y_mask)
+        cost, g2_value = f_grad_shared(*inputs)
     else:
-        cost = f_grad_shared(x, x_mask, y, y_mask)
+        cost = f_grad_shared(*inputs)
     f_update(np.float32(.0))
 
     for eidx in xrange(start_epoch, max_epochs):
