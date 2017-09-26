@@ -97,11 +97,11 @@ data/
 # model
 model/
 
-# visualization
-vis/
-
 # log
 log/
+
+# gcr caller
+caller/
 
 # translated files
 translated/
@@ -114,3 +114,10 @@ translated/
 
 # Command line argument files
 /arguments/
+
+# gcr wrapper
+wrapper.bat
+worker.bat
+
+# Some scripts
+*count_lengths.py
