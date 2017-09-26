@@ -410,36 +410,8 @@ Start Time = {}
         else:
             cost = f_grad_shared(x, x_mask, y, y_mask)
 
-        ud_start = time.time()
-
-        if dist_type == 'mpi_reduce':
-            reduce_start = time.time()
-            commu_time = 0
-            gpucpu_cp_time = 0
-            if not nccl:
-                commu_time, gpucpu_cp_time = all_reduce_params(grads_shared, rec_grads)
-            else:
-                commu_time, gpucpu_cp_time = all_reduce_params_nccl(nccl_comm, grads_shared)
-            reduce_time = time.time() - reduce_start
-            commu_time_sum += commu_time
-            reduce_time_sum += reduce_time
-            cp_time_sum += gpucpu_cp_time
-
-            g2_value = f_grads_clip()
-            print '@Worker = {}, Reduce time = {:.5f}, Commu time = {:.5f}, Copy time = {:.5f}'.format(worker_id, reduce_time, commu_time, gpucpu_cp_time)
-
-        curr_lr = 0.0
+        curr_lr = np.float32(0.0)
         f_update(curr_lr)
-
-        ud = time.time() - ud_start
-
-        if np.isnan(cost) or np.isinf(cost):
-            message('NaN detected')
-            sys.stdout.flush()
-
-        message('Worker {} allocate gpu memory for batch data, Cost {:.5f} G2 {:.5f} UD {:.5f} Time {:.5f} s'.format(
-                worker_id, eidx, uidx, float(cost), float(g2_value), ud, time.time() - start_time,
-        ))
         print 'Done'
         sys.stdout.flush()
         # Finish, now begin real training
