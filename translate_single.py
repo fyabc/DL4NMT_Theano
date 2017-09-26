@@ -42,7 +42,7 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,alpha = 
                                 src_trg_table = src_trg_table, zhen = zhen, n_words_src = options['n_words_src'], echo = True, batch_size = batch_size)
 
     if search_all_alphas:
-        all_alpha_values = 0.1 * np.array(xrange(10))
+        all_alpha_values = 0.1 * np.array(xrange(11))
         for alpha_v in all_alpha_values:
             trans_ids = []
             for samples, sample_scores in zip(all_cand_ids, all_scores):
@@ -70,8 +70,8 @@ if __name__ == "__main__":
         description='Translate the source language test file to target language with given model (single thread)')
     parser.add_argument('-k', type=int, default=4,
                         help='Beam size (?), default to 4, can also use 12')
-    parser.add_argument('-alpha', type=float, default=0,
-                        help='The length penalty alpha, chose by p(y|x)/(5+|y|)^alpha, default to 0')
+    parser.add_argument('-alpha', type=float, default=1.,
+                        help='The length penalty alpha, chose by p(y|x)/(5+|y|)^alpha, default to 1.0')
     parser.add_argument('-p', type=int, default=5,
                         help='Number of parallel processes, default to 5')
     parser.add_argument('-n', action="store_true", default=False,

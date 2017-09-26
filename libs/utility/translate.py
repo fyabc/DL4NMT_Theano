@@ -20,7 +20,7 @@ def chosen_by_len_alpha(beam_samples, beam_scores, alpha):
     chosen_idx = np.argmin(score)
     return chosen_idx
 
-def translate_block(input_, model, f_init, f_next, trng, k, alpha = 0., attn_src = False):
+def translate_block(input_, model, f_init, f_next, trng, k, alpha = 1., attn_src = False):
     """Translate for batch sampler.
 
     :return output: a list of word indices
@@ -199,7 +199,7 @@ def idx2str_attnBasedUNKReplace(trg_idx, src_str, src_trg_table, trg_idict, attn
     return ' '.join(result_trg_str)
 
 def translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target, source_file,
-                     k=5, normalize=False, chr_level=False, src_trg_table = None, alpha = 0.0, **kwargs):
+                     k=5, normalize=False, chr_level=False, src_trg_table = None, alpha = 1.0, **kwargs):
     n_words_src = kwargs.pop('n_words_src', model.O['n_words_src'])
     zhen = kwargs.pop('zhen', False)
     batch_size = kwargs.pop('batch_size', 30)
