@@ -908,7 +908,6 @@ class NMTModel(object):
                     if attn_src:
                         new_attn_src_words.append(copy.copy(batch_hyp_attn_src_words[jj][ti] + \
                                                         [attn[cursor_start + ti].argmax()]))
-
                 # check the finished samples
                 new_live_k = 0
                 batch_hyp_samples[jj] = []
@@ -959,6 +958,8 @@ class NMTModel(object):
                 for idx in xrange(lives_k[jj]):
                     sample[jj].append(batch_hyp_samples[jj][idx])
                     sample_score[jj].append(batch_hyp_scores[jj][idx])
+                    if attn_src:
+                        sample_attn_src_words[jj].append(batch_hyp_attn_src_words[jj][idx])
 
         if have_kw_ret:
             return sample, sample_score, sample_attn_src_words, kw_ret

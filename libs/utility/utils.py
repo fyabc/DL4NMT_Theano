@@ -325,7 +325,6 @@ def uniform_weight(nin, nout=None, scale=0.01):
         nout = nin
     return np.random.uniform(-1. * scale, 1. * scale, (nin, nout)).astype('float32')
 
-
 def concatenate(tensor_list, axis=0):
     """
     Alternative implementation of `theano.tensor.concatenate`.
@@ -681,7 +680,7 @@ def get_optimizer_imm_data(optimizer, given_imm, preload, iteration=None):
                 else:
                     pass
         else:
-            message('Immediate data not found.')
+            message('Immediate data file %s not found.' % given_imm_filename)
     return None
 
 
