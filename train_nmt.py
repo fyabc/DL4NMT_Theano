@@ -157,6 +157,8 @@ def main():
     parser.add_argument('--dec_boundary_regularization', action='store', metavar='regularization_alpha',
                         dest='dec_boundary_regularization', type=float, default=0.0,
                         help='Boundary regularization for multiscale RNN at decoder, default is 0.0.')
+    parser.add_argument('--layerwise_attention', action='store_true', dest='layerwise_attention', default=False,
+                        help="Use layerwise attention, default is False, set to True")
 
     args = parser.parse_args()
     print args
@@ -319,6 +321,7 @@ def main():
         use_dec_explicit_boundary=args.use_dec_explicit_boundary,
         enc_boundary_regularization=args.enc_boundary_regularization,
         dec_boundary_regularization=args.dec_boundary_regularization,
+        layerwise_attention=args.layerwise_attention,
     )
 
 

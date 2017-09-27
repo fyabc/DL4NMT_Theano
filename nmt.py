@@ -84,6 +84,7 @@ def validation(iterator, f_cost, encoder_unit, decoder_unit,
         x, y = iters[:2]
         iters = iters[2:]
 
+        explicit_boundary_x = None
         if 'hmrnn' in encoder_unit and use_enc_explicit_boundary:
             explicit_boundary_x = iters[0]
             iters = iters[1:]
@@ -374,6 +375,7 @@ def train(dim_word=100,  # word vector dimensionality
           use_all_one_boundary=False,
           enc_boundary_regularization=0.0,
           dec_boundary_regularization=0.0,
+          layerwise_attention=False,
           ):
     model_options = locals().copy()
 
@@ -788,6 +790,7 @@ Start Time = {}
             x, y = iters[:2]
             iters = iters[2:]
 
+            explicit_boundary_x = None
             if 'hmrnn' in encoder_unit and use_enc_explicit_boundary:
                 explicit_boundary_x = iters[0]
                 iters = iters[1:]

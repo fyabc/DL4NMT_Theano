@@ -84,7 +84,11 @@ class ParameterInitializer(object):
         avg_ctx = self.O['average_context']
 
         # init_state, init_cell
-        np_parameters = self.init_feed_forward(np_parameters, prefix='ff_state', nin=context_dim, nout=self.O['dim'])
+        np_parameters = self.init_feed_forward(
+            np_parameters, prefix='ff_state',
+            nin=context_dim if not self.O['layerwise_attention'] else context_dim * self.O['n_encoder_layers'],
+            nout=self.O['dim']
+        )
         if 'hmrnn' in self.O['decoder_unit']:
             np_parameters = get_init(self.O['decoder_unit'] + '_cond')(
                 self.O, np_parameters, prefix='decoder', nin=self.O['dim_word'],
@@ -212,7 +216,8 @@ class ParameterInitializer(object):
         np_parameters = self.init_decoder(np_parameters)
 
         # Readout
-        context_dim = 2 * self.O['dim']
+        context_dim = 2 * self.O['dim'] if not self.O['layerwise_attention'] \
+                      else 2 * self.O['dim'] * self.O['n_encoder_layers']
         if 'hmrnn' in self.O['decoder_unit']:
             np_parameters = self.init_feed_forward(np_parameters, prefix='ff_logit_lstm',
                                                    nin=self.O['dim']*self.O['n_decoder_layers'],
@@ -415,6 +420,7 @@ class NMTModel(object):
         dropout_rate = self.O['use_dropout']
         use_enc_explicit_boundary = self.O['use_enc_explicit_boundary']
         use_dec_explicit_boundary = self.O['use_dec_explicit_boundary']
+        layerwise_attention = self.O['layerwise_attention']
         opt_ret = {}
 
         trng = RandomStreams(1234)
@@ -442,8 +448,10 @@ class NMTModel(object):
         encoder_updates = []
         if 'hmrnn' in self.O['encoder_unit']:
             context, encoder_updates = context
-
-        encoder_boundary = context[1] if isinstance(context, tuple) else None
+        if not layerwise_attention:
+            encoder_boundary = context[1] if isinstance(context, tuple) else None
+        else:
+            encoder_boundary = context[1][-1]
 
         n_timestep, n_timestep_tgt, n_samples = self.input_dimensions(x, y)
 
@@ -866,6 +874,8 @@ class NMTModel(object):
         use_enc_explicit_boundary = self.O['use_enc_explicit_boundary']
         use_dec_explicit_boundary = self.O['use_dec_explicit_boundary']
 
+        layerwise_attention = self.O['layerwise_attention']
+
         batch_size = x.shape[1]
         sample = [[] for _ in xrange(batch_size)]
         sample_score = [[] for _ in xrange(batch_size)]
@@ -905,10 +915,16 @@ class NMTModel(object):
         for ii in xrange(maxlen):
             # print("ii =", ii)
             # print("lives_k =", lives_k)
-            ctx = np.repeat(ctx0, lives_k, axis=1)
+            if not layerwise_attention:
+                ctx = np.repeat(ctx0, lives_k, axis=1)
+            else:
+                ctx = np.repeat(ctx0, lives_k, axis=2)
             x_extend_masks = np.repeat(x_mask, lives_k, axis=1)
             if 'hmrnn' in encoder_unit:
-                z_extend_masks = np.repeat(z_mask, lives_k, axis=1)
+                if not layerwise_attention:
+                    z_extend_masks = np.repeat(z_mask, lives_k, axis=1)
+                else:
+                    z_extend_masks = np.repeat(z_mask, lives_k, axis=2)
 
             # print("ctx.shape =", ctx.shape)
             # print("x_extend_masks.shape =", x_extend_masks.shape)
@@ -917,10 +933,20 @@ class NMTModel(object):
             cursor_start, cursor_end = 0, lives_k[0]
             for jj in xrange(batch_size):
                 if lives_k[jj] > 0:
-                    ctx[:, cursor_start: cursor_end, :] = np.repeat(ctx0[:, jj, :][:, None, :], lives_k[jj], axis=1)
+                    if not layerwise_attention:
+                        ctx[:, cursor_start: cursor_end, :] = np.repeat(ctx0[:, jj, :][:, None, :], lives_k[jj], axis=1)
+                    else:
+                        ctx[:, :, cursor_start: cursor_end, :] = np.repeat(ctx0[:, :,  jj, :][:, :, None, :], lives_k[jj], axis=2)
+
                     x_extend_masks[:, cursor_start: cursor_end] = np.repeat(x_mask[:, jj][:, None], lives_k[jj], axis=1)
+
                     if 'hmrnn' in encoder_unit:
-                        z_extend_masks[:, cursor_start:cursor_end, :] = np.repeat(z_mask[:, jj, :][:, None, :], lives_k[jj], axis=1)
+                        if not layerwise_attention:
+                            z_extend_masks[:, cursor_start:cursor_end, :] = \
+                                np.repeat(z_mask[:, jj, :][:, None, :], lives_k[jj], axis=1)
+                        else:
+                            z_extend_masks[:, :, cursor_start:cursor_end, :] = \
+                                np.repeat(z_mask[:, :, jj, :][:, :, None, :], lives_k[jj], axis=2)
 
                 if jj < batch_size - 1:
                     cursor_start = cursor_end
@@ -1128,7 +1154,12 @@ class NMTModel(object):
             context, z_mask = context
             # z_mask = theano.gradient.disconnected_grad(z_mask)
             # z_mask = T.ones_like(z_mask, dtype=fX)
-            return (context * x_mask[:, :, None] * z_mask).sum(0) / (x_mask[:, :, None] * z_mask).sum(0)
+
+            if context.ndim == 4:
+                context = (context * z_mask).dimshuffle(1, 2, 0, 3).flatten(ndim=3)
+                return (context * x_mask[:, :, None]).sum(0) / (x_mask[:, :, None]).sum(0)
+            else:
+                return (context * x_mask[:, :, None] * z_mask).sum(0) / (x_mask[:, :, None] * z_mask).sum(0)
             # return (context * x_mask[:, :, None]).sum(0) / x_mask.sum(0)[:, None]
         else:
             return (context * x_mask[:, :, None]).sum(0) / x_mask.sum(0)[:, None]
@@ -1148,6 +1179,7 @@ class NMTModel(object):
         bottom_lstm = self.O['bottom_lstm']
         use_explicit_boundary = self.O['use_enc_explicit_boundary']
         use_mask = self.O['use_mask']
+        layerwise_attention = self.O['layerwise_attention']
 
         input_ = src_embedding
         input_r = src_embedding_r
@@ -1176,8 +1208,13 @@ class NMTModel(object):
                                          use_explicit_boundary=use_explicit_boundary)
 
                 self.encoder_boundary_before_sigmoid = output[2]['all_layer_z_before_sigmoid'][:, -2]
-
-                return (output[0], output[1]), [output[2]['updates']]
+                if not layerwise_attention:
+                    return (output[0], output[1]), [output[2]['updates']]
+                else:
+                    z_mask = T.ones_like(output[2]['all_layer_z'], dtype=fX)
+                    z_mask = T.set_subtensor(z_mask[:, 1:], output[2]['all_layer_z'][:, :-1])
+                    return (output[2]['all_layer_h_dp'].dimshuffle(1, 0, 2, 3),
+                            z_mask.dimshuffle(1, 0, 2, 3)), [output[2]['updates']]
 
             else:
                 if x_mask is not None:
@@ -1326,6 +1363,7 @@ class NMTModel(object):
         use_explicit_boundary = self.O['use_dec_explicit_boundary']
         benefit_0_boundary = self.O['benefit_0_boundary']
         use_all_one_boundary = self.O['use_all_one_boundary']
+        layerwise_attention = self.O['layerwise_attention']
         if use_explicit_boundary:
             assert explicit_boundary is not None
 
@@ -1349,9 +1387,14 @@ class NMTModel(object):
             #     init_boundary = print_all("init_boundary:")(init_boundary)
 
             if isinstance(context, tuple):
-                context, z_mask = context
-                z_mask = z_mask.reshape([z_mask.shape[0], z_mask.shape[1]])
-                context_mask = z_mask * x_mask if x_mask is not None else z_mask
+                if layerwise_attention:
+                    context, z_mask = context
+                    z_mask = z_mask.reshape([z_mask.shape[0], z_mask.shape[1], z_mask.shape[2]])
+                    context_mask = z_mask * x_mask[None, :, :] if x_mask is not None else z_mask
+                else:
+                    context, z_mask = context
+                    z_mask = z_mask.reshape([z_mask.shape[0], z_mask.shape[1]])
+                    context_mask = z_mask * x_mask if x_mask is not None else z_mask
             else:
                 context_mask = x_mask if x_mask is not None else None
 
@@ -1369,6 +1412,7 @@ class NMTModel(object):
                 explicit_boundary=explicit_boundary if use_explicit_boundary else None,
                 use_explicit_boundary=use_explicit_boundary,
                 benefit_0_boundary=benefit_0_boundary, all_att=all_att, use_all_one_boundary=use_all_one_boundary,
+                layerwise_attention=layerwise_attention,
             )
             self.decoder_boundary_before_sigmoid = kw_ret_att['all_layer_z_before_sigmoid'][:, -2]
             # the last dimension of  hidden_decoder

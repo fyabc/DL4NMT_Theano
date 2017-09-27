@@ -223,6 +223,7 @@ def _translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target,
             seqs = iters[0]
             iters = iters[1:]
 
+            explicit_boundary_x = None
             if model.O['use_enc_explicit_boundary']:
                 explicit_boundary_x = iters[0]
                 iters = iters[1:]

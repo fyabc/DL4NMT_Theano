@@ -398,7 +398,6 @@ def hmrnn_layer(P, state_below, O, prefix='hmrnn', mask=None, end_mask=None, exp
 
     # if dropout_params:
     #     highest_layer = dropout_layer(highest_layer, *dropout_params)
-
     return highest_layer, second_highest_boundary, kw_ret
 
 def param_init_hmrnn_cond(O, params, prefix='hmrnn_cond', nin=None, dim=None, dimctx=None, **kwargs):
@@ -469,20 +468,48 @@ def param_init_hmrnn_cond(O, params, prefix='hmrnn_cond', nin=None, dim=None, di
     ])
 
     # attention: combined -> hidden
-    if O['decoder_all_attention']:
-        params[_p(prefix, 'W_comb_att')] = normal_weight(n_layers * dim, dimctx)
+    if not O['layerwise_attention']:
+        if O['decoder_all_attention']:
+            params[_p(prefix, 'W_comb_att')] = normal_weight(n_layers * dim, dimctx)
+        else:
+            params[_p(prefix, 'W_comb_att')] = normal_weight(dim, dimctx)
+
+        # attention: context -> hidden
+        params[_p(prefix, 'Wc_att')] = normal_weight(dimctx)
+
+        # attention: hidden bias
+        params[_p(prefix, 'b_att')] = np.zeros((dimctx,), dtype=fX)
+
+        # attention:
+        params[_p(prefix, 'U_att')] = normal_weight(dimctx, 1)
+        params[_p(prefix, 'c_tt')] = np.zeros((1,), dtype=fX)
     else:
-        params[_p(prefix, 'W_comb_att')] = normal_weight(dim, dimctx)
+        params[_p(prefix, 'W_comb_att')] = np.stack([
+            normal_weight(dim, dimctx)
+            for _ in xrange(n_layers)
+        ])
 
-    # attention: context -> hidden
-    params[_p(prefix, 'Wc_att')] = normal_weight(dimctx)
+        # attention: context -> hidden
+        params[_p(prefix, 'Wc_att')] = np.stack([
+            normal_weight(dimctx)
+            for _ in xrange(n_layers)
+        ])
 
-    # attention: hidden bias
-    params[_p(prefix, 'b_att')] = np.zeros((dimctx,), dtype=fX)
+        # attention: hidden bias
+        params[_p(prefix, 'b_att')] = np.stack([
+            np.zeros((dimctx,), dtype=fX)
+            for _ in xrange(n_layers)
+        ])
 
-    # attention:
-    params[_p(prefix, 'U_att')] = normal_weight(dimctx, 1)
-    params[_p(prefix, 'c_tt')] = np.zeros((1,), dtype=fX)
+        # attention:
+        params[_p(prefix, 'U_att')] = np.stack([
+            normal_weight(dimctx, 1)
+            for _ in xrange(n_layers)
+        ])
+        params[_p(prefix, 'c_tt')] = np.stack([
+            np.zeros((1,), dtype=fX)
+            for _ in xrange(n_layers)
+        ])
 
     return params
 
@@ -506,12 +533,13 @@ def _attention(h1, projected_context_, context_, W_comb_att, U_att, c_tt, contex
 
 class _hmrnn_cond_step:
     def __init__(self, n_layers, use_mask=False, use_explicit_boundary=False, all_att=False,
-                 use_all_one_boundary=False, trng=None, dropout_rate=0.0):
+                 use_all_one_boundary=False, layerwise_attention=False, trng=None, dropout_rate=0.0):
         self.n_layers = n_layers
         self.use_mask = use_mask
         self.use_explicit_boundary = use_explicit_boundary
         self.all_att = all_att
         self.use_all_one_boundary = use_all_one_boundary
+        self.layerwise_attention = layerwise_attention
         self.trng = trng
         self.dropout_rate = dropout_rate
 
@@ -544,7 +572,10 @@ class _hmrnn_cond_step:
         z_all = []
         z_before_sigmoid_all = []
 
-        if self.all_att:
+        if self.layerwise_attention:
+            ctx_all = []
+            alpha_all = []
+        elif self.all_att:
             attention_hidden = last_h.dimshuffle(1, 0, 2).reshape((last_h.shape[1], -1))
             ctx, alpha = _attention(attention_hidden, projected_context, context,
                                     W_comb_att, U_att, c_tt, context_mask=context_mask)
@@ -553,6 +584,12 @@ class _hmrnn_cond_step:
                                     W_comb_att, U_att, c_tt, context_mask=context_mask)
 
         for l in xrange(self.n_layers):
+            if self.layerwise_attention:
+                ctx, alpha = _attention(last_h[l], projected_context[l], context[l],
+                                        W_comb_att[l], U_att[l], c_tt[l], context_mask=context_mask[l])
+                ctx_all.append(ctx)
+                alpha_all.append(alpha)
+
             h_l_tm1, h_dp_l_tm1, c_l_tm1, z_l_tm1 = last_h[l], last_h_dp[l], last_c[l], last_z[l]
             if l != 0:
                 h_lm1_t, z_lm1_t = h_all[l - 1], z_all[l - 1]
@@ -671,7 +708,9 @@ class _hmrnn_cond_step:
 
         z = T.addbroadcast(z, 2)
         z_before_sigmoid = T.addbroadcast(z_before_sigmoid, 2)
-
+        if self.layerwise_attention:
+            ctx = concatenate(ctx_all, axis=1)
+            alpha = T.stack(alpha_all, axis=0).mean(axis=0)
         return h, h_dp, c, z, ctx, alpha, z_before_sigmoid
 
 def hmrnn_cond_layer(P, state_below, O, prefix='hmrnn_cond', mask=None, context=None, one_step=False,
@@ -689,10 +728,13 @@ def hmrnn_cond_layer(P, state_below, O, prefix='hmrnn_cond', mask=None, context=
     benefit_0_boundary = kwargs.pop('benefit_0_boundary', False)
     all_att = kwargs.pop('all_att', False)
     use_all_one_boundary = kwargs.pop('use_all_one_boundary', False)
+    layerwise_attention = kwargs.pop('layerwise_attention', False)
 
     assert context, 'Context must be provided'
-    assert context.ndim == 3, 'Context must be 3-d: #annotation * #sample * dim'
-
+    if not layerwise_attention:
+        assert context.ndim == 3, 'Context must be 3-d: #annotation * #sample * dim'
+    else:
+        assert context.ndim == 4, 'Context must be 4-d: #layer * #annotation * #sample * dim'
     if one_step:
         assert init_state, 'previous state must be provided'
 
@@ -720,7 +762,13 @@ def hmrnn_cond_layer(P, state_below, O, prefix='hmrnn_cond', mask=None, context=
         assert not use_explicit_boundary
         explicit_boundary = T.alloc(0., n_steps, 1)  # just a place holder
 
-    projected_context = T.dot(context, P[_p(prefix, 'Wc_att')]) + P[_p(prefix, 'b_att')]
+    if not layerwise_attention:
+        projected_context = T.dot(context, P[_p(prefix, 'Wc_att')]) + P[_p(prefix, 'b_att')]
+    else:
+        projected_contexts = []
+        for l in xrange(n_layers):
+            projected_contexts.append(T.dot(context[l], P[_p(prefix, 'Wc_att')][l]) + P[_p(prefix, 'b_att')][l])
+        projected_context = T.stack(projected_contexts, axis=0)
 
     if init_state is None:
         init_state = T.alloc(0., n_layers, n_samples, dim)
@@ -736,8 +784,10 @@ def hmrnn_cond_layer(P, state_below, O, prefix='hmrnn_cond', mask=None, context=
         init_state,
         init_memory,
         init_boundary,
-        T.alloc(0., n_samples, context.shape[2]),
-        T.alloc(0., n_samples, context.shape[0]),
+        T.alloc(0., n_samples, context.shape[2])
+            if not layerwise_attention else T.alloc(0., n_samples, n_layers * context.shape[3]),
+        T.alloc(0., n_samples, context.shape[0])
+            if not layerwise_attention else T.alloc(0., n_samples, context.shape[1]),
         T.alloc(0., n_layers, n_samples, 1)
     ]
 
@@ -757,8 +807,8 @@ def hmrnn_cond_layer(P, state_below, O, prefix='hmrnn_cond', mask=None, context=
     shared_vars = params + [projected_context, context, context_mask,
                             hard_sigmoid_a, temperature, dim, boundary_type, use_noise]
     _step = _hmrnn_cond_step(n_layers=n_layers, use_mask=use_mask, all_att=all_att,
-                             use_explicit_boundary=use_explicit_boundary,
-                             use_all_one_boundary=use_all_one_boundary, trng=trng, dropout_rate=dropout_rate)
+                             use_explicit_boundary=use_explicit_boundary, use_all_one_boundary=use_all_one_boundary,
+                             trng=trng, dropout_rate=dropout_rate, layerwise_attention=layerwise_attention)
     if one_step:
         result = _step(*(seqs + init_states + shared_vars))
         kw_ret['all_layer_h'] = result[0]
