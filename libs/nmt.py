@@ -89,8 +89,6 @@ def validation(iterator, f_cost, use_noise):
         
         return sum_valid_cost / sum_valid_count
 
-    return valid_cost / valid_count
-
 def train(dim_word=100,  # word vector dimensionality
           dim=1000,  # the number of LSTM units
           encoder='gru',
