@@ -151,6 +151,9 @@ def train(dim_word=100,  # word vector dimensionality
           use_LN = False,
           densely_connected = False,
           dense_attention = False,
+          best_ever_bleu = 0,
+          bad_ever_counter = 0,
+          finetune_ever_cnt = 0,
           ):
     model_options = locals().copy()
 
@@ -370,7 +373,8 @@ Start Time = {}
     best_bleu = translate_dev_get_bleu(model, f_init, f_next, trng, use_noise) if reload_ else 0
     message('Worker id {}, Initial Valid cost {:.5f} Small train cost {:.5f} Valid BLEU {:.2f}'.format(worker_id, best_valid_cost, small_train_cost, best_bleu))
 
-    best_bleu = 0
+    best_bleu = best_ever_bleu
+    bad_counter = bad_ever_counter
     best_valid_cost = 1e5 #do not let initial state affect the training process
 
     commu_time_sum = 0.0
@@ -378,7 +382,7 @@ Start Time = {}
     reduce_time_sum = 0.0
 
     start_time = time.time()
-    finetune_cnt = 0
+    finetune_cnt = finetune_ever_cnt
     last_saveto_paths = []
 
     if start_from_histo_data:
