@@ -51,21 +51,43 @@ def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True, norma
 
 
 def validation(iterator, f_cost, use_noise):
-    orig_noise = use_noise.get_value()
-    use_noise.set_value(0.)
-
-    valid_cost = 0.0
-    valid_count = 0
-    for x, y in iterator:
-        x, x_mask, y, y_mask = prepare_data(x, y, maxlen=None)
-
-        if x is None:
-            continue
-
-        valid_cost += f_cost(x, x_mask, y, y_mask) * x_mask.shape[1]
-        valid_count += x_mask.shape[1]
-
-    use_noise.set_value(orig_noise)
+    if not isinstance(iterator, list):
+        orig_noise = use_noise.get_value()
+        use_noise.set_value(0.)
+    
+        valid_cost = 0.0
+        valid_count = 0
+        for x, y in iterator:
+            x, x_mask, y, y_mask = prepare_data(x, y, maxlen=None)
+    
+            if x is None:
+                continue
+    
+            valid_cost += f_cost(x, x_mask, y, y_mask) * x_mask.shape[1]
+            valid_count += x_mask.shape[1]
+    
+        use_noise.set_value(orig_noise)
+    
+        return valid_cost / valid_count
+    
+    else: # zhen
+        sum_valid_cost = 0.0
+        sum_valid_count = 0
+        for i in range(0, 4):
+            valid_cost = 0.0
+            valid_count = 0
+            for x, y in iterator[i]:
+                x, x_mask, y, y_mask = prepare_data(x, y, maxlen=None)            
+                if x is None:
+                    continue
+        
+                valid_cost += f_cost(x, x_mask, y, y_mask) * x_mask.shape[1]
+                valid_count += x_mask.shape[1]
+        
+            sum_valid_cost += valid_cost
+            sum_valid_count += valid_count
+        
+        return sum_valid_cost / sum_valid_count
 
     return valid_cost / valid_count
 
@@ -225,11 +247,20 @@ Start Time = {}
             batch_size,n_words_src, n_words,maxlen, k = io_buffer_size,
         )
 
-    valid_iterator = TextIterator(
-        valid_datasets[0], valid_datasets[1] if not zhen else valid_datasets[2],
-        vocab_filenames[0], vocab_filenames[1],
-        valid_batch_size, n_words_src, n_words,k = io_buffer_size,
-    )
+    if not zhen:
+        valid_iterator.append(TextIterator(
+            valid_datasets[0], valid_datasets[1] if not zhen else valid_datasets[2],
+            vocab_filenames[0], vocab_filenames[1],
+            valid_batch_size, n_words_src, n_words,k = io_buffer_size,
+        ))
+    else:
+        valid_iterator = []
+        for i in range(4, 8): # NIST2005.reference4-7
+            valid_iterator.append(TextIterator(
+                valid_datasets[0], valid_datasets[1] if not zhen else valid_datasets[2]+'{}'.format(i),
+                vocab_filenames[0], vocab_filenames[1],
+                valid_batch_size, n_words_src, n_words,k = io_buffer_size,
+            ))
 
     small_train_iterator = TextIterator(
         small_train_datasets[0], small_train_datasets[1],
