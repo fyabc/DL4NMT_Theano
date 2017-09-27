@@ -184,7 +184,7 @@ def all_reduce_params_nccl(nccl_commu, sent_shared_params):
         gpu2gpu_cp_time += time.time() - cp_start
 
         commu_start = time.time()
-        get_value = nccl_commu.all_reduce(model_val, op= "sum")
+        get_value = nccl_commu.all_reduce(model_val, op = "sum")
         commu_time += time.time() - commu_start
 
         cp_start = time.time()
