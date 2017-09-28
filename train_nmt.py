@@ -153,6 +153,14 @@ def main():
                         help='The buffer size in data reader, default to 40')
     parser.add_argument('--start_epoch', action='store', default=00, type=int, dest='start_epoch',
                         help='The starting epoch, default to 0')
+    parser.add_argument('--previous_best_bleu', action='store', default=0.0, type=float, dest='previous_best_bleu',
+                        help='Previous best bleu during training, default to 0.0')
+    parser.add_argument('--previous_best_valid_cost', action='store', default=0.0, type=float, dest='previous_best_valid_cost',
+                        help='Previous best valid cost during training, default to 0.0')
+    parser.add_argument('--previous_bad_count', action='store', default=0, type=int, dest='previous_bad_count',
+                        help='Previous bad count during training, default to 0')
+    parser.add_argument('--previous_finetune_cnt', action='store', default=0, type=int, dest='previous_finetune_cnt',
+                        help='Previous finetune cnt during training, default to 0')
 
     args = parser.parse_args()
     print args
@@ -297,6 +305,10 @@ def main():
         start_from_histo_data =  args.start_from_histo_data,
         fine_tune_type= args.finetune_type,
         zhen = zhen,
+        previous_best_bleu = args.previous_best_bleu,
+        previous_best_valid_cost = args.previous_best_valid_cost,
+        previous_bad_count = args.previous_bad_count,
+        previous_finetune_cnt = args.previous_finetune_cnt,
     )
 
 
