@@ -176,9 +176,11 @@ def predict(modelpath,
                                 T_n.discard(eos_id)
 
                                 if 'p' in action:
-                                    all_precisions_list[i][split_i].append(len(R.intersection(T_n)) * 1.0 / len(T_n))
+                                    all_precisions_list[i][split_i].append(
+                                        (len(R.intersection(T_n)) * 1.0 / len(T_n)) if T_n else 0.0)
                                 if 'r' in action:
-                                    all_recalls_list[i][split_i].append(len(R.intersection(T_n)) * 1.0 / len(R))
+                                    all_recalls_list[i][split_i].append(
+                                        (len(R.intersection(T_n)) * 1.0 / len(R)) if R else 0.0)
 
             end_time = time()
             message('Iteration:', curidx)
