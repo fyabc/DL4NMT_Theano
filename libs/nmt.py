@@ -168,6 +168,8 @@ def train(dim_word=100,  # word vector dimensionality
           use_src_pos=True,
           which_word=None,
           fix_encoder=False,
+          delib_use_rnn=False,
+
           zhen = False,
           ):
     model_options = locals().copy()

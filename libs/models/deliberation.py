@@ -270,13 +270,17 @@ class DelibNMT(NMTModel):
         y_pos_ = T.matrix('y_pos_', dtype='int64')
         tgt_pos_embed = self.P['Wemb_dec_pos'][y_pos_.flatten()].reshape(
             [y_pos_.shape[0], y_pos_.shape[1], self.O['dim_word']])
-        probs = self.independent_decoder(tgt_pos_embed, y, y_mask, context, x_mask,
-                                         dropout_params=None, trng=trng, use_noise=use_noise)
+        per_word_probs = self.independent_decoder(tgt_pos_embed, y, y_mask, context, x_mask,
+                                                  dropout_params=None, trng=trng, use_noise=use_noise)
 
-        test_cost = self.build_cost(y, y_mask, probs)
+        if self.O['delib_use_rnn']:
+            # todo
+            pass
+
+        test_cost = self.build_cost(y, y_mask, per_word_probs)
         cost = test_cost / self.O['cost_normalization']  # cost used to derive gradient in training
 
-        return trng, use_noise, x, x_mask, y, y_mask, y_pos_, opt_ret, cost, test_cost, probs
+        return trng, use_noise, x, x_mask, y, y_mask, y_pos_, opt_ret, cost, test_cost, per_word_probs
 
     def build_sampler(self, **kwargs):
         # Build model

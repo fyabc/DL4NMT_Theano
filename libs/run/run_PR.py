@@ -76,6 +76,21 @@ def prepare_predict(model_options,
     return model, valid_src, valid_trg, params, f_predictor, trg_idict
 
 
+def _calc_PR(slice_, y, y_mask_i, _predict, k, s_idx, eos_id):
+    # Words of the i-th split of sentence
+    # [NOTE]: EOS = 0
+    R = set((y * y_mask_i)[slice_, s_idx].flatten())
+    R.discard(eos_id)
+
+    # Words of top-k prediction of the i-th split of sentence
+    s_predict = _predict[slice_, s_idx, :k]
+    T_n = set((s_predict * y_mask_i[slice_, s_idx, None]).flatten())
+    T_n.discard(eos_id)
+
+    return (len(R.intersection(T_n)) * 1.0 / len(T_n)) if T_n else 0.0, \
+           (len(R.intersection(T_n)) * 1.0 / len(R)) if R else 0.0
+
+
 def predict(modelpath,
             action='aprs',
             valid_batch_size=80,
@@ -163,24 +178,21 @@ def predict(modelpath,
                         _predict = _predict.reshape((y.shape[0], y.shape[1], _predict.shape[-1]))
 
                         for s_idx in xrange(y.shape[1]):
+                            p, r = _calc_PR(slice(None), y, y_mask_i, _predict, k, s_idx, eos_id)
+                            if 'p' in action:
+                                all_precisions_list[i][split_i].append(p)
+                            if 'r' in action:
+                                all_recalls_list[i][split_i].append(r)
+
                             for split_i in xrange(split):
                                 split_i_slice = slice(split_i * split_len, (split_i + 1) * split_len)
-                                # Words of the i-th split of sentence
-                                # [NOTE]: EOS = 0
-                                R = set((y * y_mask_i)[split_i_slice, s_idx].flatten())
-                                R.discard(eos_id)
 
-                                # Words of top-k prediction of the i-th split of sentence
-                                s_predict = _predict[split_i_slice, s_idx, :k]
-                                T_n = set((s_predict * y_mask_i[split_i_slice, s_idx, None]).flatten())
-                                T_n.discard(eos_id)
+                                p, r = _calc_PR(split_i_slice, y, y_mask_i, _predict, k, s_idx, eos_id)
 
                                 if 'p' in action:
-                                    all_precisions_list[i][split_i].append(
-                                        (len(R.intersection(T_n)) * 1.0 / len(T_n)) if T_n else 0.0)
+                                    all_precisions_list[i][split_i].append(p)
                                 if 'r' in action:
-                                    all_recalls_list[i][split_i].append(
-                                        (len(R.intersection(T_n)) * 1.0 / len(R)) if R else 0.0)
+                                    all_recalls_list[i][split_i].append(r)
 
             end_time = time()
             message('Iteration:', curidx)
