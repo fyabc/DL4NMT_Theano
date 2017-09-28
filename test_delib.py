@@ -27,6 +27,8 @@ def main():
                         help='End iteration of model, default is %(default)s')
     parser.add_argument('-k', action='store', dest='k_list', default=['1'], metavar='N', nargs='+',
                         help='Get the top-k of word probabilities, k is a list, default is %(default)s')
+    parser.add_argument('--split', action='store', dest='split', default=1, type=int, metavar='N',
+                        help='Split sentences into N parts and calculate P/R respectively, default is %(default)s')
 
     args = parser.parse_args()
 
@@ -55,6 +57,7 @@ def main():
         end_idx=args.end_idx,
         logfile=args.logfile,
         k_list=args.k_list,
+        args=args,
     )
 
 

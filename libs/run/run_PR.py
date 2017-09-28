@@ -86,13 +86,16 @@ def predict(modelpath,
             start_idx=1, step_idx=1, end_idx=1,
             logfile='.log',
             k_list=(1,),
+            args=None,  # More options here
             ):
     model_options = load_options_test(modelpath)
 
+    maxlen = model_options['maxlen']
+    split = args.split  # Split sentence into N parts.
+    split_len = (maxlen + 2) // split
+
     eos_id = 0
     print_samples = True
-
-    # todo: split predictions into several parts, compute A/P/R for each of them.
 
     if model_options['use_delib']:
         model, valid_src, valid_trg, params, f_predictor, trg_idict = prepare_predict(
@@ -109,10 +112,14 @@ def predict(modelpath,
                                  '.iter' + str(curidx) + '.npz', params)
             for (kk, vv) in params.iteritems():
                 model.P[kk].set_value(vv)
-            all_sample = [0 for _ in xrange(model_options['maxlen'] + 2)]
-            correct_sample = [0 for _ in xrange(model_options['maxlen'] + 2)]
-            all_precisions_list = [[] for _ in xrange(len(k_list))]
-            all_recalls_list = [[] for _ in xrange(len(k_list))]
+            all_sample = [0 for _ in xrange(maxlen + 2)]
+            correct_sample = [0 for _ in xrange(maxlen + 2)]
+            all_precisions_list = [[    # Shape: #k_list * split * m_block
+                [] for _ in xrange(split)
+            ] for _ in xrange(len(k_list))]
+            all_recalls_list = [[       # Shape: #k_list * split * m_block
+                [] for _ in xrange(split)
+            ] for _ in xrange(len(k_list))]
 
             sample_translation = None
 
@@ -156,20 +163,22 @@ def predict(modelpath,
                         _predict = _predict.reshape((y.shape[0], y.shape[1], _predict.shape[-1]))
 
                         for s_idx in xrange(y.shape[1]):
-                            # Words of the sentence
-                            # [NOTE]: EOS = 0
-                            R = set((y * y_mask_i)[:, s_idx].flatten())
-                            R.discard(eos_id)
+                            for split_i in xrange(split):
+                                split_i_slice = slice(split_i * split_len, (split_i + 1) * split_len)
+                                # Words of the i-th split of sentence
+                                # [NOTE]: EOS = 0
+                                R = set((y * y_mask_i)[split_i_slice, s_idx].flatten())
+                                R.discard(eos_id)
 
-                            # Words of top-k prediction of the sentence
-                            s_predict = _predict[:, s_idx, :k]
-                            T_n = set((s_predict * y_mask_i[:, s_idx, None]).flatten())
-                            T_n.discard(eos_id)
+                                # Words of top-k prediction of the i-th split of sentence
+                                s_predict = _predict[split_i_slice, s_idx, :k]
+                                T_n = set((s_predict * y_mask_i[split_i_slice, s_idx, None]).flatten())
+                                T_n.discard(eos_id)
 
-                            if 'p' in action:
-                                all_precisions_list[i].append(len(R.intersection(T_n)) * 1.0 / len(T_n))
-                            if 'r' in action:
-                                all_recalls_list[i].append(len(R.intersection(T_n)) * 1.0 / len(R))
+                                if 'p' in action:
+                                    all_precisions_list[i][split_i].append(len(R.intersection(T_n)) * 1.0 / len(T_n))
+                                if 'r' in action:
+                                    all_recalls_list[i][split_i].append(len(R.intersection(T_n)) * 1.0 / len(R))
 
             end_time = time()
             message('Iteration:', curidx)
@@ -191,14 +200,24 @@ def predict(modelpath,
             if 'p' in action:
                 message('Precision:\n\t{}'.format(
                     '\n\t'.join(
-                        'top {} = {}'.format(k, np.mean(all_precisions))
-                        for k, all_precisions in zip(k_list, all_precisions_list)
+                        'top {} = {}'.format(
+                            k,
+                            ', '.join(
+                                str(np.mean(all_precisions))
+                                for all_precisions in all_precisions_splits
+                            ),
+                        ) for k, all_precisions_splits in zip(k_list, all_precisions_list)
                     )))
             if 'r' in action:
                 message('Recall:\n\t{}'.format(
                     '\n\t'.join(
-                        'top {} = {}'.format(k, np.mean(all_recalls))
-                        for k, all_recalls in zip(k_list, all_recalls_list)
+                        'top {} = {}'.format(
+                            k,
+                            ', '.join(
+                                str(np.mean(all_recalls))
+                                for all_recalls in all_recalls_splits
+                            ),
+                        ) for k, all_recalls_splits in zip(k_list, all_recalls_list)
                     )))
             if 's' in action:
                 message('Sample translation:\nGround truth:')
