@@ -216,7 +216,7 @@ def predict(modelpath,
                     '\n\t'.join(
                         'top {} = {}: {}'.format(
                             k,
-                            all_precisions_splits[0],
+                            np.mean(all_precisions_splits[0]),
                             ', '.join(
                                 str(np.mean(all_precisions))
                                 for all_precisions in all_precisions_splits[1:]
@@ -228,7 +228,7 @@ def predict(modelpath,
                     '\n\t'.join(
                         'top {} = {}: {}'.format(
                             k,
-                            all_recalls_splits[0],
+                            np.mean(all_recalls_splits[0]),
                             ', '.join(
                                 str(np.mean(all_recalls))
                                 for all_recalls in all_recalls_splits[1:]
