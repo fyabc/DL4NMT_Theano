@@ -129,11 +129,11 @@ def predict(modelpath,
                 model.P[kk].set_value(vv)
             all_sample = [0 for _ in xrange(maxlen + 2)]
             correct_sample = [0 for _ in xrange(maxlen + 2)]
-            all_precisions_list = [[    # Shape: #k_list * split * m_block
-                [] for _ in xrange(split)
+            all_precisions_list = [[    # Shape: #k_list * (split + 1) * m_block
+                [] for _ in xrange(split + 1)
             ] for _ in xrange(len(k_list))]
-            all_recalls_list = [[       # Shape: #k_list * split * m_block
-                [] for _ in xrange(split)
+            all_recalls_list = [[       # Shape: #k_list * (split + 1) * m_block
+                [] for _ in xrange(split + 1)
             ] for _ in xrange(len(k_list))]
 
             sample_translation = None
@@ -180,9 +180,9 @@ def predict(modelpath,
                         for s_idx in xrange(y.shape[1]):
                             p, r = _calc_PR(slice(None), y, y_mask_i, _predict, k, s_idx, eos_id)
                             if 'p' in action:
-                                all_precisions_list[i][split_i].append(p)
+                                all_precisions_list[i][0].append(p)
                             if 'r' in action:
-                                all_recalls_list[i][split_i].append(r)
+                                all_recalls_list[i][0].append(r)
 
                             for split_i in xrange(split):
                                 split_i_slice = slice(split_i * split_len, (split_i + 1) * split_len)
@@ -214,22 +214,24 @@ def predict(modelpath,
             if 'p' in action:
                 message('Precision:\n\t{}'.format(
                     '\n\t'.join(
-                        'top {} = {}'.format(
+                        'top {} = {}: {}'.format(
                             k,
+                            all_precisions_splits[0],
                             ', '.join(
                                 str(np.mean(all_precisions))
-                                for all_precisions in all_precisions_splits
+                                for all_precisions in all_precisions_splits[1:]
                             ),
                         ) for k, all_precisions_splits in zip(k_list, all_precisions_list)
                     )))
             if 'r' in action:
                 message('Recall:\n\t{}'.format(
                     '\n\t'.join(
-                        'top {} = {}'.format(
+                        'top {} = {}: {}'.format(
                             k,
+                            all_recalls_splits[0],
                             ', '.join(
                                 str(np.mean(all_recalls))
-                                for all_recalls in all_recalls_splits
+                                for all_recalls in all_recalls_splits[1:]
                             ),
                         ) for k, all_recalls_splits in zip(k_list, all_recalls_list)
                     )))
