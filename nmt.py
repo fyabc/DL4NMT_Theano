@@ -603,19 +603,27 @@ Start Time = {}
 
     cost = regularize_alpha_weights(cost, alpha_c, model_options, x_mask, y_mask, opt_ret)
 
-    decoder_boundary_regularization_cost = None
+    boundary_regularization_cost = None
 
     if enc_boundary_regularization > 0.0:
         if 'hmrnn' in encoder_unit:
             encoder_boundary_regularization_cost = \
                 enc_boundary_regularization * ((encoder_boundary * x_mask[:, :, None])**2).mean()
             cost += encoder_boundary_regularization_cost
+            if boundary_regularization_cost is None:
+                boundary_regularization_cost = encoder_boundary_regularization_cost
+            else:
+                boundary_regularization_cost += encoder_boundary_regularization_cost
 
     if dec_boundary_regularization > 0.0:
         if 'hmrnn' in decoder_unit:
             decoder_boundary_regularization_cost = \
                 dec_boundary_regularization * ((decoder_boundary * y_mask[:, :, None])**2).mean()
             cost += decoder_boundary_regularization_cost
+            if boundary_regularization_cost is None:
+                boundary_regularization_cost = decoder_boundary_regularization_cost
+            else:
+                boundary_regularization_cost += decoder_boundary_regularization_cost
 
     print 'Building f_cost...',
     cost_outputs = [cost]
@@ -651,7 +659,8 @@ Start Time = {}
 
     f_grad_shared, f_update, grads_shared, imm_shared = Optimizers[optimizer](
         lr, model.P, grads, inps, cost, g2=g2, given_imm_data=given_imm_data, dump_imm=dump_imm,
-        stochastic_updates=all_stochastic_updates, extra_costs=decoder_boundary_regularization_cost)
+        stochastic_updates=all_stochastic_updates,
+        extra_costs=boundary_regularization_cost)
     print 'Done'
 
     print 'Optimization'
@@ -833,7 +842,14 @@ Start Time = {}
             ud_start = time.time()
 
             # compute cost, grads and copy grads to shared variables
-            cost, g2_value = f_grad_shared(*inps)
+            ret = f_grad_shared(*inps)
+            cost, g2_value = ret[:2]
+            ret = ret[2:]
+            extra_cost = 0.0
+            if boundary_regularization_cost is not None:
+                extra_cost = ret[0]
+                ret = ret[1:]
+            assert len(ret) == 0
 
             # print 'Compute cost finished'
 
@@ -893,8 +909,8 @@ Start Time = {}
 
             # verbose
             if np.mod(uidx, dispFreq) == 0:
-                message('Epoch {} Update {} Cost {:.5f} G2 {:.5f} UD {:.5f} Time {:.5f} s'.format(
-                    eidx, uidx, float(cost), float(g2_value), ud, time.time() - start_time,
+                message('Epoch {} Update {} Cost {:.5f} Regularization Cost {:.5f} G2 {:.5f} UD {:.5f} Time {:.5f} s'.format(
+                    eidx, uidx, float(cost), float(extra_cost), float(g2_value), ud, time.time() - start_time,
                 ))
                 sys.stdout.flush()
 
