@@ -154,7 +154,7 @@ def main():
                         help='Use densely connected in attention mechanism, default to False, set to True')
     parser.add_argument('--previous_best_bleu', action='store', default=0.0, dest='previous_best_bleu', type=float,
                         help='Previous best bleu during training, default to 0.0')
-    parser.add_argument('--previous_best_valid_cost', action='store', default=0.0, dest='previous_best_valid_cost', type=float,
+    parser.add_argument('--previous_best_valid_cost', action='store', default=1e5, dest='previous_best_valid_cost', type=float,
                         help='Previous best valid cost during training, default to 0.0')
     parser.add_argument('--previous_finetune_cnt', action="store", default=0, dest='previous_finetune_cnt', type=int,
                         help='Previous finetune count during training, default to 0')

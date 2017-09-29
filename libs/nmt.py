@@ -152,7 +152,7 @@ def train(dim_word=100,  # word vector dimensionality
           densely_connected = False,
           dense_attention = False,
           previous_best_bleu = 0,
-          previous_best_valid_cost = 0,
+          previous_best_valid_cost = 1e5,
           previous_bad_count = 0,
           previous_finetune_cnt = 0,
           ):
