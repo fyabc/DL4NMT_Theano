@@ -151,7 +151,7 @@ def train(dim_word=100,  # word vector dimensionality
           start_from_histo_data = False,
           zhen = False,
           previous_best_bleu = 0.0,
-          previous_best_valid_cost = 1e5,,
+          previous_best_valid_cost = 1e5,
           previous_bad_count = 0,
           previous_finetune_cnt = 0,
 

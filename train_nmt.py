@@ -155,8 +155,8 @@ def main():
                         help='The starting epoch, default to 0')
     parser.add_argument('--previous_best_bleu', action='store', default=0.0, type=float, dest='previous_best_bleu',
                         help='Previous best bleu during training, default to 0.0')
-    parser.add_argument('--previous_best_valid_cost', action='store', default=0.0, type=float, dest='previous_best_valid_cost',
-                        help='Previous best valid cost during training, default to 0.0')
+    parser.add_argument('--previous_best_valid_cost', action='store', default=1e5, type=float, dest='previous_best_valid_cost',
+                        help='Previous best valid cost during training, default to 100000.0')
     parser.add_argument('--previous_bad_count', action='store', default=0, type=int, dest='previous_bad_count',
                         help='Previous bad count during training, default to 0')
     parser.add_argument('--previous_finetune_cnt', action='store', default=0, type=int, dest='previous_finetune_cnt',
