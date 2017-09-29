@@ -190,9 +190,9 @@ def predict(modelpath,
                                 p, r = _calc_PR(split_i_slice, y, y_mask_i, _predict, k, s_idx, eos_id)
 
                                 if 'p' in action:
-                                    all_precisions_list[i][split_i].append(p)
+                                    all_precisions_list[i][split_i + 1].append(p)
                                 if 'r' in action:
-                                    all_recalls_list[i][split_i].append(r)
+                                    all_recalls_list[i][split_i + 1].append(r)
 
             end_time = time()
             message('Iteration:', curidx)
