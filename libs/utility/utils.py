@@ -227,10 +227,12 @@ def load_params(path, params, src_map_file = None, tgt_map_file = None):
         if params[key].shape == old_params[key].shape:
             params[key] = old_params[key]
 
-    src_map = pkl.load(open(src_map_file, 'rb')) if src_map_file else None
-    tgt_map = pkl.load(open(tgt_map_file, 'rb')) if tgt_map_file else None
+    # Add this to try to avoid the mysterious drop of P/R.
+    if src_map_file or tgt_map_file:
+        src_map = pkl.load(open(src_map_file, 'rb')) if src_map_file else None
+        tgt_map = pkl.load(open(tgt_map_file, 'rb')) if tgt_map_file else None
 
-    params = load_word_params(params, old_params, src_map, tgt_map)
+        params = load_word_params(params, old_params, src_map, tgt_map)
 
     return params
 
