@@ -152,12 +152,14 @@ def main():
                         help='Use densely connected network architecture, default to False, set to True')
     parser.add_argument('--dense_attention', action="store_true", default=False, dest='dense_attention',
                         help='Use densely connected in attention mechanism, default to False, set to True')
-    parser.add_argument('--best_bleu', action="store", default=0.0, dest='best_bleu', type=float,
-                        help='Best bleu in previous training, default to 0')
-    parser.add_argument('--finetune_cnt', action="store", default=0, dest='finetune_cnt', type=int,
-                        help='Finetune count in previous training, default to 0')
-    parser.add_argument('--bad_count', action="store", default=0, dest='bad_count', type=int,
-                        help='Bad count in previous training, default to 0')
+    parser.add_argument('--previous_best_bleu', action='store', default=0.0, dest='previous_best_bleu', type=float,
+                        help='Previous best bleu during training, default to 0.0')
+    parser.add_argument('--previous_best_valid_cost', action='store', default=0.0, dest='previous_best_valid_cost', type=float,
+                        help='Previous best valid cost during training, default to 0.0')
+    parser.add_argument('--previous_finetune_cnt', action="store", default=0, dest='previous_finetune_cnt', type=int,
+                        help='Previous finetune count during training, default to 0')
+    parser.add_argument('--previous_bad_count', action="store", default=0, dest='previous_bad_count', type=int,
+                        help='Previous bad count during training, default to 0')
 
     args = parser.parse_args()
     print args
@@ -301,9 +303,10 @@ def main():
         use_LN = args.use_LN,
         densely_connected = args.densely_connected,
         dense_attention = args.dense_attention,
-        best_ever_bleu = args.best_bleu,
-        bad_ever_counter = args.bad_count,
-        finetune_ever_cnt = args.finetune_cnt,
+        previous_best_bleu = args.previous_best_bleu,
+        previous_best_valid_cost = args.previous_best_valid_cost,
+        previous_bad_count = args.previous_bad_count,
+        previous_finetune_cnt = args.previous_finetune_cnt,
     )
 
 
