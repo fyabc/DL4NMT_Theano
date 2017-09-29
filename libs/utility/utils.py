@@ -184,7 +184,7 @@ def all_reduce_params_nccl(nccl_commu, sent_shared_params):
         gpu2gpu_cp_time += time.time() - cp_start
 
         commu_start = time.time()
-        get_value = nccl_commu.all_reduce(model_val, op= "sum")
+        get_value = nccl_commu.all_reduce(model_val, op = "sum")
         commu_time += time.time() - commu_start
 
         cp_start = time.time()
@@ -281,8 +281,11 @@ def load_word_params(params, old_params, src_map = None, tgt_map = None):
                 sys.stdout.write('\r%d %d' % (new_word_id, old_word_id))
         elif src_vocab_size != old_src_vocab_size:
             Wemb_T[:,:old_src_vocab_size] = old_Wemb_T
+        else:
+            Wemb_T = None
 
-        params['Wemb'] = Wemb_T.T
+        if Wemb_T is not None:
+            params['Wemb'] = Wemb_T.T
 
     if has_tgt_emb:
         Wemb_dec_T = np.tile(old_params['Wemb_dec'][UNK_ID], [tgt_vocab_size, 1]).T
@@ -301,8 +304,11 @@ def load_word_params(params, old_params, src_map = None, tgt_map = None):
             Wemb_dec_T[:,:old_tgt_vocab_size] = old_Wemb_dec_T
             params['ff_logit_W'][:,:old_tgt_vocab_size] = old_params['ff_logit_W']
             params['ff_logit_b'][:old_tgt_vocab_size] = old_params['ff_logit_b']
+        else:
+            Wemb_dec_T = None
 
-        params['Wemb_dec'] = Wemb_dec_T.T
+        if Wemb_dec_T is not None:
+            params['Wemb_dec'] = Wemb_dec_T.T
 
     print('\nLoad previous word related params done')
     return params

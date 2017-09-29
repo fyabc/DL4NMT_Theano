@@ -171,6 +171,10 @@ def train(dim_word=100,  # word vector dimensionality
           delib_use_rnn=False,
 
           zhen = False,
+          previous_best_bleu = 0.0,
+          previous_best_valid_cost = 1e5,
+          previous_bad_count = 0,
+          previous_finetune_cnt = 0,
           ):
     model_options = locals().copy()
 
@@ -403,15 +407,16 @@ Start Time = {}
         best_bleu = 0
     message('Worker id {}, Initial Valid cost {:.5f} Small train cost {:.5f} Valid BLEU {:.2f}'.format(worker_id, best_valid_cost, small_train_cost, best_bleu))
 
-    best_bleu = 0
-    best_valid_cost = 1e5 #do not let initial state affect the training process
+    best_bleu = previous_best_bleu
+    best_valid_cost = previous_best_valid_cost #do not let initial state affect the training process
+    bad_counter = previous_bad_count
 
     commu_time_sum = 0.0
     cp_time_sum = 0.0
     reduce_time_sum = 0.0
 
     start_time = time.time()
-    finetune_cnt = 0
+    finetune_cnt = previous_finetune_cnt
     last_saveto_paths = []
 
     if start_from_histo_data:
@@ -510,8 +515,6 @@ Start Time = {}
                 cp_time_sum += gpucpu_cp_time
 
                 g2_value = f_grads_clip()
-                print '@Worker = {}, Reduce time = {:.5f}, Commu time = {:.5f}, Copy time = {:.5f}'.\
-                    format(worker_id, reduce_time, commu_time, gpucpu_cp_time)
 
             curr_lr = lrate if not dist_type or dist_recover_lr_iter < effective_uidx \
                 else lrate * 0.05 + effective_uidx * lrate / dist_recover_lr_iter * 0.95
@@ -641,13 +644,13 @@ Start Time = {}
                             if finetune_cnt % 2 == 0:
                                 lrate = np.float32(lrate * 0.1)
                                 message('Discount learning rate to {} at iteration {} at workder {}'.format(lrate, uidx, worker_id))
-                                if lrate <= 0.005:
-                                    message('Learning rate decayed to {:.5f}, task completed'.format(lrate))
-                                    return 1., 1., 1.
                             else:
-                                clip_shared.set_value(np.float32(clip_shared.get_value() * 0.25))
+                                clip_shared.set_value(np.float32(clip_shared.get_value() * 0.1))
                                 message('Discount clip value to {} at iteration {}'.format(clip_shared.get_value(), uidx))
                             finetune_cnt += 1
+                            if finetune_cnt == 3:
+                                message('Learning rate decayed to {:.5f}, clip decayed to {:.5f}, task completed'.format(lrate, clip_shared.get_value()))
+                                return 1., 1., 1.
                             bad_counter = 0
 
             # finish after this many updates
