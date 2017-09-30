@@ -150,7 +150,8 @@ DefaultOptions = dict(
     use_src_pos=True,
     which_word=None,
     fix_encoder=False,
-    delib_use_rnn=False,  # Use RNN with deliberation model. Used only when use_delib is True.
+
+    cond_softmax=False,  # Use RNN with conditional softmax from deliberation model.
 
     zhen=False,
 )

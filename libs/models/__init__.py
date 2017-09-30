@@ -4,6 +4,7 @@
 from .model import *
 from .target_attention import *
 from .deliberation import *
+from .conditional_softmax import *
 
 __author__ = 'fyabc'
 

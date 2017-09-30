@@ -170,6 +170,8 @@ def main():
     parser.add_argument('--which_word', type=int, default=None, help='')
     parser.add_argument('--fix_encoder', action='store_true', default=False, dest='fix_encoder',
                         help='whether to fix encoder when training deliberation model')
+    parser.add_argument('--cond_softmax', action='store_true', default=None, dest='cond_softmax',
+                        help='Deliberation model path to add conditional softmax into decoder, default is %(default)s')
 
     args = parser.parse_args()
     print args
@@ -320,6 +322,7 @@ def main():
         decoder_style=args.decoder_style,
         which_word=args.which_word,
         fix_encoder=args.fix_encoder,
+        cond_softmax=args.cond_softmax,
 
         zhen=zhen,
         previous_best_bleu = args.previous_best_bleu,

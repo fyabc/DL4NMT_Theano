@@ -20,7 +20,7 @@ from .utility.optimizers import Optimizers
 from .utility.utils import *
 
 from .utility.translate import translate_dev_get_bleu
-from .models import NMTModel, TrgAttnNMTModel, DelibNMT
+from .models import NMTModel, TrgAttnNMTModel, DelibNMT, ConditionalSoftmaxModel
 
 
 def pred_probs(f_log_probs, prepare_data, options, iterator, verbose=True, normalize=False):
@@ -168,7 +168,7 @@ def train(dim_word=100,  # word vector dimensionality
           use_src_pos=True,
           which_word=None,
           fix_encoder=False,
-          delib_use_rnn=False,
+          cond_softmax=False,
 
           zhen = False,
           previous_best_bleu = 0.0,
@@ -266,6 +266,8 @@ Start Time = {}
         model = TrgAttnNMTModel(model_options)
     elif use_delib:
         model = DelibNMT(model_options)
+    elif cond_softmax:
+        model = ConditionalSoftmaxModel(model_options)
     else:
         model = NMTModel(model_options)
 
