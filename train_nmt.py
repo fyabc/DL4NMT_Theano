@@ -1,3 +1,18 @@
+#! /usr/bin/python
+# -*- coding: utf-8 -*-
+
+"""
+Script to train the NMT model.
+
+Typically usage
+----------
+$ python train_nmt.py model_path -R [other_options...]                  # Train new model
+$ python train_nmt.py model_path old_model_path [other_options...]      # Reload model for continuing training
+$ python train_nmt.py @arguments/some_arg_file.txt [other_options...]   # Load options from argument file
+
+Type ``python train_nmt.py -h`` to get more help.
+"""
+
 import argparse
 import sys
 import os

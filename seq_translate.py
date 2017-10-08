@@ -1,4 +1,15 @@
-# usage: python seq_translate.py model_prefix --start start_iteration --end end_iteration --gap interval --dataset dataset
+#! /usr/bin/python
+# -*- coding: utf-8 -*-
+
+"""
+Script to translate a sequence of NMT models.
+
+Typically usage
+----------
+$ python seq_translate.py model_prefix --start start_iteration --end end_iteration --gap interval --dataset dataset
+
+Type ``python seq_translate.py -h`` to get more help.
+"""
 
 import argparse
 import sys
