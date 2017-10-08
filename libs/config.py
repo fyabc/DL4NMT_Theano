@@ -41,6 +41,7 @@ DefaultOptions = dict(
     # If False, do not use dropout.
     # If float value, this is the dropout rate.
     use_dropout=False,
+    dropout_out=False,
     reload_=False,
     overwrite=False,
     preload='',
