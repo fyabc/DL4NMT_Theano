@@ -269,7 +269,8 @@ Start Time = {}
         model = DelibNMT(model_options)
     elif cond_softmax:
         from .config import DefaultOptions
-        delib_options = load_options_train(DefaultOptions.copy(), reload_=False, preload=cond_softmax)
+        delib_options = DefaultOptions.copy()
+        load_options_train(delib_options, reload_=False, preload=cond_softmax)
         model = ConditionalSoftmaxModel(model_options, delib_options)
     else:
         model = NMTModel(model_options)
