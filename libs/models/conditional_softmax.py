@@ -185,7 +185,17 @@ class ConditionalSoftmaxModel(DelibNMT):
         return unnormalized_probs
 
     def build_model(self, set_instance_variables=False):
-        """Build a training model."""
+        """
+        Build a training model.
+
+        Parameters
+        ----------
+        set_instance_variables
+
+        Returns
+        -------
+
+        """
 
         dropout_rate = self.O['use_dropout']
 
@@ -204,8 +214,7 @@ class ConditionalSoftmaxModel(DelibNMT):
 
         # Per-word prediction decoder.
         with _delib_env(self):
-            # todo: change y_pos_ into expression of y?
-            y_pos_ = T.matrix('y_pos_', dtype='int64')
+            y_pos_ = T.repeat(T.arange(y.shape[0]).dimshuffle(0, 'x'), y.shape[1], 1)
             tgt_pos_embed = self.P['Wemb_dec_pos'][y_pos_.flatten()].reshape(
                 [y_pos_.shape[0], y_pos_.shape[1], self.DO['dim_word']])
             pw_probs = self.independent_decoder(tgt_pos_embed, y, y_mask, context, x_mask,
@@ -240,7 +249,7 @@ class ConditionalSoftmaxModel(DelibNMT):
         test_cost = self.build_cost(y, y_mask, probs)
         cost = test_cost / self.O['cost_normalization']  # cost used to derive gradient in training
 
-        return trng, use_noise, x, x_mask, y, y_mask, y_pos_, opt_ret, cost, test_cost, probs
+        return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost, test_cost, self._ctx_info
 
     def get_word_probability(self, hidden_decoder, context_decoder, tgt_embedding, **kwargs):
         """Compute word probabilities.
