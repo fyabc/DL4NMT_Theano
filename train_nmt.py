@@ -172,6 +172,8 @@ def main():
                         help='whether to fix encoder when training deliberation model')
     parser.add_argument('--cond_softmax', action='store_true', default=None, dest='cond_softmax',
                         help='Deliberation model path to add conditional softmax into decoder, default is %(default)s')
+    parser.add_argument('--cond_softmax_k', action='store', default=1000, dest='cond_softmax_k', type=int,
+                        help='Use top-k pre-word prediction in conditional softmax, default is %(default)d')
 
     args = parser.parse_args()
     print args
@@ -323,6 +325,7 @@ def main():
         which_word=args.which_word,
         fix_encoder=args.fix_encoder,
         cond_softmax=args.cond_softmax,
+        cond_softmax_k=args.cond_softmax_k,
 
         zhen=zhen,
         previous_best_bleu = args.previous_best_bleu,

@@ -95,14 +95,14 @@ DefaultOptions = dict(
     given_embedding=None,
 
     # Options for sync distribution
-    #Set it to none to run single GPU version. Other options include 'mv' and 'mpi_reduce'
+    # Set it to none to run single GPU version. Other options include 'mv' and 'mpi_reduce'
     dist_type=None,
-    #The sync frequency. Will be automatically fixed to be 1 when syncing gradients
+    # The sync frequency. Will be automatically fixed to be 1 when syncing gradients
     sync_batch=1,
-    #From start to dist_recover_lr iteration, linearly increase lr to normal lr, s.t. nan is avoided
-    dist_recover_lr = 10000,
-    #Whether to sync models (i.e., model average) or gradients (per batch)
-    sync_models = False,
+    # From start to dist_recover_lr iteration, linearly increase lr to normal lr, s.t. nan is avoided
+    dist_recover_lr=10000,
+    # Whether to sync models (i.e., model average) or gradients (per batch)
+    sync_models=False,
 
     # Options for multi-gru/lstm
     # Used only when unit is "multi_gru" or "multi_lstm"
@@ -129,8 +129,8 @@ DefaultOptions = dict(
     # Used only when decoder_all_attention is True.
     average_context=False,
 
-    #The file storing physical_gpu_id -> theano_id information. Per gpu infor, per line
-    gpu_map_file = None,
+    # The file storing physical_gpu_id -> theano_id information. Per gpu infor, per line
+    gpu_map_file=None,
     task='en-fr',
 
     # MPI options
@@ -151,11 +151,15 @@ DefaultOptions = dict(
     which_word=None,
     fix_encoder=False,
 
-    cond_softmax=False,  # Use RNN with conditional softmax from deliberation model.
+    cond_softmax=False,     # Use RNN with conditional softmax from deliberation model.
+    cond_softmax_k=1000,    # Use top-k per-word prediction in conditional softmax.
 
     zhen=False,
+    previous_best_bleu=0.0,
+    previous_best_valid_cost=1e5,
+    previous_bad_count=0,
+    previous_finetune_cnt=0,
 )
-
 
 # Dict of dual learning default options
 DualLearningDefaultOptions = {

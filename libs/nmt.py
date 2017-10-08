@@ -169,6 +169,7 @@ def train(dim_word=100,  # word vector dimensionality
           which_word=None,
           fix_encoder=False,
           cond_softmax=False,
+          cond_softmax_k=1000,
 
           zhen = False,
           previous_best_bleu = 0.0,
@@ -267,7 +268,9 @@ Start Time = {}
     elif use_delib:
         model = DelibNMT(model_options)
     elif cond_softmax:
-        model = ConditionalSoftmaxModel(model_options)
+        from .config import DefaultOptions
+        delib_options = load_options_train(DefaultOptions.copy(), reload_=False, preload=cond_softmax)
+        model = ConditionalSoftmaxModel(model_options, delib_options)
     else:
         model = NMTModel(model_options)
 
@@ -277,6 +280,9 @@ Start Time = {}
     if reload_ and os.path.exists(preload):
         print 'Reloading model parameters'
         load_params(preload, params, src_map_file = src_vocab_map_file, tgt_map_file = tgt_vocab_map_file)
+    if cond_softmax:
+        print 'Reloading deliberation model'
+        load_params(cond_softmax, params)
     sys.stdout.flush()
 
     # Given embedding
