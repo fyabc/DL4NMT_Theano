@@ -1,6 +1,9 @@
 #! /usr/bin/python
 # -*- coding: utf-8 -*-
 
+from collections import OrderedDict
+from contextlib import contextmanager
+
 import numpy as np
 import theano
 import theano.tensor as T
@@ -14,14 +17,55 @@ from ..utility.utils import _p
 __author__ = 'fyabc'
 
 
-class ConditionalSoftmaxInitializer(DelibInitializer):
-    def init_params(self):
-        np_parameters = super(ConditionalSoftmaxInitializer, self).init_params()
+@contextmanager
+def _delib_env(obj):
+    """Context manager to set the per-word prediction options `obj.DO` as options."""
 
-        self.init_decoder(np_parameters)
+    tmp_o = obj.O
+    obj.O = obj.DO
+    try:
+        yield
+    finally:
+        obj.DO = obj.O
+        obj.O = tmp_o
+
+
+class ConditionalSoftmaxInitializer(DelibInitializer):
+    def __init__(self, options, delib_options):
+        super(ConditionalSoftmaxInitializer, self).__init__(options)
+
+        # Per-word prediction options
+        self.DO = delib_options
+
+    def init_params(self):
+        np_parameters = OrderedDict()
+
+        # RNN part.
+
+        # Source embedding
+        self.init_embedding(np_parameters, 'Wemb', self.O['n_words_src'], self.O['dim_word'])
+
+        # Encoder: bidirectional RNN
+        np_parameters = self.init_encoder(np_parameters)
 
         # Target embedding
         self.init_embedding(np_parameters, 'Wemb_dec', self.O['n_words'], self.O['dim_word'])
+
+        # Decoder
+        self.init_decoder(np_parameters)
+
+        # Per-word prediction part.
+
+        with _delib_env(self):
+            # Source position embedding
+            if self.O['use_src_pos']:
+                self.init_embedding(np_parameters, 'Wemb_pos', self.O['maxlen'] + 1, self.O['dim_word'])
+
+            # Target position embedding
+            self.init_embedding(np_parameters, 'Wemb_dec_pos', self.O['maxlen'] + 1, self.O['dim_word'])
+
+            # Deliberation decoder
+            self.init_independent_decoder(np_parameters)
 
         return np_parameters
 
@@ -29,8 +73,9 @@ class ConditionalSoftmaxInitializer(DelibInitializer):
 class ConditionalSoftmaxModel(DelibNMT):
     def __init__(self, options, delib_options, given_params=None):
         super(ConditionalSoftmaxModel, self).__init__(options, given_params)
+        self.initializer = ConditionalSoftmaxInitializer(options, delib_options)
 
-        # Deliberation model options
+        # Per-word prediction options
         self.DO = delib_options
 
         # Share context info between RNN and per-word prediction.
@@ -74,9 +119,32 @@ class ConditionalSoftmaxModel(DelibNMT):
         return params
 
     def independent_decoder(self, tgt_pos_embed, y, y_mask, context, x_mask, dropout_params=None, **kwargs):
-        if self.DO['decoder_all_attention']:
+        """
+        Build per-word prediction decoder.
+
+        Parameters
+        ----------
+        tgt_pos_embed
+        y : Theano variable
+            ([Tt], [Bs])
+        y_mask : Theano variable
+            ([Tt], [Bs])
+        context
+        x_mask
+        dropout_params
+        kwargs
+
+        Returns
+        -------
+
+        Notes
+        -----
+        This method must be called in context `_delib_env`.
+        """
+
+        if self.O['decoder_all_attention']:
             projected_context = T.dot(context, self.P['attn_0_ctx2hidden'])
-        if self.DO['decoder_style'] == 'stackNN':
+        if self.O['decoder_style'] == 'stackNN':
             ctx_info = self.get_context_info(context, x_mask, tgt_pos_embed)
             H_ = T.dot(tgt_pos_embed, self.P['decoder_W_pose2h']) + \
                 T.dot(ctx_info, self.P['decoder_W_ctx2h']) + self.P['decoder_b_i2h']
@@ -90,13 +158,13 @@ class ConditionalSoftmaxModel(DelibNMT):
                 else:
                     H_ = T.dot(H_, self.P['decoder_W_h2h'][layer_id]) + self.P['decoder_b_h2h'][layer_id]
             H_ = T.tanh(H_)
-        elif self.DO['decoder_style'] == 'stackLSTM':
+        elif self.O['decoder_style'] == 'stackLSTM':
             H_ = self.stackLSTM(tgt_pos_embed, 'decoder', y_mask, context, x_mask)
         else:
             raise Exception('Not implemented yet')
         trng = kwargs.pop('trng', RandomStreams(1234))
         use_noise = kwargs.pop('use_noise', theano.shared(np.float32(1.)))
-        if self.DO['use_dropout']:
+        if self.O['use_dropout']:
             H_ = self.dropout(H_, use_noise, trng)
 
         logit = self.feed_forward(H_, prefix='fc_lastHtoSoftmax', activation=lambda x: x)
@@ -124,12 +192,13 @@ class ConditionalSoftmaxModel(DelibNMT):
         (x, x_mask, y, y_mask), context, _ = self.input_to_context(dropout_params=dropout_params)
 
         # Per-word prediction decoder.
-        # todo: change y_pos_ into expression of y?
-        y_pos_ = T.matrix('y_pos_', dtype='int64')
-        tgt_pos_embed = self.P['Wemb_dec_pos'][y_pos_.flatten()].reshape(
-            [y_pos_.shape[0], y_pos_.shape[1], self.DO['dim_word']])
-        pw_probs = self.independent_decoder(tgt_pos_embed, y, y_mask, context, x_mask,
-                                            dropout_params=None, trng=trng, use_noise=use_noise)
+        with _delib_env(self):
+            # todo: change y_pos_ into expression of y?
+            y_pos_ = T.matrix('y_pos_', dtype='int64')
+            tgt_pos_embed = self.P['Wemb_dec_pos'][y_pos_.flatten()].reshape(
+                [y_pos_.shape[0], y_pos_.shape[1], self.DO['dim_word']])
+            pw_probs = self.independent_decoder(tgt_pos_embed, y, y_mask, context, x_mask,
+                                                dropout_params=None, trng=trng, use_noise=use_noise)
 
         # RNN decoder.
         n_timestep, n_timestep_tgt, n_samples = self.input_dimensions(x, y)
@@ -187,7 +256,6 @@ class ConditionalSoftmaxModel(DelibNMT):
         if self.O['dropout_out']:
             logit = self.dropout(logit, use_noise, trng, self.O['dropout_out'])
 
-        # todo: change this into conditional softmax.
         pw_probs = kwargs.pop('pw_probs', None)     # ([Tt] * [Bs], n_words)
         k = self.O['cond_softmax_k']
 
