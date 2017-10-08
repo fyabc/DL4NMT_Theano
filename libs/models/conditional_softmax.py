@@ -54,6 +54,17 @@ class ConditionalSoftmaxInitializer(DelibInitializer):
         # Decoder
         self.init_decoder(np_parameters)
 
+        # Readout
+        context_dim = 2 * self.O['dim']
+        np_parameters = self.init_feed_forward(np_parameters, prefix='ff_logit_lstm', nin=self.O['dim'],
+                                               nout=self.O['dim_word'], orthogonal=False)
+        np_parameters = self.init_feed_forward(np_parameters, prefix='ff_logit_prev', nin=self.O['dim_word'],
+                                               nout=self.O['dim_word'], orthogonal=False)
+        np_parameters = self.init_feed_forward(np_parameters, prefix='ff_logit_ctx', nin=context_dim,
+                                               nout=self.O['dim_word'], orthogonal=False)
+        np_parameters = self.init_feed_forward(np_parameters, prefix='ff_logit', nin=self.O['dim_word'],
+                                               nout=self.O['n_words'])
+
         # Per-word prediction part.
 
         with _delib_env(self):
