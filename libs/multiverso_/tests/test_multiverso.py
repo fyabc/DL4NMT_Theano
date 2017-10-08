@@ -17,8 +17,6 @@ import numpy as np
 import theano
 from multiverso_.theano_ext import sharedvar
 
-__author__ = 'fyabc'
-
 
 def setUpModule():
     mv.init()

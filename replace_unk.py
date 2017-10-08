@@ -12,8 +12,6 @@ from libs.models import build_and_init_model
 from libs.utility.translate import get_bleu, de_bpe
 from libs.utility.utils import prepare_data
 
-__author__ = 'fyabc'
-
 
 def _load_data(args, dic1, dic2, test1):
     with open('{}.pkl'.format(args.model), 'rb') as f:

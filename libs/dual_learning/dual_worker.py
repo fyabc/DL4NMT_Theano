@@ -6,8 +6,6 @@ from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
 from ..models import build_and_init_model
 
-__author__ = 'fyabc'
-
 
 class DualLearningWorker(object):
     def __init__(self, options,

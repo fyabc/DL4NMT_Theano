@@ -7,8 +7,6 @@ import sys
 import os
 import random
 
-__author__ = 'fyabc'
-
 
 def main():
     input_filename1 = sys.argv[1]

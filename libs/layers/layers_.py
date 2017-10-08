@@ -5,8 +5,6 @@ from .basic import *
 from .gru import *
 from .lstm import *
 
-__author__ = 'fyabc'
-
 # layers: 'name': ('parameter initializer', 'builder')
 layers = {
     'ff': (param_init_feed_forward, feed_forward),

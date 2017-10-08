@@ -6,8 +6,6 @@ from theano import tensor as T
 from ..utility.utils import _p, normal_weight
 from ..constants import fX
 
-__author__ = 'fyabc'
-
 
 # Some utilities.
 

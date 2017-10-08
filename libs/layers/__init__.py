@@ -5,5 +5,3 @@ from .basic import tanh, linear, dropout_layer, attention_layer, param_init_feed
 from .gru import *
 from .lstm import *
 from .layers_ import *
-
-__author__ = 'fyabc'

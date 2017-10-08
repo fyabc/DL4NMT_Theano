@@ -33,8 +33,6 @@ from libs.utility.utils import prepare_data_x
 from libs.utility.translate import load_translate_data
 from libs.constants import Datasets
 
-__author__ = 'fyabc'
-
 
 Gates = ['input_gates_list', 'forget_gates_list', 'output_gates_list', 'state_list', 'memory_list']
 GatesAtt = ['input_gates_att_list', 'forget_gates_att_list', 'output_gates_att_list']

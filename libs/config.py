@@ -1,8 +1,6 @@
 #! /usr/bin/python
 # -*- coding: utf-8 -*-
 
-__author__ = 'fyabc'
-
 # Dict of default options (Copied from nmt.py)
 DefaultOptions = dict(
     dim_word=100,  # word vector dimensionality

@@ -9,8 +9,6 @@ from ..constants import fX, profile
 from .basic import _slice, _attention, dropout_layer
 from ..utility.utils import _p, normal_weight, orthogonal_weight
 
-__author__ = 'fyabc'
-
 
 def param_init_lstm(O, params, prefix='lstm', nin=None, dim=None, **kwargs):
     if nin is None:

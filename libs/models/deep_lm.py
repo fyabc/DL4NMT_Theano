@@ -3,8 +3,6 @@
 
 """Deep language model."""
 
-__author__ = 'fyabc'
-
 
 class LanguageModelInitializer(object):
     pass

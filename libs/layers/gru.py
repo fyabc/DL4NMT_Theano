@@ -9,8 +9,6 @@ from ..constants import fX, profile
 from .basic import _slice, dropout_layer, _attention
 from ..utility.utils import _p, normal_weight, orthogonal_weight
 
-__author__ = 'fyabc'
-
 
 def param_init_gru(O, params, prefix='gru', nin=None, dim=None, **kwargs):
     if nin is None:

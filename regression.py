@@ -31,8 +31,6 @@ from libs.utility.data_iterator import TextIterator
 from libs.utility.optimizers import Optimizers
 from libs.utility.utils import *
 
-__author__ = 'fyabc'
-
 
 def build_loss(x, x_mask, context_old, context_new, args):
     # Context shape: ([Ts], [BS], [Hc]))

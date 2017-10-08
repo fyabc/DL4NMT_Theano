@@ -15,8 +15,6 @@ from ..constants import fX, profile
 from ..utility.utils import *
 from ..layers import *
 
-__author__ = 'fyabc'
-
 
 # TODO: code paste from yingce, need test
 class TrgAttnParameterInitializer(ParameterInitializer):

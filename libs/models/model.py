@@ -25,8 +25,6 @@ from ..config import DefaultOptions
 from ..utility.utils import *
 from ..layers import *
 
-__author__ = 'fyabc'
-
 
 class ParameterInitializer(object):
     def __init__(self, options):

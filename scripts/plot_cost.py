@@ -8,8 +8,6 @@ import argparse
 
 import matplotlib.pyplot as plt
 
-__author__ = 'fyabc'
-
 
 def average(l):
     if not l:

@@ -4,8 +4,6 @@
 from .model import *
 from .target_attention import *
 
-__author__ = 'fyabc'
-
 
 def build_and_init_model(model_name, options=None, build=True, model_type='NMTModel'):
     import cPickle as pkl

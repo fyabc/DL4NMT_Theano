@@ -7,8 +7,6 @@ import sys
 from collections import OrderedDict
 import cPickle as pkl
 
-__author__ = 'fyabc'
-
 
 def main():
     input_filename = sys.argv[1]

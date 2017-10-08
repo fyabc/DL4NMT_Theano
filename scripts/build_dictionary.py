@@ -17,8 +17,6 @@ import fileinput
 from collections import OrderedDict
 import argparse
 
-__author__ = 'fyabc'
-
 
 def real_main(args):
     if args.output is None:

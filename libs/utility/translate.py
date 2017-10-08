@@ -12,8 +12,6 @@ from collections import defaultdict
 
 from .utils import prepare_data_x
 
-__author__ = 'fyabc'
-
 def chosen_by_len_alpha(beam_samples, beam_scores, alpha):
     length_penalty = np.power(np.array([len(s) for s in beam_samples], dtype= np.float32), alpha)
     score = beam_scores / length_penalty
