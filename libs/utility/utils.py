@@ -644,6 +644,9 @@ def check_options(options):
     if options['reload_']:
         assert os.path.exists(options['preload']), 'preload file {} does not exist'.format(options['preload'])
 
+    assert not options['use_delib'] or not options['cond_softmax'], \
+        'Cannot use conditional softmax in deliberation model'
+
 
 def search_start_uidx(reload_, preload):
     if not reload_:

@@ -170,7 +170,7 @@ def main():
     parser.add_argument('--which_word', type=int, default=None, help='')
     parser.add_argument('--fix_encoder', action='store_true', default=False, dest='fix_encoder',
                         help='whether to fix encoder when training deliberation model')
-    parser.add_argument('--cond_softmax', action='store_true', default=None, dest='cond_softmax',
+    parser.add_argument('--cond_softmax', action='store', default=None, dest='cond_softmax',
                         help='Deliberation model path to add conditional softmax into decoder, default is %(default)s')
     parser.add_argument('--cond_softmax_k', action='store', default=1000, dest='cond_softmax_k', type=int,
                         help='Use top-k pre-word prediction in conditional softmax, default is %(default)d')
