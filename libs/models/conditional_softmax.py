@@ -282,7 +282,7 @@ class ConditionalSoftmaxModel(DelibNMT):
 
             probs = T.alloc(floatX(0.), *pw_probs.shape)
             # get top-k probability indices from per-word probs, then apply it into probs
-            T.set_subtensor(probs[top_k_indices], T.nnet.softmax(logit_reshaped[top_k_indices]))
+            probs = T.set_subtensor(probs[top_k_indices], T.nnet.softmax(logit_reshaped[top_k_indices]))
         else:
             probs = T.nnet.softmax(logit_reshaped)
 
