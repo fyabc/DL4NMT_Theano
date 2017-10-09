@@ -184,7 +184,7 @@ def all_reduce_params_nccl(nccl_commu, sent_shared_params):
         gpu2gpu_cp_time += time.time() - cp_start
 
         commu_start = time.time()
-        get_value = nccl_commu.all_reduce(model_val, op= "sum")
+        get_value = nccl_commu.all_reduce(model_val, op = "sum")
         commu_time += time.time() - commu_start
 
         cp_start = time.time()
@@ -243,7 +243,7 @@ def load_embedding(params, embedding_model_file, emb_keys=('Wemb', 'Wemb_dec')):
 
     return params
 
-def load_word_params(params, old_params, src_map, tgt_map):
+def load_word_params(params, old_params, src_map = None, tgt_map = None):
     """
     To warm start the embedding related params when old/new vocabs donot exactly match
     If src_map or tgt_map is provided, init by mapping, otherwise, by directly setting sub arrays
@@ -584,7 +584,7 @@ def print_params(params, exit_=False):
 
 
 def load_options_train(options, reload_=None, preload=None):
-    """Reload options."""
+    """Reload options for continuing training"""
 
     reload_ = options['reload_'] if reload_ is None else reload_
     preload = options['preload'] if preload is None else preload
@@ -599,7 +599,6 @@ def load_options_train(options, reload_=None, preload=None):
     if reload_ and os.path.exists(preload):
         print('Reloading model options')
         with open('{}.pkl'.format(preload), 'rb') as f:
-            # model_options = pkl.load(f)
             # FIXME: Update the option instead of replace it
             options.update(pkl.load(f))
 
@@ -687,7 +686,7 @@ def get_optimizer_imm_data(optimizer, given_imm, preload, iteration=None):
                 else:
                     pass
         else:
-            message('Immediate data not found.')
+            message('Immediate data file %s not found.' % given_imm_filename)
     return None
 
 

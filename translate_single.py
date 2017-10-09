@@ -12,6 +12,7 @@ import theano
 
 from libs.config import DefaultOptions
 from libs.models import build_and_init_model
+from libs.utility import load_options_test
 from libs.utility.translate import load_translate_data, seqs2words, translate, translate_block
 
 __author__ = 'fyabc'

@@ -98,6 +98,8 @@ def main():
                         help='Use zigzag in encoder, default is True, set to False')
     parser.add_argument('--dropout', action="store", metavar="dropout", dest="dropout", type=float, default=False,
                         help='Dropout rate for rnn hidden states, default is False (not use dropout)')
+    parser.add_argument('--dropout_out', action="store", metavar="dropout_out", dest="dropout_out", type=float, default=False,
+                        help='Dropout rate before softmax, default is False (not use dropout)')
     parser.add_argument('--unit_size', action='store', default=2, type=int, dest='unit_size',
                         help='Number of unit size, default is %(default)s')
     # TODO: rename this option to decoder_unit_size in future
@@ -148,14 +150,15 @@ def main():
                         help='Use densely connected network architecture, default to False, set to True')
     parser.add_argument('--dense_attention', action="store_true", default=False, dest='dense_attention',
                         help='Use densely connected in attention mechanism, default to False, set to True')
-    parser.add_argument('--previous_best_bleu', action='store', default=0.0, dest='previous_best_bleu', type=float,
+    parser.add_argument('--previous_best_bleu', action='store', default=0.0, type=float, dest='previous_best_bleu',
                         help='Previous best bleu during training, default to 0.0')
-    parser.add_argument('--previous_best_valid_cost', action='store', default=1e5, dest='previous_best_valid_cost', type=float,
+    parser.add_argument('--previous_best_valid_cost', action='store', default=1e5, type=float, dest='previous_best_valid_cost',
                         help='Previous best valid cost during training, default to 100000.0')
-    parser.add_argument('--previous_finetune_cnt', action="store", default=0, dest='previous_finetune_cnt', type=int,
-                        help='Previous finetune count during training, default to 0')
-    parser.add_argument('--previous_bad_count', action="store", default=0, dest='previous_bad_count', type=int,
+    parser.add_argument('--previous_bad_count', action="store", default=0, type=int, dest='previous_bad_count',
                         help='Previous bad count during training, default to 0')
+    parser.add_argument('--previous_finetune_cnt', action="store", default=0, type=int, dest='previous_finetune_cnt',
+                        help='Previous finetune count during training, default to 0')
+    
 
     args = parser.parse_args()
     print args
@@ -252,7 +255,8 @@ def main():
         vocab_filenames=('./data/dic/{}'.format(args.dic1),
                          './data/dic/{}'.format(args.dic2)),
         task=args.dataset,
-        use_dropout=args.dropout,
+        use_dropout = args.dropout, #dropout ratio for rnn hidden
+        dropout_out = args.dropout_out, #dropout ratio for hidden before softmax layer
         overwrite=False,
         n_words=args.n_words_tgt,
         n_words_src=args.n_words_src,

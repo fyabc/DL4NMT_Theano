@@ -31,7 +31,7 @@ def linear(x):
 
 # Some helper layers.
 
-def dropout_layer(state_before, use_noise, trng, dropout_rate=0.5):
+def dropout_layer(state_before, use_noise, trng, dropout_rate = 0.):
     """Dropout"""
 
     projection = T.switch(
@@ -41,17 +41,23 @@ def dropout_layer(state_before, use_noise, trng, dropout_rate=0.5):
         state_before * (1. - dropout_rate))
     return projection
 
-def layer_normalization_layer(z, alpha, beta, eps=1e-6):
-    '''
-    refer to https://arxiv.org/pdf/1607.06450.pdf, Eqn.(15) ~ Eqn.(22)
-    :param z: (..., dim)
-    :param alpha: (dim,)
-    :param beta: (dim,)
-    :return: normalized matrix
-    '''
-    mu_ = z.mean(axis=-1, keepdims=True)
-    var_ = T.var(z, axis=-1, keepdims=True)
-    return ((z - mu_) / T.sqrt(var_ + eps)) * alpha + beta
+
+def attention_layer(context_mask, et, ht_1, We_att, Wh_att, Wb_att, U_att, Ub_att):
+    """Attention"""
+
+    a_network = T.tanh(T.dot(et, We_att) + T.dot(ht_1, Wh_att) + Wb_att)
+    alpha = T.dot(a_network, U_att) + Ub_att
+    alpha = alpha.reshape([alpha.shape[0], alpha.shape[1]])
+    alpha = T.exp(alpha)
+    if context_mask:
+        alpha *= context_mask
+    alpha = alpha / alpha.sum(0, keepdims=True)
+    # if Wp_compress_e:
+    #    ctx_t = (tensor.dot(et, Wp_compress_e) * alpha[:,:,None]).sum(0) # This is the c_t in Baidu's paper
+    # else:
+    #    ctx_t = (et * alpha[:,:,None]).sum(0)
+    ctx_t = (et * alpha[:, :, None]).sum(0)
+    return ctx_t
 
 
 def param_init_feed_forward(O, params, prefix='ff', nin=None, nout=None,
