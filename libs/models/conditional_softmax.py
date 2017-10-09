@@ -1,10 +1,12 @@
 #! /usr/bin/python
 # -*- coding: utf-8 -*-
 
+import copy
 from collections import OrderedDict
 from contextlib import contextmanager
 
 import numpy as np
+import numexpr as ne
 import theano
 import theano.tensor as T
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
@@ -339,9 +341,25 @@ class ConditionalSoftmaxModel(DelibNMT):
 
         logit = self.feed_forward(logit, prefix='ff_logit', activation=linear)
 
+        # The timestep t indicator. Every time `f_next` called, increment it.
+        t_indicator = theano.shared(np.int64(0), 't_indicator')
+
+        # Per-word prediction decoder.
+        with _delib_env(self):
+            # [NOTE]: In testing stage of per-word prediction decoder,
+            # y: (1, [Bs]); y_pos_: (1, [Bs]), y_mask: (1, [Bs])
+            # different from RNN decoder one-step mode.
+            y_ = y[None]
+            y_pos_ = T.repeat(t_indicator, n_samples)[None]
+            y_mask = T.alloc(floatX(1.), 1, n_samples)
+
+            tgt_pos_embed = self.P['Wemb_dec_pos'][y_pos_.flatten()].reshape(
+                [y_pos_.shape[0], y_pos_.shape[1], self.DO['dim_word']])
+            pw_probs = self.independent_decoder(tgt_pos_embed, y_, y_mask, ctx, x_mask,
+                                                dropout_params=None, trng=trng, use_noise=use_noise)
+
         # Compute the softmax probability
-        # todo: add pw_probs
-        next_probs = self._conditional_softmax(logit, pw_probs=None)
+        next_probs = self._conditional_softmax(logit, pw_probs=pw_probs)
 
         # Sample from softmax distribution to get the sample
         next_sample = trng.multinomial(pvals=next_probs).argmax(1)
@@ -367,13 +385,15 @@ class ConditionalSoftmaxModel(DelibNMT):
                 kw_ret['forget_gates_att'],
                 kw_ret['output_gates_att'],
             ])
-        f_next = theano.function(inps, outs, name='f_next', profile=profile)
+        f_next = theano.function(
+            inps, outs, name='f_next', profile=profile,
+            updates={t_indicator: t_indicator + 1},
+        )
         print 'Done'
 
         return f_init, [f_next, f_att_projected]
 
     def gen_batch_sample(self, f_init, f_next, x, x_mask, trng=None, k=1, maxlen=30, eos_id=0, attn_src=False, **kwargs):
-        # todo
         return NMTModel.gen_batch_sample(self, f_init, f_next, x, x_mask, trng=trng, k=k, maxlen=maxlen, eos_id=eos_id,
                                          attn_src=attn_src, **kwargs)
 
