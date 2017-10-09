@@ -136,8 +136,6 @@ def main():
                         help='Validation frequency, default is 5000')
     parser.add_argument('--trg_att', action='store', metavar='N', dest='trg_attention_layer_id', type=int, default=None,
                         help='Target attention layer id, default is None (not use target attention)')
-    parser.add_argument('--fix_dp_bug', action="store_true", default=False, dest='fix_dp_bug',
-                        help='Fix previous dropout bug, default to False, set to True')
     parser.add_argument('--abandon_imm', action="store_true", default=False, dest='abandon_imm',
                         help='Whether to load previous immediate params, default to False, set to True')
     parser.add_argument('--start_from_histo_data', action="store_true", default=False, dest='start_from_histo_data',
@@ -146,8 +144,6 @@ def main():
                         help='The buffer size in data reader, default to 40')
     parser.add_argument('--start_epoch', action='store', default=00, type=int, dest='start_epoch',
                         help='The starting epoch, default to 0')
-    parser.add_argument('--use_LN', action="store_true", default=False, dest='use_LN',
-                        help='Use layer normalization in RNN, default to False, set to True')
     parser.add_argument('--dense', action="store_true", default=False, dest='densely_connected',
                         help='Use densely connected network architecture, default to False, set to True')
     parser.add_argument('--dense_attention', action="store_true", default=False, dest='dense_attention',
@@ -296,11 +292,9 @@ def main():
         tgt_vocab_map_file= args.tgt_vocab_map_file,
 
         trg_attention_layer_id=args.trg_attention_layer_id,
-        fix_dp_bug= args.fix_dp_bug,
         io_buffer_size= args.buffer_size,
         start_epoch= args.start_epoch,
         start_from_histo_data =  args.start_from_histo_data,
-        use_LN = args.use_LN,
         densely_connected = args.densely_connected,
         dense_attention = args.dense_attention,
         previous_best_bleu = args.previous_best_bleu,

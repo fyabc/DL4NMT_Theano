@@ -35,20 +35,7 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,
     batch_mode = batch_size > 0
 
     # load model model_options
-    option_file = '%s.pkl' % model
-    if not os.path.exists(option_file):
-        m = re.search("iter(\d+)\.npz", model)
-        if m:
-            uidx = int(m.group((1)))
-            option_file = '%s.iter%d.npz.pkl' % (os.path.splitext(model)[0], uidx)
-
-    with open(option_file, 'rb') as f:
-        options = DefaultOptions.copy()
-        options.update(pkl.load(f))
-        if 'fix_dp_bug' not in options:
-            options['fix_dp_bug'] = False
-        print 'Options:'
-        pprint(options)
+    options = load_options_test(model)
 
     from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
     trng = RandomStreams(1234)

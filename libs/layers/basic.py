@@ -41,24 +41,6 @@ def dropout_layer(state_before, use_noise, trng, dropout_rate=0.5):
         state_before * (1. - dropout_rate))
     return projection
 
-
-def attention_layer(context_mask, et, ht_1, We_att, Wh_att, Wb_att, U_att, Ub_att):
-    """Attention"""
-
-    a_network = T.tanh(T.dot(et, We_att) + T.dot(ht_1, Wh_att) + Wb_att)
-    alpha = T.dot(a_network, U_att) + Ub_att
-    alpha = alpha.reshape([alpha.shape[0], alpha.shape[1]])
-    alpha = T.exp(alpha)
-    if context_mask:
-        alpha *= context_mask
-    alpha = alpha / alpha.sum(0, keepdims=True)
-    # if Wp_compress_e:
-    #    ctx_t = (tensor.dot(et, Wp_compress_e) * alpha[:,:,None]).sum(0) # This is the c_t in Baidu's paper
-    # else:
-    #    ctx_t = (et * alpha[:,:,None]).sum(0)
-    ctx_t = (et * alpha[:, :, None]).sum(0)
-    return ctx_t
-
 def layer_normalization_layer(z, alpha, beta, eps=1e-6):
     '''
     refer to https://arxiv.org/pdf/1607.06450.pdf, Eqn.(15) ~ Eqn.(22)
@@ -131,32 +113,13 @@ def _attention(h1, projected_context_, context_, context_mask=None, dense_attent
 
     return ctx_, alpha
 
-
-def _attention_trg(h1, decoded_h,
-                   Wh_trgatt, U_trgatt, b_trgatt, v_trgatt, c_trgatt,
-                   current_step, trg_mask=None):
-    decoded_h_ = decoded_h[:(current_step + 1)]
-    pstate_trg = T.dot(h1, Wh_trgatt) + T.dot(decoded_h_, U_trgatt) + b_trgatt
-
-    pstate_trg = T.dot(T.tanh(pstate_trg), v_trgatt) + c_trgatt
-    pstate_trg = pstate_trg.reshape([pstate_trg.shape[0], pstate_trg.shape[1]])
-    exp_pstate_trg = T.exp(pstate_trg)
-    if trg_mask:
-        exp_pstate_trg *= trg_mask[:(current_step+1)]
-    alpha_trg = exp_pstate_trg / exp_pstate_trg.sum(axis=0, keepdims=True)
-    ctx_trg_ = (decoded_h_ * alpha_trg[:, :, None]).sum(axis=0)
-    return ctx_trg_, alpha_trg
-
-
 __all__ = [
     '_slice',
     'tanh',
     'linear',
     'dropout_layer',
-    'layer_normalization_layer',
     'attention_layer',
     'param_init_feed_forward',
     'feed_forward',
     '_attention',
-    '_attention_trg',
 ]

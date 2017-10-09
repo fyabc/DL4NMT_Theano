@@ -107,6 +107,7 @@ def load_options_test(model_name):
             options['fix_dp_bug'] = False
         print('Options:')
         pprint(options)
+
     return options
 
 # These parameters should be duplicated for multiverso.
@@ -115,7 +116,6 @@ dup_size = 100
 
 def is_dup_params(name):
     return name.startswith(tuple(dup_shared_var_list))
-
 
 def init_tparams(params, given_tparams=None, given_dup_tparams=None, use_mv=False):
     """Initialize Theano shared variables according to the initial parameters"""
@@ -227,10 +227,10 @@ def load_params(path, params, src_map_file = None, tgt_map_file = None):
         if params[key].shape == old_params[key].shape:
             params[key] = old_params[key]
 
-    if src_map_file and tgt_map_file:
-        src_map = pkl.load(open(src_map_file, 'rb'))
-        tgt_map = pkl.load(open(tgt_map_file, 'rb'))
-        params = load_word_params(params, old_params, src_map, tgt_map)
+    src_map = pkl.load(open(src_map_file, 'rb')) if src_map_file else None
+    tgt_map = pkl.load(open(tgt_map_file, 'rb')) if tgt_map_file else None
+
+    params = load_word_params(params, old_params, src_map, tgt_map)
 
     return params
 
@@ -244,31 +244,62 @@ def load_embedding(params, embedding_model_file, emb_keys=('Wemb', 'Wemb_dec')):
     return params
 
 def load_word_params(params, old_params, src_map, tgt_map):
+    """
+    To warm start the embedding related params when old/new vocabs donot exactly match
+    If src_map or tgt_map is provided, init by mapping, otherwise, by directly setting sub arrays
+    :param params: new model parameters in list of np array
+    :param old_params: new model parameters in list of np array
+    :param src_map: dic mapping new src word id to old src word id
+    :param tgt_map: dic mapping new tgt word id to old tgt word id
+    """
+    src_vocab_size = params['Wemb'].shape[0]
+    old_src_vocab_size = old_params['Wemb'].shape[0]
+    tgt_vocab_size = params['Wemb_dec'].shape[0]
+    old_tgt_vocab_size = old_params['Wemb_dec'].shape[0]
+
+    if not src_map and not tgt_map and src_vocab_size == old_src_vocab_size and tgt_vocab_size == old_tgt_vocab_size:
+        return params
+
     UNK_ID = 1
 
-    src_vocab_size = params['Wemb'].shape[0]
     Wemb_T = np.tile(old_params['Wemb'][UNK_ID], [src_vocab_size, 1]).T
-    old_Wemb_T = old_params['Wemb'].T #transpose to speed up by more efficient cache
+    old_Wemb_T = old_params['Wemb'].T #transpose to speed up by more efficient cache, with shape n_dim x old_n_words
     print(Wemb_T.shape, old_Wemb_T.shape)
-    for (new_word_id, old_word_id) in src_map.iteritems():
-        if new_word_id < src_vocab_size and old_word_id < old_params['Wemb'].shape[0]:
-            Wemb_T[:, new_word_id] = old_Wemb_T[:, old_word_id]
-        sys.stdout.write('\r%d %d' % (new_word_id, old_word_id))
-    params['Wemb'] = Wemb_T.T
 
-    tgt_vocab_size = params['Wemb_dec'].shape[0]
+    if src_map:
+        for (new_word_id, old_word_id) in src_map.iteritems():
+            if new_word_id < src_vocab_size and old_word_id < old_params['Wemb'].shape[0]:
+                Wemb_T[:, new_word_id] = old_Wemb_T[:, old_word_id]
+            sys.stdout.write('\r%d %d' % (new_word_id, old_word_id))
+    elif src_vocab_size != old_src_vocab_size:
+        Wemb_T[:,:old_src_vocab_size] = old_Wemb_T
+    else:
+        Wemb_T = None
+
+    if Wemb_T is not None:
+        params['Wemb'] = Wemb_T.T
+
     Wemb_dec_T = np.tile(old_params['Wemb_dec'][UNK_ID], [tgt_vocab_size, 1]).T
     old_Wemb_dec_T = old_params['Wemb_dec'].T
     params['ff_logit_W'] = np.tile(old_params['ff_logit_W'][:,UNK_ID], [tgt_vocab_size,1]).T
     params['ff_logit_b'].fill(old_params['ff_logit_b'][UNK_ID])
     print(params['Wemb_dec'].shape, params['ff_logit_W'].shape, params['ff_logit_b'].shape)
-    for (new_word_id, old_word_id) in tgt_map.iteritems():
-        if new_word_id < tgt_vocab_size and old_word_id < old_params['Wemb_dec'].shape[0]:
-            Wemb_dec_T[:,new_word_id] = old_Wemb_dec_T[:,old_word_id]
-            params['ff_logit_W'][:,new_word_id] = old_params['ff_logit_W'][:,old_word_id]
-            params['ff_logit_b'][new_word_id] = old_params['ff_logit_b'][old_word_id]
-        sys.stdout.write('\r%d %d' % (new_word_id, old_word_id))
-    params['Wemb_dec'] = Wemb_dec_T.T
+    if tgt_map:
+        for (new_word_id, old_word_id) in tgt_map.iteritems():
+            if new_word_id < tgt_vocab_size and old_word_id < old_params['Wemb_dec'].shape[0]:
+                Wemb_dec_T[:,new_word_id] = old_Wemb_dec_T[:,old_word_id]
+                params['ff_logit_W'][:,new_word_id] = old_params['ff_logit_W'][:,old_word_id]
+                params['ff_logit_b'][new_word_id] = old_params['ff_logit_b'][old_word_id]
+            sys.stdout.write('\r%d %d' % (new_word_id, old_word_id))
+    elif tgt_vocab_size != old_tgt_vocab_size:
+        Wemb_dec_T[:,:old_tgt_vocab_size] = old_Wemb_dec_T
+        params['ff_logit_W'][:,:old_tgt_vocab_size] = old_params['ff_logit_W']
+        params['ff_logit_b'][:old_tgt_vocab_size] = old_params['ff_logit_b']
+    else:
+        Wemb_dec_T = None
+
+    if Wemb_dec_T is not None:
+        params['Wemb_dec'] = Wemb_dec_T.T
 
     print('\nLoad previous word related params done')
     return params
@@ -299,7 +330,6 @@ def uniform_weight(nin, nout=None, scale=0.01):
     if nout is None:
         nout = nin
     return np.random.uniform(-1. * scale, 1. * scale, (nin, nout)).astype('float32')
-
 
 def concatenate(tensor_list, axis=0):
     """
@@ -350,7 +380,6 @@ def average(l):
     if not l:
         return 0.0
     return sum(l) / len(l)
-
 
 def apply_gradient_clipping(clip_c, grads, clip_shared=None):
     g2 = 0.
@@ -504,6 +533,14 @@ def prepare_data_x(seqs_x, maxlen=None, pad_eos=True, pad_sos=False, n_word=3000
 
     return x, x_mask
 
+def get_batch_place_holder(batch_size, maxlen):
+    x = np.zeros((maxlen + 1, batch_size)).astype('int64')
+    y = np.zeros((maxlen + 1, batch_size)).astype('int64')
+    x_mask = np.zeros((maxlen + 1, batch_size)).astype('float32')
+    x_mask[:1,:] = 1.
+    y_mask = np.zeros((maxlen + 1, batch_size)).astype('float32')
+    y_mask[:1,:] = 1.
+    return x, x_mask, y, y_mask
 
 def get_minibatches_idx(n, minibatch_size, shuffle=False):
     """
@@ -546,13 +583,13 @@ def print_params(params, exit_=False):
         exit(0)
 
 
-def load_options(options, reload_=None, preload=None, maintain_vocab_size = False):
+def load_options_train(options, reload_=None, preload=None):
     """Reload options."""
 
     reload_ = options['reload_'] if reload_ is None else reload_
     preload = options['preload'] if preload is None else preload
     dropout = options['use_dropout']
-    fix_dp_bug = options['fix_dp_bug']
+    dropout_softmax = options['dropout_out']
     valid_datasets = options['valid_datasets']
     vocab_filenames = options['vocab_filenames']
 
@@ -570,13 +607,12 @@ def load_options(options, reload_=None, preload=None, maintain_vocab_size = Fals
         options['reload_'] = reload_
         options['preload'] = preload
         options['use_dropout'] = dropout
+        options['dropout_out'] = dropout_softmax
         options['valid_datasets'] = valid_datasets
         options['vocab_filenames'] = vocab_filenames
-        options['fix_dp_bug'] = fix_dp_bug
 
-        if maintain_vocab_size:
-            options['n_words_src'] = src_vocab_size
-            options['n_words'] = tgt_vocab_size
+        options['n_words_src'] = src_vocab_size
+        options['n_words'] = tgt_vocab_size
 
 def save_options(options, iteration, saveto=None):
     saveto = options['saveto'] if saveto is None else saveto
@@ -768,15 +804,6 @@ def get_epoch_batch_cnt(dataset_src, dataset_tgt, vocab_filenames, batch_size, m
         n_batches += 1
     return n_batches
 
-def get_batch_place_holder(batch_size, maxlen):
-    x = np.zeros((maxlen + 1, batch_size)).astype('int64')
-    y = np.zeros((maxlen + 1, batch_size)).astype('int64')
-    x_mask = np.zeros((maxlen + 1, batch_size)).astype('float32')
-    x_mask[:1,:] = 1.
-    y_mask = np.zeros((maxlen + 1, batch_size)).astype('float32')
-    y_mask[:1,:] = 1.
-    return x, x_mask, y, y_mask
-
 __all__ = [
     'set_logging_file',
     'get_logging_file',
@@ -808,7 +835,8 @@ __all__ = [
     'get_minibatches_idx',
     'get_epoch_batch_cnt',
     'print_params',
-    'load_options',
+    'load_options_train',
+    'load_options_test',
     'save_options',
     'check_options',
     'search_start_uidx',

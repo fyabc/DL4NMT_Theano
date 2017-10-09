@@ -143,12 +143,9 @@ def train(dim_word=100,  # word vector dimensionality
           tgt_vocab_map_file = None,
 
           trg_attention_layer_id=None,
-          fix_dp_bug = False,
           io_buffer_size = 40,
           start_epoch = 0,
           start_from_histo_data = False,
-          fix_rnn_weights = False,
-          use_LN = False,
           densely_connected = False,
           dense_attention = False,
           previous_best_bleu = 0,
@@ -199,7 +196,7 @@ Start Time = {}
         message('Done')
     sys.stdout.flush()
 
-    load_options(model_options, reload_, preload, src_vocab_map_file and tgt_vocab_map_file)
+    load_options_train(model_options, reload_, preload)
     check_options(model_options)
     model_options['cost_normalization'] = 1
     ada_alpha = 0.95
