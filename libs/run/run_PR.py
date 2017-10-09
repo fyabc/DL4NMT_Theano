@@ -103,6 +103,36 @@ def predict(modelpath,
             k_list=(1,),
             args=None,  # More options here
             ):
+    """
+
+    Parameters
+    ----------
+    modelpath
+    action: str
+        Action string contains flags.
+        Flags:
+            'a': Accuracy
+            'p': Precision
+            'r': Recall
+            's': Print the first batch of ground-truth and predicted sentences
+            'v': Print average vocabulary size per batch of the predictor
+    valid_batch_size
+    valid_datasets
+    dictionary
+    dictionary_target
+    start_idx
+    step_idx
+    end_idx
+    logfile
+    k_list
+    args
+
+    Returns
+    -------
+    None
+    """
+
+    action = set(action)
     model_options = load_options_test(modelpath)
 
     maxlen = model_options['maxlen']
@@ -127,14 +157,21 @@ def predict(modelpath,
                                  '.iter' + str(curidx) + '.npz', params)
             for (kk, vv) in params.iteritems():
                 model.P[kk].set_value(vv)
+
+            # Used for accuracy.
             all_sample = [0 for _ in xrange(maxlen + 2)]
             correct_sample = [0 for _ in xrange(maxlen + 2)]
+
+            # All precisions and recalls.
             all_precisions_list = [[    # Shape: #k_list * (split + 1) * m_block
                 [] for _ in xrange(split + 1)
             ] for _ in xrange(len(k_list))]
             all_recalls_list = [[       # Shape: #k_list * (split + 1) * m_block
                 [] for _ in xrange(split + 1)
             ] for _ in xrange(len(k_list))]
+
+            # Vocabulary size of ground truth and predictor top-k.
+            vocab_size_y, vocab_size_top_k = [], []
 
             sample_translation = None
 
@@ -149,7 +186,7 @@ def predict(modelpath,
 
                 translation_time += time() - translation_start
 
-                if 'a' in action or 's' in action:
+                if not {'a', 's'}.isdisjoint(action):
                     _predict = probs.argmax(axis=1).reshape((y.shape[0], y.shape[1]))
                     results = ((_predict == y).astype('float32') * y_mask).sum(axis=1)
 
@@ -165,7 +202,7 @@ def predict(modelpath,
                             'translated': seqs2words(_predict.T, trg_idict),
                             'ground truth': seqs2words(seqy, trg_idict),
                         }
-                if 'p' in action or 'r' in action:
+                if not {'p', 'r', 'v'}.isdisjoint(action):
                     y_mask_i = y_mask.astype('int64')
 
                     for i, k in enumerate(k_list):
@@ -176,6 +213,14 @@ def predict(modelpath,
                             from bottleneck import argpartition as part_sort
                             _predict = part_sort(-probs, k - 1, axis=1)
                         _predict = _predict.reshape((y.shape[0], y.shape[1], _predict.shape[-1]))
+
+                        if 'v' in action:
+                            R = set((y * y_mask_i).flatten())
+                            R.discard(eos_id)
+                            vocab_size_y.append(len(R))
+                            T_n = set((_predict[:, :, :k] * y_mask_i[:, :, None]).flatten())
+                            T_n.discard(eos_id)
+                            vocab_size_y.append(len(T_n))
 
                         for s_idx in xrange(y.shape[1]):
                             p, r = _calc_PR(slice(None), y, y_mask_i, _predict, k, s_idx, eos_id)
@@ -242,6 +287,11 @@ def predict(modelpath,
                 message('Translated:')
                 for s in sample_translation['translated']:
                     message('\t' + s)
+            if 'v' in action:
+                message('Batch size: {}, Batch number: {}'.format(valid_batch_size, m_block))
+                message('Total target vocabulary size: {}'.format(model_options['n_words']))
+                message('Average ground truth vocabulary size: {}'.format(np.mean(vocab_size_y)))
+                message('Average predictor top-k vocabulary size: {}'.format(np.mean(vocab_size_top_k)))
 
             message()
     else:

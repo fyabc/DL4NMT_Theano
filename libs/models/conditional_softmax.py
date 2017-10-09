@@ -9,8 +9,9 @@ import theano
 import theano.tensor as T
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
-from .deliberation import DelibNMT, DelibInitializer
+from .deliberation import DelibNMT, DelibInitializer, NMTModel
 from ..layers import *
+from ..constants import fX, profile
 from ..utility.basic import floatX
 from ..utility.utils import _p
 
@@ -251,6 +252,131 @@ class ConditionalSoftmaxModel(DelibNMT):
 
         return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost, test_cost, self._ctx_info
 
+    def build_sampler(self, **kwargs):
+        batch_mode = kwargs.pop('batch_mode', False)
+        trng = kwargs.pop('trng', RandomStreams(1234))
+        use_noise = kwargs.pop('use_noise', theano.shared(np.float32(0.)))
+        get_gates = kwargs.pop('get_gates', False)
+        dropout_rate = kwargs.pop('dropout', False)
+        dropout_rate_out = self.O['dropout_out']
+        need_srcattn = kwargs.pop('need_srcattn', False)
+
+        if dropout_rate is not False:
+            dropout_params = [use_noise, trng, dropout_rate]
+        else:
+            dropout_params = None
+
+        unit = self.O['unit']
+
+        x = T.matrix('x', dtype='int64')
+        xr = x[::-1]
+        n_timestep = x.shape[0]
+        n_samples = x.shape[1]
+
+        if batch_mode:
+            x_mask = T.matrix('x_mask', dtype=fX)
+            xr_mask = x_mask[::-1]
+
+        # Word embedding for forward rnn and backward rnn (source)
+        src_embedding = self.embedding(x, n_timestep, n_samples)
+        src_embedding_r = self.embedding(xr, n_timestep, n_samples)
+
+        # Encoder
+        ctx, _ = self.encoder(
+            src_embedding, src_embedding_r,
+            x_mask if batch_mode else None, xr_mask if batch_mode else None,
+            dropout_params=dropout_params,
+        )
+
+        # Get the input for decoder rnn initializer mlp
+        ctx_mean = self.get_context_mean(ctx, x_mask) if batch_mode else ctx.mean(0)
+        init_state = self.feed_forward(ctx_mean, prefix='ff_state', activation=tanh)
+
+        print 'Building f_init...',
+        inps = [x]
+        if batch_mode:
+            inps.append(x_mask)
+        outs = [init_state, ctx]
+        f_init = theano.function(inps, outs, name='f_init', profile=profile)
+        print 'Done'
+
+        pre_projected_context_ = self.attention_projected_context(ctx, prefix='decoder')
+        f_att_projected = theano.function([ctx], pre_projected_context_, name='f_att_projected', profile=profile)
+
+        # x: 1 x 1
+        y = T.vector('y_sampler', dtype='int64')
+        init_state = T.tensor3('init_state', dtype=fX)
+        init_memory = T.tensor3('init_memory', dtype=fX)
+
+        # If it's the first word, emb should be all zero and it is indicated by -1
+        emb = T.switch(y[:, None] < 0,
+                       T.alloc(0., 1, self.P['Wemb_dec'].shape[1]),
+                       self.P['Wemb_dec'][y])
+        proj_ctx = T.tensor3('proj_ctx', dtype=fX)
+
+        # Apply one step of conditional gru with attention
+        hidden_decoder, context_decoder, alpha_src, kw_ret = self.decoder(
+            emb, y_mask=None, init_state=init_state, context=ctx, projected_context=proj_ctx,
+            x_mask=x_mask if batch_mode else None,
+            dropout_params=dropout_params, one_step=True, init_memory=init_memory,
+            get_gates=get_gates,
+        )
+
+        # Get memory_out and hiddens_without_dropout
+        # FIXME: stack list into a single tensor
+        memory_out = None
+        hiddens_without_dropout = T.stack(kw_ret['hiddens_without_dropout'])
+        if 'lstm' in unit:
+            memory_out = T.stack(kw_ret['memory_outputs'])
+
+        logit_lstm = self.feed_forward(hidden_decoder, prefix='ff_logit_lstm', activation=linear)
+        logit_prev = self.feed_forward(emb, prefix='ff_logit_prev', activation=linear)
+        logit_ctx = self.feed_forward(context_decoder, prefix='ff_logit_ctx', activation=linear)
+        logit = T.tanh(logit_lstm + logit_prev + logit_ctx)
+
+        if dropout_rate_out:
+            logit = self.dropout(logit, use_noise, trng, dropout_rate_out)
+
+        logit = self.feed_forward(logit, prefix='ff_logit', activation=linear)
+
+        # Compute the softmax probability
+        # todo: add pw_probs
+        next_probs = self._conditional_softmax(logit, pw_probs=None)
+
+        # Sample from softmax distribution to get the sample
+        next_sample = trng.multinomial(pvals=next_probs).argmax(1)
+
+        # Compile a function to do the whole thing above, next word probability,
+        # sampled word for the next target, next hidden state to be used
+        print 'Building f_next..',
+        inps = [y, ctx, proj_ctx, init_state]
+        if batch_mode:
+            inps.insert(2, x_mask)
+        outs = [next_probs, next_sample, hiddens_without_dropout]
+        if need_srcattn:
+            outs.append(alpha_src)
+        if 'lstm' in unit:
+            inps.append(init_memory)
+            outs.append(memory_out)
+        if get_gates:
+            outs.extend([
+                T.stack(kw_ret['input_gates']),
+                T.stack(kw_ret['forget_gates']),
+                T.stack(kw_ret['output_gates']),
+                kw_ret['input_gates_att'],
+                kw_ret['forget_gates_att'],
+                kw_ret['output_gates_att'],
+            ])
+        f_next = theano.function(inps, outs, name='f_next', profile=profile)
+        print 'Done'
+
+        return f_init, [f_next, f_att_projected]
+
+    def gen_batch_sample(self, f_init, f_next, x, x_mask, trng=None, k=1, maxlen=30, eos_id=0, attn_src=False, **kwargs):
+        # todo
+        return NMTModel.gen_batch_sample(self, f_init, f_next, x, x_mask, trng=trng, k=k, maxlen=maxlen, eos_id=eos_id,
+                                         attn_src=attn_src, **kwargs)
+
     def get_word_probability(self, hidden_decoder, context_decoder, tgt_embedding, **kwargs):
         """Compute word probabilities.
 
@@ -263,7 +389,7 @@ class ConditionalSoftmaxModel(DelibNMT):
 
         Returns
         -------
-            probs: numpy array, ([Tt] * [Bs], n_words)
+            probs: Theano tensor variable, ([Tt] * [Bs], n_words)
         """
 
         trng = kwargs.pop('trng', RandomStreams(1234))
@@ -276,13 +402,35 @@ class ConditionalSoftmaxModel(DelibNMT):
         if self.O['dropout_out']:
             logit = self.dropout(logit, use_noise, trng, self.O['dropout_out'])
 
-        pw_probs = kwargs.pop('pw_probs', None)     # ([Tt] * [Bs], n_words)
-        k = self.O['cond_softmax_k']
-
         # n_timestep * n_sample * n_words
         logit = self.feed_forward(logit, prefix='ff_logit', activation=linear)
         logit_shp = logit.shape
         logit_reshaped = logit.reshape([logit_shp[0] * logit_shp[1], logit_shp[2]])
+
+        probs = self._conditional_softmax(logit_reshaped, kwargs.pop('pw_probs', None))
+
+        return trng, use_noise, probs
+
+    def _conditional_softmax(self, logit_2d, pw_probs=None):
+        """
+        Apply conditional softmax on probabilities.
+
+        Parameters
+        ----------
+        logit_2d: Theano tensor variable, 2D-array
+            Probabilities from RNN decoder.
+            Shape: ([Tt] * [Bs], n_words) in training stage, ([Bs], n_words) in testing stage
+        pw_probs: Theano tensor variable, 2D-array
+            Probabilities (unnormalized) from the per-word prediction decoder.
+            Shape: ([Tt] * [Bs], n_words) in training stage, (???, n_words) in testing stage
+        Returns
+        -------
+        probs: Theano tensor variable, 2D-array
+            Conditional softmax result
+            Shape: same as logit_2d
+        """
+
+        k = self.O['cond_softmax_k']
 
         if pw_probs is not None:
             top_k_args = T.argsort(-pw_probs)[:, :k]
@@ -291,8 +439,8 @@ class ConditionalSoftmaxModel(DelibNMT):
 
             probs = T.alloc(floatX(0.), *pw_probs.shape)
             # get top-k probability indices from per-word probs, then apply it into probs
-            probs = T.set_subtensor(probs[top_k_indices], T.nnet.softmax(logit_reshaped[top_k_indices]))
+            probs = T.set_subtensor(probs[top_k_indices], T.nnet.softmax(logit_2d[top_k_indices]))
         else:
-            probs = T.nnet.softmax(logit_reshaped)
+            probs = T.nnet.softmax(logit_2d)
 
-        return trng, use_noise, probs
+        return probs
