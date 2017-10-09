@@ -1,6 +1,11 @@
 #! /usr/bin/python
 # -*- encoding: utf-8 -*-
 
+"""Script to translate a single NMT model.
+
+Called by `seq_translate.py`.
+"""
+
 import argparse
 import cPickle as pkl
 from pprint import pprint
@@ -13,8 +18,12 @@ from libs.models import build_and_init_model
 from libs.utility.utils import load_options_test
 from libs.utility.translate import translate_whole, chosen_by_len_alpha, get_bleu, seqs2words, de_tc, de_bpe
 
-def main(model, dictionary, dictionary_target, source_file, saveto, k=5,alpha = 0,
-         normalize=False, chr_level=False, batch_size=1, zhen = False, src_trg_table_path = None, search_all_alphas = False, ref_file = None, dump_all = False, args = None):
+
+def main(model, dictionary, dictionary_target, source_file, saveto, k=5, alpha=0,
+         normalize=False, chr_level=False, batch_size=1, zhen=False, src_trg_table_path=None,
+         search_all_alphas=False, ref_file=None, dump_all=False, args=None):
+    """"""
+
     batch_mode = batch_size > 1
     assert batch_mode
 
@@ -36,10 +45,12 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,alpha = 
 
     model, _ = build_and_init_model(model, options=options, build=False, model_type=model_type)
 
-    f_init, f_next = model.build_sampler(trng=trng, use_noise = use_noise, batch_mode = batch_mode, dropout=options['use_dropout'], need_srcattn = zhen)
+    f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise, batch_mode=batch_mode,
+                                         dropout=options['use_dropout'], need_srcattn=zhen)
 
-    trans, all_cand_ids, all_cand_trans, all_scores, word_idic_tgt = translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target, source_file, k, normalize, alpha= alpha,
-                                src_trg_table = src_trg_table, zhen = zhen, n_words_src = options['n_words_src'], echo = True, batch_size = batch_size)
+    trans, all_cand_ids, all_cand_trans, all_scores, word_idic_tgt = translate_whole(
+        model, f_init, f_next, trng, dictionary, dictionary_target, source_file, k, normalize, alpha=alpha,
+        src_trg_table=src_trg_table, zhen=zhen, n_words_src=options['n_words_src'], echo=True, batch_size=batch_size)
 
     if search_all_alphas:
         all_alpha_values = 0.1 * np.array(xrange(11))
@@ -54,7 +65,7 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,alpha = 
 
             if 'bpe' in source_file:
                 trans_strs = de_bpe(trans_strs)
-            print 'alpha %.2f, bleu %.2f'% (alpha_v, get_bleu(ref_file, trans_strs, type_in = 'string'))
+            print 'alpha %.2f, bleu %.2f' % (alpha_v, get_bleu(ref_file, trans_strs, type_in='string'))
     else:
         with open(saveto, 'w') as f:
             print >> f, '\n'.join(trans)
@@ -63,6 +74,7 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5,alpha = 
             with open(saveto_dump_all, 'w') as f:
                 print >> f, '\n'.join(all_cand_trans)
     print 'Done'
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -87,19 +99,20 @@ if __name__ == "__main__":
                         help='Testing all length penalty alpha values, default to False, set to True')
     parser.add_argument('--trg_att', action='store_true', dest='trg_attention', default=False,
                         help='Use target attention, default is False, set to True')
-    parser.add_argument('--ref_file', action='store', metavar='filename', dest='ref_file', type= str, help = 'The test ref file', default = None)
+    parser.add_argument('--ref_file', action='store', metavar='filename', dest='ref_file', type=str,
+                        help='The test ref file', default=None)
 
     parser.add_argument('model', type=str, help='The model path')
     parser.add_argument('dictionary_source', type=str, help='The source dict path')
     parser.add_argument('dictionary_target', type=str, help='The target dict path')
     parser.add_argument('source', type=str, help='The source input path')
     parser.add_argument('saveto', type=str, help='The translated file output path')
-    parser.add_argument('st_table_path', nargs='?', type=str, help = 'The src tgt map file path for zhen', default= None)
+    parser.add_argument('st_table_path', nargs='?', type=str, help='The src tgt map file path for zhen', default=None)
     args = parser.parse_args()
 
     assert not args.all_alphas or args.ref_file
 
     main(args.model, args.dictionary_source, args.dictionary_target, args.source,
-         args.saveto, k=args.k, alpha= args.alpha,normalize=args.n,
-         chr_level=args.c, batch_size=args.b, args=args, src_trg_table_path= args.st_table_path if args.zhen else None, zhen= args.zhen,
-         ref_file= args.ref_file, search_all_alphas = args.all_alphas,dump_all = args.all)
+         args.saveto, k=args.k, alpha=args.alpha, normalize=args.n, chr_level=args.c, batch_size=args.b, args=args,
+         src_trg_table_path=args.st_table_path if args.zhen else None, zhen=args.zhen, ref_file=args.ref_file,
+         search_all_alphas=args.all_alphas, dump_all=args.all)

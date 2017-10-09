@@ -3,27 +3,24 @@
 
 """Models and their initializers."""
 
-# TODO: Like target attention, split more model options into different models.
-
 from __future__ import print_function
 
-from collections import OrderedDict
-import sys
-import os
+import cPickle as pkl
 import copy
+import os
+import sys
+from collections import OrderedDict
 
-import bottleneck
 import numexpr as ne
+import numpy as np
 import theano
 import theano.tensor as T
-import numpy as np
-import cPickle as pkl
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
+from .base import NMTModelBase
 from ..constants import fX, profile
-from ..config import DefaultOptions
-from ..utility.utils import *
 from ..layers import *
+from ..utility.utils import *
 
 
 class ParameterInitializer(object):
@@ -220,7 +217,7 @@ class ParameterInitializer(object):
         return params
 
 
-class NMTModel(object):
+class NMTModel(NMTModelBase):
     """The model class.
 
     This is a light weight class, just contains some needed elements and model components.
@@ -300,21 +297,22 @@ class NMTModel(object):
     """
 
     def __init__(self, options, given_params=None):
-        # Dict of options
-        self.O = options
+        super(NMTModel, self).__init__(options, given_params)
+
         if 'dropout_out' not in options:
-            self.O['dropout_out'] = 0.5 if 'fix_dp_bug' not in options or not options['fix_dp_bug'] else self.O['use_dropout'] #recover previous dropout_before_softmax
+            # recover previous dropout_before_softmax
+            self.O['dropout_out'] = 0.5 if not options.get('fix_dp_bug', False) else self.O['use_dropout']
         if 'cost_normalization' not in options:
             self.O['cost_normalization'] = 1
-            
-        # Dict of parameters (Theano shared variables)
-        self.P = OrderedDict() if given_params is None else given_params
-
-        # Dict of duplicated parameters (for multiverso)
-        self.dupP = OrderedDict()
 
         # Instance of ParameterInitializer, init the parameters.
         self.initializer = ParameterInitializer(options)
+
+        self.inputs = None
+        self.x_emb = None
+        self.cost = None
+        self.f_init = None
+        self.f_next = None
 
     def input_to_context(self, given_input=None, **kwargs):
         """Build the part of the model that from input to context vector.
@@ -949,6 +947,48 @@ class NMTModel(object):
             return sample, sample_score, sample_attn_src_words, kw_ret
         return sample, sample_score, sample_attn_src_words
 
+    def build_model2(self, train=True, **kwargs):
+        """
+        Build model in training mode or testing mode.
+        Combine original `build_model` and `build_sampler`.
+
+        Parameters
+        ----------
+        train: bool
+            True if in training mode, False if in testing mode.
+        kwargs
+            Other arguments
+
+        Returns
+        -------
+        inputs: list
+            List of input tensors.
+        kw_ret: dict
+            All other return values putted in this dict.
+
+        Notes
+        -----
+        Do NOT support non-batch mode sampler.
+        """
+
+        get_gates = kwargs.pop('get_gates', False)
+
+        kw_ret = {}
+
+        x, x_mask, y, y_mask = self.get_input()
+        inputs = [x, x_mask, y, y_mask]
+
+        # For the backward rnn, we just need to invert x and x_mask
+        x_r, x_mask_r = self.reverse_input(x, x_mask)
+
+        n_timestep, n_timestep_tgt, n_samples = self.input_dimensions(x, y)
+
+        # Word embedding for forward rnn and backward rnn (source)
+        src_embedding = self.embedding(x, n_timestep, n_samples)
+        src_embedding_r = self.embedding(x_r, n_timestep, n_samples)
+
+        return inputs, kw_ret
+
     def save_model(self, saveto, history_errs, uidx = -1):
         saveto_path = '{}.iter{}.npz'.format(
                         os.path.splitext(saveto)[0], uidx) \
@@ -957,79 +997,6 @@ class NMTModel(object):
                  uidx=uidx, **unzip(self.P))
         save_options(self.O, uidx, saveto)
         return saveto_path
-
-    @staticmethod
-    def get_input():
-        """Get model input.
-
-        Model input shape: #words * #samples
-
-        :return: 4 Theano variables:
-            x, x_mask, y, y_mask
-        """
-
-        x = T.matrix('x', dtype='int64')
-        x_mask = T.matrix('x_mask', dtype=fX)
-        y = T.matrix('y', dtype='int64')
-        y_mask = T.matrix('y_mask', dtype=fX)
-
-        return x, x_mask, y, y_mask
-
-    @staticmethod
-    def input_dimensions(x, y):
-        """Get input dimensions.
-
-        :param x: input x
-        :param y: input y
-        :return: 3 Theano variables:
-            n_timestep, n_timestep_tgt, n_samples
-        """
-
-        n_timestep = x.shape[0]
-        n_timestep_tgt = y.shape[0]
-        n_samples = x.shape[1]
-
-        return n_timestep, n_timestep_tgt, n_samples
-
-    @staticmethod
-    def reverse_input(x, x_mask):
-        return x[::-1], x_mask[::-1]
-
-    def embedding(self, input_, n_timestep, n_samples, emb_name='Wemb'):
-        """Embedding layer: input -> embedding"""
-
-        emb = self.P[emb_name][input_.flatten()]
-        emb = emb.reshape([n_timestep, n_samples, self.O['dim_word']])
-
-        return emb
-
-    @staticmethod
-    def dropout(input_, use_noise, trng, dropout_rate = 0.):
-        """Dropout"""
-
-        projection = T.switch(
-            use_noise,
-            input_ * trng.binomial(input_.shape, p=(1. - dropout_rate), n=1,
-                                   dtype=input_.dtype),
-            input_ * (1. - dropout_rate))
-        return projection
-
-    def feed_forward(self, input_, prefix, activation=tanh):
-        """Feed-forward layer."""
-
-        if isinstance(activation, (str, unicode)):
-            activation = eval(activation)
-        return activation(T.dot(input_, self.P[_p(prefix, 'W')]) + self.P[_p(prefix, 'b')])
-
-    @staticmethod
-    def get_context_mean(context, x_mask):
-        """Get mean of context (across time) as initial state of decoder RNN
-
-        Or you can use the last state of forward + backward encoder RNNs
-            # return concatenate([proj[0][-1], projr[0][-1]], axis=proj[0].ndim-2)
-        """
-
-        return (context * x_mask[:, :, None]).sum(0) / x_mask.sum(0)[:, None]
 
     def encoder(self, src_embedding, src_embedding_r, x_mask, xr_mask, dropout_params=None, **kwargs):
         """GRU encoder layer: source embedding -> encoder context
@@ -1426,11 +1393,6 @@ class NMTModel(object):
         for k, v in np.load(load_filename).iteritems():
             if k in self.P:
                 self.P[k].set_value(v)
-
-    def attention_projected_context(self, context, prefix='lstm', **kwargs):
-        attention_layer_id = self.O['attention_layer_id']
-        pre_projected_context_ = T.dot(context, self.P[_p(prefix, 'Wc_att', attention_layer_id)]) + self.P[_p(prefix, 'b_att', attention_layer_id)]
-        return pre_projected_context_
 
 
 __all__ = [
