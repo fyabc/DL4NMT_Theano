@@ -220,7 +220,7 @@ def predict(modelpath,
                             vocab_size_y.append(len(R))
                             T_n = set((_predict[:, :, :k] * y_mask_i[:, :, None]).flatten())
                             T_n.discard(eos_id)
-                            vocab_size_y.append(len(T_n))
+                            vocab_size_top_k.append(len(T_n))
 
                         for s_idx in xrange(y.shape[1]):
                             p, r = _calc_PR(slice(None), y, y_mask_i, _predict, k, s_idx, eos_id)
