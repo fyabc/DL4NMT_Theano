@@ -313,18 +313,28 @@ class NMTModel(NMTModelBase):
         self.cost = None
         self.f_init = None
         self.f_next = None
+        self.f_att_projected = None
 
     def input_to_context(self, given_input=None, **kwargs):
         """Build the part of the model that from input to context vector.
 
         Used for regression of deeper encoder.
 
-        :param given_input: List of input Theano tensors or None
+        Parameters
+        ----------
+        given_input: List of input Theano tensors or None
             If None, this method will create them by itself.
-        :returns tuple of input list and output
+
+        Returns
+        -------
+        tuple of input list and output
         """
 
-        get_gates = kwargs.pop('get_gates', False)
+        get_gates = kwargs.get('get_gates', False)
+        train = kwargs.get('train', True)
+        batch_mode = kwargs.get('batch_mode', False)
+
+        one_sentence = not train and not batch_mode
 
         x, x_mask, y, y_mask = self.get_input() if given_input is None else given_input
 
@@ -338,8 +348,11 @@ class NMTModel(NMTModelBase):
         src_embedding_r = self.embedding(x_r, n_timestep, n_samples)
 
         # Encoder
-        context, kw_ret = self.encoder(src_embedding, src_embedding_r, x_mask, x_mask_r,
-                                       dropout_params=kwargs.pop('dropout_params', None), get_gates=get_gates)
+        context, kw_ret = self.encoder(
+            src_embedding, src_embedding_r,
+            None if one_sentence else x_mask, None if one_sentence else x_mask_r,
+            dropout_params=kwargs.pop('dropout_params', None), get_gates=get_gates,
+        )
 
         return [x, x_mask, y, y_mask], context, kw_ret
 
@@ -387,17 +400,9 @@ class NMTModel(NMTModelBase):
     def build_model(self, set_instance_variables=False):
         """Build a training model."""
 
-        dropout_rate = self.O['use_dropout']
-
         opt_ret = {}
 
-        trng = RandomStreams(1234)
-        use_noise = theano.shared(np.float32(0.))
-
-        if dropout_rate is not False:
-            dropout_params = [use_noise, trng, dropout_rate]
-        else:
-            dropout_params = None
+        trng, use_noise, dropout_params = self._dropout_params()
 
         (x, x_mask, y, y_mask), context, _ = self.input_to_context(dropout_params=dropout_params)
 
@@ -420,13 +425,13 @@ class NMTModel(NMTModelBase):
         # Decoder - pass through the decoder conditional gru with attention
         hidden_decoder, context_decoder, opt_ret['dec_alphas'], _ = self.decoder(
             tgt_embedding, y_mask=y_mask, init_state=init_decoder_state, context=context, x_mask=x_mask,
-            projected_context=pre_projected_context,dropout_params=dropout_params, one_step=False,
+            projected_context=pre_projected_context, dropout_params=dropout_params, one_step=False,
         )
 
         trng, use_noise, probs = self.get_word_probability(hidden_decoder, context_decoder, tgt_embedding,
                                                            trng=trng, use_noise=use_noise)
         test_cost = self.build_cost(y, y_mask, probs)
-        cost =  test_cost / self.O['cost_normalization'] #cost used to derive gradient in training
+        cost = test_cost / self.O['cost_normalization']     # cost used to derive gradient in training
 
         # Plot computation graph
         if self.O['plot_graph'] is not None:
@@ -514,40 +519,20 @@ class NMTModel(NMTModelBase):
                     ]
         """
 
-        batch_mode = kwargs.pop('batch_mode', False)
-        trng = kwargs.pop('trng', RandomStreams(1234))
-        use_noise = kwargs.pop('use_noise', theano.shared(np.float32(0.)))
-        get_gates = kwargs.pop('get_gates', False)
-        dropout_rate = kwargs.pop('dropout', False)
+        batch_mode = kwargs.get('batch_mode', False)
+        trng = kwargs.get('trng', None)
+        use_noise = kwargs.get('use_noise', None)
+        get_gates = kwargs.get('get_gates', False)
+        dropout_rate = kwargs.get('dropout', False)
+        need_srcattn = kwargs.get('need_srcattn', False)
+
         dropout_rate_out = self.O['dropout_out']
-        need_srcattn = kwargs.pop('need_srcattn', False)
-
-        if dropout_rate is not False:
-            dropout_params = [use_noise, trng, dropout_rate]
-        else:
-            dropout_params = None
-
         unit = self.O['unit']
 
-        x = T.matrix('x', dtype='int64')
-        xr = x[::-1]
-        n_timestep = x.shape[0]
-        n_samples = x.shape[1]
+        trng, use_noise, dropout_params = self._dropout_params(trng, use_noise)
 
-        if batch_mode:
-            x_mask = T.matrix('x_mask', dtype=fX)
-            xr_mask = x_mask[::-1]
-
-        # Word embedding for forward rnn and backward rnn (source)
-        src_embedding = self.embedding(x, n_timestep, n_samples)
-        src_embedding_r = self.embedding(xr, n_timestep, n_samples)
-
-        # Encoder
-        ctx, _ = self.encoder(
-            src_embedding, src_embedding_r,
-            x_mask if batch_mode else None, xr_mask if batch_mode else None,
-            dropout_params=dropout_params,
-        )
+        (x, x_mask, y, y_mask), ctx, _ = self.input_to_context(
+            dropout_params=dropout_params, train=False, **kwargs)
 
         # Get the input for decoder rnn initializer mlp
         ctx_mean = self.get_context_mean(ctx, x_mask) if batch_mode else ctx.mean(0)
@@ -558,11 +543,11 @@ class NMTModel(NMTModelBase):
         if batch_mode:
             inps.append(x_mask)
         outs = [init_state, ctx]
-        f_init = theano.function(inps, outs, name='f_init', profile=profile)
+        self.f_init = theano.function(inps, outs, name='f_init', profile=profile)
         print('Done')
 
         pre_projected_context_ = self.attention_projected_context(ctx, prefix='decoder')
-        f_att_projected = theano.function([ctx], pre_projected_context_, name='f_att_projected', profile=profile)
+        self.f_att_projected = theano.function([ctx], pre_projected_context_, name='f_att_projected', profile=profile)
 
         # x: 1 x 1
         y = T.vector('y_sampler', dtype='int64')
@@ -627,10 +612,10 @@ class NMTModel(NMTModelBase):
                 kw_ret['forget_gates_att'],
                 kw_ret['output_gates_att'],
             ])
-        f_next = theano.function(inps, outs, name='f_next', profile=profile)
+        self.f_next = theano.function(inps, outs, name='f_next', profile=profile)
         print('Done')
 
-        return f_init, [f_next, f_att_projected]
+        return self.f_init, [self.f_next, self.f_att_projected]
 
     def gen_sample(self, f_init, f_next, x, trng=None, k=1, maxlen=30,
                    stochastic=True, argmax=False, **kwargs):
@@ -971,23 +956,27 @@ class NMTModel(NMTModelBase):
         Do NOT support non-batch mode sampler.
         """
 
-        get_gates = kwargs.pop('get_gates', False)
+        # Extract trainer and sampler options.
+        get_gates = kwargs.get('get_gates', False)
+        trng = kwargs.get('trng', None)
+        use_noise = kwargs.get('use_noise', None)
+        batch_mode = kwargs.get('batch_mode', False)
+        dropout_rate = kwargs.get('dropout', False)
+        dropout_rate_out = self.O['dropout_out']
+        need_srcattn = kwargs.get('need_srcattn', False)
 
         kw_ret = {}
 
-        x, x_mask, y, y_mask = self.get_input()
-        inputs = [x, x_mask, y, y_mask]
+        trng, use_noise, dropout_params = self._dropout_params(trng, use_noise)
 
-        # For the backward rnn, we just need to invert x and x_mask
-        x_r, x_mask_r = self.reverse_input(x, x_mask)
+        (x, x_mask, y, y_mask), context, _ = self.input_to_context(
+            dropout_params=dropout_params, train=train, **kwargs)
 
-        n_timestep, n_timestep_tgt, n_samples = self.input_dimensions(x, y)
+        self.inputs = [x, x_mask, y, y_mask]
 
-        # Word embedding for forward rnn and backward rnn (source)
-        src_embedding = self.embedding(x, n_timestep, n_samples)
-        src_embedding_r = self.embedding(x_r, n_timestep, n_samples)
+        # todo
 
-        return inputs, kw_ret
+        return self.inputs, kw_ret
 
     def save_model(self, saveto, history_errs, uidx = -1):
         saveto_path = '{}.iter{}.npz'.format(

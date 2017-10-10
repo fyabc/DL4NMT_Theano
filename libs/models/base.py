@@ -3,8 +3,10 @@
 
 from collections import OrderedDict
 
+import numpy as np
+import theano
 import theano.tensor as T
-from theano import tensor as T
+from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
 from libs.utility.utils import _p
 from ..layers import tanh
@@ -72,6 +74,16 @@ class NMTModelBase(object):
     @staticmethod
     def reverse_input(x, x_mask):
         return x[::-1], x_mask[::-1]
+
+    def _dropout_params(self, trng=None, use_noise=None):
+        dropout_rate = self.O['use_dropout']
+        trng = RandomStreams(1234) if trng is None else trng
+        use_noise = theano.shared(np.float32(0.)) if use_noise is None else use_noise
+
+        if dropout_rate is not False:
+            return trng, use_noise, [use_noise, trng, dropout_rate]
+        else:
+            return trng, use_noise, None
 
     def embedding(self, input_, n_timestep, n_samples, emb_name='Wemb'):
         """Embedding layer: input -> embedding"""
