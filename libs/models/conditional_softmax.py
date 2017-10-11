@@ -350,8 +350,8 @@ class ConditionalSoftmaxModel(DelibNMT):
             # y: (1, [Bs]); y_pos_: (1, [Bs]), y_mask: (1, [Bs])
             # different from RNN decoder one-step mode.
             y_ = y.dimshuffle(['x', 0])
-            y_pos_ = T.repeat(t_indicator, n_samples).dimshuffle(['x', 0])
-            y_mask = T.alloc(floatX(1.), 1, n_samples)
+            y_pos_ = T.repeat(t_indicator, y.shape[0]).dimshuffle(['x', 0])
+            y_mask = T.alloc(floatX(1.), 1, y.shape[0])
 
             tgt_pos_embed = self.P['Wemb_dec_pos'][y_pos_.flatten()].reshape(
                 [y_pos_.shape[0], y_pos_.shape[1], self.DO['dim_word']])
