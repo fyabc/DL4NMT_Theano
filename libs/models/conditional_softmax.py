@@ -349,8 +349,8 @@ class ConditionalSoftmaxModel(DelibNMT):
             # [NOTE]: In testing stage of per-word prediction decoder,
             # y: (1, [Bs]); y_pos_: (1, [Bs]), y_mask: (1, [Bs])
             # different from RNN decoder one-step mode.
-            y_ = y[None]
-            y_pos_ = T.repeat(t_indicator, n_samples)[None]
+            y_ = y.dimshuffle(['x', 0])
+            y_pos_ = T.repeat(t_indicator, n_samples).dimshuffle(['x', 0])
             y_mask = T.alloc(floatX(1.), 1, n_samples)
 
             tgt_pos_embed = self.P['Wemb_dec_pos'][y_pos_.flatten()].reshape(
