@@ -128,6 +128,8 @@ class ConditionalSoftmaxModel(DelibNMT):
             to_be_deleted |= {'decoder_attn_0_h2h', 'decoder_attn_0_b', 'decoder_attn_1_W',
                               'decoder_attn_1_b', 'decoder_W_att2h'}
 
+        to_be_deleted.add('Wemb_pos')
+
         for k in to_be_deleted:
             del params[k]
         return params
@@ -213,7 +215,9 @@ class ConditionalSoftmaxModel(DelibNMT):
             dropout_params = None
 
         # Encoder.
-        (x, x_mask, y, y_mask), context, _ = self.input_to_context(dropout_params=dropout_params)
+        # [NOTE] Encoder options of self.O and self.DO must be same. Switch to self.DO to use self.DO['use_src_pos'].
+        with _delib_env(self):
+            (x, x_mask, y, y_mask), context, _ = self.input_to_context(dropout_params=dropout_params)
 
         # Per-word prediction decoder.
         with _delib_env(self):
