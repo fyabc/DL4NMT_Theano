@@ -29,6 +29,8 @@ def main():
                         help='Get the top-k of word probabilities, k is a list, default is %(default)s')
     parser.add_argument('--split', action='store', dest='split', default=1, type=int, metavar='N',
                         help='Split sentences into N parts and calculate P/R respectively, default is %(default)s')
+    parser.add_argument('--sample_id', action='store', dest='sample_id', default=0, type=int, metavar='N',
+                        help='The batch id to get sentences, vocabularies, etc; default is %(default)s')
 
     args = parser.parse_args()
 

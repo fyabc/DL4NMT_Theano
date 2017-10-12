@@ -148,6 +148,7 @@ def predict(modelpath,
     maxlen = model_options['maxlen']
     split = args.split  # Split sentence into N parts.
     split_len = (maxlen + 2) // split
+    sample_id = args.sample_id
 
     eos_id = 0
     print_samples = True
@@ -195,6 +196,7 @@ def predict(modelpath,
                 'split': split,
                 'batch_number': m_block,
                 'n_words': model_options['n_words'],
+                'sample_id': sample_id,
             }
 
             for block_id in xrange(m_block):
@@ -222,7 +224,7 @@ def predict(modelpath,
                         all_sample[ii] += _yy
                         correct_sample[ii] += _xx
 
-                    if 's' in action and block_id == 0:
+                    if 's' in action and block_id == sample_id:
                         dump_data['predicted_first'] = seqs2words(_predict.T, trg_idict)
                 if not {'p', 'r', 'v'}.isdisjoint(action):
                     y_mask_i = y_mask.astype('int64')
@@ -244,7 +246,7 @@ def predict(modelpath,
                             T_n.discard(eos_id)
                             vocab_size_top_k.append(len(T_n))
 
-                            if block_id == 0:
+                            if block_id == sample_id:
                                 dump_data['R_first'] = R
                                 dump_data['T_n_first'] = T_n
 
