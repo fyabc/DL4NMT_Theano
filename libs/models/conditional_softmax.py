@@ -21,16 +21,34 @@ __author__ = 'fyabc'
 
 
 @contextmanager
-def _delib_env(obj):
-    """Context manager to set the per-word prediction options `obj.DO` as options."""
+def _delib_env(obj, keys=None):
+    """Context manager to set the per-word prediction options `obj.DO` as options.
 
-    tmp_o = obj.O
-    obj.O = obj.DO
+    Or only set some keys.
+    """
+
+    if isinstance(keys, str):
+        keys = [keys]
+
+    if keys:
+        tmp_o = {}
+        for key in keys:
+            tmp_o[key] = obj.O[key]
+            obj.O[key] = obj.DO[key]
+    else:
+        tmp_o = obj.O
+        obj.O = obj.DO
+
     try:
         yield
     finally:
-        obj.DO = obj.O
-        obj.O = tmp_o
+        if keys:
+            for key in keys:
+                obj.DO[key] = obj.O[key]
+                obj.O[key] = tmp_o[key]
+        else:
+            obj.DO = obj.O
+            obj.O = tmp_o
 
 
 class ConditionalSoftmaxInitializer(DelibInitializer):
@@ -213,8 +231,8 @@ class ConditionalSoftmaxModel(DelibNMT):
             dropout_params = None
 
         # Encoder.
-        # [NOTE] Encoder options of self.O and self.DO must be same. Switch to self.DO to use self.DO['use_src_pos'].
-        with _delib_env(self):
+        # [NOTE] Encoder options of self.O and self.DO must be same. Switch to use self.DO['use_src_pos'].
+        with _delib_env(self, 'use_src_pos'):
             (x, x_mask, y, y_mask), context, _ = self.input_to_context(dropout_params=dropout_params)
 
         # Per-word prediction decoder.

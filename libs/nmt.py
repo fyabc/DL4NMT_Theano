@@ -271,6 +271,12 @@ Start Time = {}
         from .config import DefaultOptions
         delib_options = DefaultOptions.copy()
         load_options_train(delib_options, reload_=False, preload=cond_softmax)
+        if worker_id == 0:
+            message('Per-word predictor options:')
+            pprint(delib_options)
+            pprint(delib_options, stream=get_logging_file())
+            message()
+
         model = ConditionalSoftmaxModel(model_options, delib_options)
     else:
         model = NMTModel(model_options)
