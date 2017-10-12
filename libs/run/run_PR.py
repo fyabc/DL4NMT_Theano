@@ -4,6 +4,7 @@
 import os
 import cPickle as pkl
 from time import time
+import uuid
 
 import numpy as np
 import theano
@@ -135,6 +136,8 @@ def predict(modelpath,
     action = set(action)
     model_options = load_options_test(modelpath)
 
+    dump_data_path = 'log/complete/data-{}.pkl'.format(uuid.uuid4())
+
     maxlen = model_options['maxlen']
     split = args.split  # Split sentence into N parts.
     split_len = (maxlen + 2) // split
@@ -173,6 +176,9 @@ def predict(modelpath,
             # Vocabulary size of ground truth and predictor top-k.
             vocab_size_y, vocab_size_top_k = [], []
 
+            # Data to be dumped.
+            dump_data = {}
+
             sample_translation = None
 
             for block_id in xrange(m_block):
@@ -202,6 +208,9 @@ def predict(modelpath,
                             'translated': seqs2words(_predict.T, trg_idict),
                             'ground truth': seqs2words(seqy, trg_idict),
                         }
+
+                        dump_data['y_first'] = sample_translation['ground truth']
+                        dump_data['predicted_first'] = sample_translation['translated']
                 if not {'p', 'r', 'v'}.isdisjoint(action):
                     y_mask_i = y_mask.astype('int64')
 
@@ -221,6 +230,10 @@ def predict(modelpath,
                             T_n = set((_predict[:, :, :k] * y_mask_i[:, :, None]).flatten())
                             T_n.discard(eos_id)
                             vocab_size_top_k.append(len(T_n))
+
+                            if block_id == 0:
+                                dump_data['R_first'] = R
+                                dump_data['T_n_first'] = T_n
 
                         for s_idx in xrange(y.shape[1]):
                             p, r = _calc_PR(slice(None), y, y_mask_i, _predict, k, s_idx, eos_id)
@@ -293,6 +306,9 @@ def predict(modelpath,
                 message('Average ground truth vocabulary size: {}'.format(np.mean(vocab_size_y)))
                 message('Average predictor top-k vocabulary size: {}'.format(np.mean(vocab_size_top_k)))
 
+            message('Dump data to: {}'.format(dump_data_path))
+            with open(dump_data_path, 'wb') as f:
+                pkl.dump(dump_data, f)
             message()
     else:
         # [NOTE]: Only use k_list[0] now.

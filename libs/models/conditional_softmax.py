@@ -146,6 +146,8 @@ class ConditionalSoftmaxModel(DelibNMT):
             to_be_deleted |= {'decoder_attn_0_h2h', 'decoder_attn_0_b', 'decoder_attn_1_W',
                               'decoder_attn_1_b', 'decoder_W_att2h'}
 
+        to_be_deleted.add('Wemb_dec_pos')
+
         for k in to_be_deleted:
             del params[k]
         return params
