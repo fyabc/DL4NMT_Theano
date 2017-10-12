@@ -268,14 +268,8 @@ Start Time = {}
     elif use_delib:
         model = DelibNMT(model_options)
     elif cond_softmax:
-        from .config import DefaultOptions
-        delib_options = DefaultOptions.copy()
-        load_options_test(cond_softmax)
-        if worker_id == 0:
-            message('Per-word predictor options:')
-            pprint(delib_options)
-            pprint(delib_options, stream=get_logging_file())
-            message()
+        message('Loading per-word predictor options')
+        delib_options = load_options_test(cond_softmax)
 
         model = ConditionalSoftmaxModel(model_options, delib_options)
     else:
