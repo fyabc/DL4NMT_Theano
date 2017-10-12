@@ -42,9 +42,18 @@ def prepare_predict(model_options,
     srcdict = pkl.load(open(dictionary, 'rb'))
     trgdict = pkl.load(open(dictionary_target, 'rb'))
 
+    src_idict = {v: k for k, v in trgdict.iteritems()}
+    src_idict[0] = '<eos>'
+    src_idict[1] = 'UNK'
+
     trg_idict = {v: k for k, v in trgdict.iteritems()}
     trg_idict[0] = '<eos>'
     trg_idict[1] = 'UNK'
+
+    kw_ret = {
+        'src_idict': src_idict,
+        'trg_idict': trg_idict,
+    }
 
     def _load_files():
         src_lines = _load_one_file(valid_datasets[0], srcdict, model_options['maxlen'], model_options['n_words_src'])
@@ -74,7 +83,7 @@ def prepare_predict(model_options,
     f_predictor = theano.function(inps, [cost, probs], profile=profile)
     print 'Done'
 
-    return model, valid_src, valid_trg, params, f_predictor, trg_idict
+    return model, valid_src, valid_trg, params, f_predictor, kw_ret
 
 
 def _calc_PR(slice_, y, y_mask_i, _predict, k, s_idx, eos_id):
@@ -136,8 +145,6 @@ def predict(modelpath,
     action = set(action)
     model_options = load_options_test(modelpath)
 
-    dump_data_path = 'log/complete/data-{}.pkl'.format(uuid.uuid4())
-
     maxlen = model_options['maxlen']
     split = args.split  # Split sentence into N parts.
     split_len = (maxlen + 2) // split
@@ -146,9 +153,11 @@ def predict(modelpath,
     print_samples = True
 
     if model_options['use_delib']:
-        model, valid_src, valid_trg, params, f_predictor, trg_idict = prepare_predict(
+        model, valid_src, valid_trg, params, f_predictor, kw_ret = prepare_predict(
             model_options, valid_datasets, dictionary, dictionary_target, logfile,
         )
+
+        src_idict, trg_idict = kw_ret['src_idict'], kw_ret['trg_idict']
 
         m_block = (len(valid_src) + valid_batch_size - 1) // valid_batch_size
 
@@ -176,10 +185,17 @@ def predict(modelpath,
             # Vocabulary size of ground truth and predictor top-k.
             vocab_size_y, vocab_size_top_k = [], []
 
-            # Data to be dumped.
-            dump_data = {}
-
-            sample_translation = None
+            # Data and path to be dumped.
+            dump_data_path = 'log/complete/data-{}.pkl'.format(uuid.uuid4())
+            dump_data = {
+                'modelpath': modelpath,
+                'action': action,
+                'k_list': k_list,
+                'batch_size': valid_batch_size,
+                'split': split,
+                'batch_number': m_block,
+                'n_words': model_options['n_words'],
+            }
 
             for block_id in xrange(m_block):
                 translation_start = time()
@@ -192,6 +208,10 @@ def predict(modelpath,
 
                 translation_time += time() - translation_start
 
+                if block_id == 0:
+                    dump_data['x_first'] = seqs2words(seqx, src_idict)
+                    dump_data['y_first'] = seqs2words(seqy, trg_idict)
+
                 if not {'a', 's'}.isdisjoint(action):
                     _predict = probs.argmax(axis=1).reshape((y.shape[0], y.shape[1]))
                     results = ((_predict == y).astype('float32') * y_mask).sum(axis=1)
@@ -202,15 +222,8 @@ def predict(modelpath,
                         all_sample[ii] += _yy
                         correct_sample[ii] += _xx
 
-                    if 's' in action and sample_translation is None:
-                        # Get a random sample translated sentence and ground truth
-                        sample_translation = {
-                            'translated': seqs2words(_predict.T, trg_idict),
-                            'ground truth': seqs2words(seqy, trg_idict),
-                        }
-
-                        dump_data['y_first'] = sample_translation['ground truth']
-                        dump_data['predicted_first'] = sample_translation['translated']
+                    if 's' in action and block_id == 0:
+                        dump_data['predicted_first'] = seqs2words(_predict.T, trg_idict)
                 if not {'p', 'r', 'v'}.isdisjoint(action):
                     y_mask_i = y_mask.astype('int64')
 
@@ -260,51 +273,62 @@ def predict(modelpath,
             ))
 
             if 'a' in action:
+                dump_data['all_sample'] = all_sample
+                dump_data['accuracy'] = [
+                    xx_ / (1. if yy_ < 1e-3 else yy_)
+                    for xx_, yy_ in zip(correct_sample, all_sample)
+                ]
                 message('Accuracy:')
                 if print_samples:
                     message(all_sample)
                     print_samples = False
-                for (xx_, yy_) in zip(correct_sample, all_sample):
-                    if yy_ < 1e-3:
-                        yy_ = 1.
-                    message(xx_ / yy_, '\t', end='')
+                for accuracy in dump_data['accuracy']:
+                    message(accuracy, '\t', end='')
                 message()
             if 'p' in action:
+                dump_data['precision'] = {
+                    k: np.mean(all_precisions_splits[0])
+                    for k, all_precisions_splits in zip(k_list, all_precisions_list)
+                }
+                dump_data['precision_split'] = {
+                    k: [np.mean(all_precisions) for all_precisions in all_precisions_splits[1:]]
+                    for k, all_precisions_splits in zip(k_list, all_precisions_list)
+                }
                 message('Precision:\n\t{}'.format(
                     '\n\t'.join(
                         'top {} = {}: {}'.format(
                             k,
-                            np.mean(all_precisions_splits[0]),
-                            ', '.join(
-                                str(np.mean(all_precisions))
-                                for all_precisions in all_precisions_splits[1:]
-                            ),
-                        ) for k, all_precisions_splits in zip(k_list, all_precisions_list)
+                            dump_data['precision'][k],
+                            ', '.join(str(precision) for precision in dump_data['precision_split'][k]),
+                        ) for k in k_list
                     )))
             if 'r' in action:
+                dump_data['recall'] = {
+                    k: np.mean(all_recalls_splits[0])
+                    for k, all_recalls_splits in zip(k_list, all_recalls_list)
+                }
+                dump_data['recall_split'] = {
+                    k: [np.mean(all_recalls) for all_recalls in all_recalls_splits[1:]]
+                    for k, all_recalls_splits in zip(k_list, all_recalls_list)
+                }
                 message('Recall:\n\t{}'.format(
                     '\n\t'.join(
                         'top {} = {}: {}'.format(
                             k,
-                            np.mean(all_recalls_splits[0]),
-                            ', '.join(
-                                str(np.mean(all_recalls))
-                                for all_recalls in all_recalls_splits[1:]
-                            ),
-                        ) for k, all_recalls_splits in zip(k_list, all_recalls_list)
+                            dump_data['recall'][k],
+                            ', '.join(str(recall) for recall in dump_data['recall_split'][k]),
+                        ) for k in k_list
                     )))
-            if 's' in action:
-                message('Sample translation:\nGround truth:')
-                for s in sample_translation['ground truth']:
-                    message('\t' + s)
-                message('Translated:')
-                for s in sample_translation['translated']:
-                    message('\t' + s)
             if 'v' in action:
                 message('Batch size: {}, Batch number: {}'.format(valid_batch_size, m_block))
                 message('Total target vocabulary size: {}'.format(model_options['n_words']))
                 message('Average ground truth vocabulary size: {}'.format(np.mean(vocab_size_y)))
                 message('Average predictor top-k vocabulary size: {}'.format(np.mean(vocab_size_top_k)))
+
+                dump_data['vocab_size_y'] = vocab_size_y
+                dump_data['avg_vocab_size_y'] = np.mean(vocab_size_y)
+                dump_data['vocab_size_top_k'] = vocab_size_top_k
+                dump_data['avg_vocab_size_top_k'] = np.mean(vocab_size_top_k)
 
             message('Dump data to: {}'.format(dump_data_path))
             with open(dump_data_path, 'wb') as f:
