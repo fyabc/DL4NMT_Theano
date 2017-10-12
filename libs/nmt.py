@@ -270,7 +270,7 @@ Start Time = {}
     elif cond_softmax:
         from .config import DefaultOptions
         delib_options = DefaultOptions.copy()
-        load_options_train(delib_options, reload_=False, preload=cond_softmax)
+        load_options_test(cond_softmax)
         if worker_id == 0:
             message('Per-word predictor options:')
             pprint(delib_options)
