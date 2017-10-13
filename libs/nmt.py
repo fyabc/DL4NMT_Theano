@@ -139,6 +139,7 @@ def train(dim_word=100,  # word vector dimensionality
           task='en-fr',
 
           fine_tune_patience=8,
+          fine_tune_type = 'cost',
           nccl = False,
           src_vocab_map_file = None,
           tgt_vocab_map_file = None,
@@ -525,9 +526,24 @@ Start Time = {}
 
                 # Fine-tune based on dev cost
                 if fine_tune_patience > 0:
+                    better_perf = False
                     if valid_bleu > best_bleu:
-                        bad_counter = 0
+                        if fine_tune_type != 'cost':
+                            bad_counter = 0
+                            better_perf = True
                         best_bleu = valid_bleu
+                    if valid_cost < best_valid_cost:
+                        if fine_tune_type == 'cost':
+                            bad_counter = 0
+                            better_perf = True
+                        best_valid_cost = valid_cost
+
+                    if better_perf:
+                        #safe sync before dump to make sure the models are the same on every worker
+                        if dist_type == 'mpi_reduce':
+                            all_reduce_params_nccl(nccl_comm, itemlist(model.P))
+                            for t_value in itemlist(model.P):
+                                t_value.set_value(t_value.get_value() / workers_cnt)
                         #dump the best model so far, including the immediate file
                         if worker_id == 0:
                             message('Dump the the best model so far at uidx {}'.format(uidx))
@@ -543,7 +559,7 @@ Start Time = {}
                             else:
                                 clip_shared.set_value(np.float32(clip_shared.get_value() * 0.1))
                                 message('Discount clip value to {} at iteration {}'.format(clip_shared.get_value(), uidx))
-                            finetune_cnt += 1  
+                            finetune_cnt += 1
                             if finetune_cnt >= 3:
                                 message('Learning rate decayed to {:.5f}, clip decayed to {:.5f}, task completed'.format(lrate, clip_shared.get_value()))
                                 return 1., 1., 1.

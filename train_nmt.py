@@ -134,6 +134,8 @@ def main():
                                            'each line is in the form physical_gpu_id\\theano_id')
     parser.add_argument('--ft_patience', action='store', metavar='N', dest='fine_tune_patience', type=int, default=-1,
                         help='Fine tune patience, default is %(default)s, set 8 to enable it')
+    parser.add_argument('--ft_type', action='store', metavar='type', dest='finetune_type', type=str, default='bleu',
+                        help='Fine tune by what measure, default is "bleu", can be set to "cost"')
     parser.add_argument('--valid_freq', action='store', metavar='N', dest='valid_freq', type=int, default=5000,
                         help='Validation frequency, default is 5000')
     parser.add_argument('--trg_att', action='store', metavar='N', dest='trg_attention_layer_id', type=int, default=None,
@@ -290,7 +292,8 @@ def main():
         dist_type=args.dist_type,
         dist_recover_lr_iter = args.dist_recover_lr,
 
-        fine_tune_patience=args.fine_tune_patience,
+        fine_tune_patience=args.finetune_patience,
+        fine_tune_type=args.fine_tune_type,
         nccl= args.nccl,
         src_vocab_map_file= args.src_vocab_map_file,
         tgt_vocab_map_file= args.tgt_vocab_map_file,
