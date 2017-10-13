@@ -1396,12 +1396,15 @@ class NMTModel(object):
 
         return trng, use_noise, probs
 
-    def build_cost(self, y, y_mask, probs):
+    def build_cost(self, y, y_mask, probs, epsilon=0.0):
         """Build the cost from probabilities and target."""
+
+        from ..utility.basic import floatX
+        epsilon = floatX(epsilon)
 
         y_flat = y.flatten()
         y_flat_idx = T.arange(y_flat.shape[0]) * self.O['n_words'] + y_flat
-        cost = -T.log(probs.flatten()[y_flat_idx])
+        cost = -T.log(probs.flatten()[y_flat_idx] + epsilon)
         cost = cost.reshape([y.shape[0], y.shape[1]])
         cost = (cost * y_mask).sum(0)
 

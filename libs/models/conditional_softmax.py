@@ -273,7 +273,7 @@ class ConditionalSoftmaxModel(DelibNMT):
                                                            trng=trng, use_noise=use_noise, pw_probs=pw_probs)
 
         # [NOTE]: Only use RNN decoder loss.
-        test_cost = self.build_cost(y, y_mask, probs)
+        test_cost = self.build_cost(y, y_mask, probs, epsilon=1e-6)
         cost = test_cost / self.O['cost_normalization']  # cost used to derive gradient in training
 
         return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost, test_cost, self._ctx_info
