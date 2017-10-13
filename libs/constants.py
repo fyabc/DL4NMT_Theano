@@ -171,7 +171,7 @@ Datasets = {
     'Giga': [
         'train.article.txt', 'train.title.txt',
         'small_train.article.txt', 'small_train.title.txt',
-        'valid.article.filter.txt', 'valid.title.filter.txt',
+        'small_valid.article.filter.txt', 'small_valid.title.filter.txt', 'small_valid.title.filter.txt', 
         'test.article.txt', 'test.title.txt',
         'train.article.dict.pkl', 'train.title.dict.pkl',
     ]
