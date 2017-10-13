@@ -100,6 +100,22 @@ class DelibNMT(NMTModel):
         self.initializer = DelibInitializer(options)
 
     def get_context_info(self, context, x_mask, trg_feature):
+        """
+        Get context info.
+
+        Parameters
+        ----------
+        context
+        x_mask
+        trg_feature
+
+        Returns
+        -------
+        ctx_info: Theano tensor variable
+        if use_attn:    ([Tt], [Bs], [Hc])
+        else:           ([Bs], [Hc])
+        """
+
         if self.O['use_attn']:
             tmp = T.tanh(T.dot(context, self.P['attn_0_ctx2hidden']) +
                          T.dot(trg_feature, self.P['attn_0_pose2hidden']).dimshuffle(0, 'x', 1, 2) +

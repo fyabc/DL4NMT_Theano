@@ -111,6 +111,7 @@ class ConditionalSoftmaxModel(DelibNMT):
         self.DO = delib_options
 
         # Share context info between RNN and per-word prediction.
+        # Not used now.
         self._ctx_info = None
 
     def get_context_info(self, context, x_mask, trg_feature):
@@ -248,8 +249,9 @@ class ConditionalSoftmaxModel(DelibNMT):
         # RNN decoder.
         n_timestep, n_timestep_tgt, n_samples = self.input_dimensions(x, y)
 
+        context_mean = self.get_context_mean(context, x_mask)
         # Initial decoder state
-        init_decoder_state = self.feed_forward(self._ctx_info, prefix='ff_state', activation=tanh)
+        init_decoder_state = self.feed_forward(context_mean, prefix='ff_state', activation=tanh)
 
         # Word embedding (target), we will shift the target sequence one time step
         # to the right. This is done because of the bi-gram connections in the
