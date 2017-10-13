@@ -3,8 +3,8 @@
 
 from __future__ import print_function
 
-import sys
 import argparse
+from collections import namedtuple
 
 import matplotlib.pyplot as plt
 
@@ -17,10 +17,60 @@ def average(l):
     return sum(l) / len(l)
 
 
+TrainingRecord = namedtuple('TrainingRecord', ['worker', 'epoch', 'update', 'cost', 'g2', 'ud', 'time'])
+ValidationRecord = namedtuple('ValidationRecord', ['worker', 'cost', 'small_train_cost', 'bleu', 'bad_count'])
+
+
+def parse_record(line):
+    if line.startswith('Epoch'):
+        words = line.split()
+        return TrainingRecord(
+            0,                  # worker
+            int(words[-12]),    # epoch
+            int(words[-10]),    # update
+            float(words[-8]),   # cost
+            float(words[-6]),   # g2
+            float(words[-4]),   # ud
+            float(words[-2]),   # time
+        )
+    elif line.startswith('Valid'):
+        words = line.split()
+        return ValidationRecord(
+            0,                  # worker
+            float(words[-11]),  # cost
+            float(words[-7]),   # small train cost
+            float(words[-4]),   # bleu
+            int(words[-1]),     # bad count
+        )
+    elif line.startswith('Worker'):
+        words = line.split()
+        if words[2] == 'Epoch':
+            return TrainingRecord(
+                int(words[-14]),    # worker
+                int(words[-12]),    # epoch
+                int(words[-10]),    # update
+                float(words[-8]),   # cost
+                float(words[-6]),   # g2
+                float(words[-4]),   # ud
+                float(words[-2]),   # time
+            )
+        elif words[2] == 'Valid':
+            return ValidationRecord(
+                int(words[-14]),    # worker
+                float(words[-11]),  # cost
+                float(words[-7]),   # small train cost
+                float(words[-4]),   # bleu
+                int(words[-1]),     # bad count
+            )
+    return None
+
+
 def plot(args):
     """Logging format:
 
-    Epoch 0 Update 52 Cost 219.29276 G2 1483.47644 UD 2.78200 Time 127.66500 s
+    Epoch 0 Update 52 Cost 219.29276 G2 1483.47644 UD 2.78200 Time 127.66500 s  # old logs
+    Worker 0 Epoch 0 Update 52 Cost 219.29276 G2 1483.47644 UD 2.78200 Time 127.66500 s
+    Worker 0 Valid cost 4.48446 Small train cost 3.90466 Valid BLEU 3.32 Bad count 0
     """
 
     colors = ['c', 'r', 'y', 'k', 'b', 'g']
@@ -33,17 +83,20 @@ def plot(args):
             valid_iterations = []
             valid_costs = []
             small_train_costs = []
+            bleus = []
 
             for line in f:
-                if line.startswith('Epoch'):
-                    words = line.split()
-                    iterations.append(int(words[3]))
-                    costs.append(float(words[5]))
-                elif line.startswith('Valid'):
-                    words = line.split()
+                record = parse_record(line)
+                if record is None:
+                    continue
+                if isinstance(record, TrainingRecord):
+                    iterations.append(record.update)
+                    costs.append(record.cost)
+                else:
                     valid_iterations.append(iterations[-1] if iterations else 0)
-                    valid_costs.append(words[2])
-                    small_train_costs.append(words[6])
+                    valid_costs.append(record.cost)
+                    small_train_costs.append(record.small_train_cost)
+                    bleus.append(record.bleu)
 
             avg_costs = [average(costs[max(0, i - args.average): i]) for i in xrange(len(costs))]
 
@@ -60,6 +113,8 @@ def plot(args):
             if args.small_train:
                 plt.plot(valid_iterations, small_train_costs,
                          '{}-.'.format(colors[f_idx]), label='{}_small_train'.format(filename))
+            # plt.plot(valid_iterations, bleus,
+            #          label='{}_bleu'.format(filename))
 
     plt.xlim(xmin=args.xmin, xmax=args.xmax)
     plt.ylim(ymin=args.ymin, ymax=args.ymax)
