@@ -168,4 +168,11 @@ Datasets = {
         'sorted_Nist2006.dev.txt.zh.tok, sorted_Nist2008.dev.txt.zh.tok, sorted_Nist2012.dev.txt.zh.tok', 'NIST2006.reference, NIST2008.reference, NIST2012.reference',
         'tc_zh-en.1.25M.zh.pkl', 'tc_zh-en.1.25M.en.pkl',
     ],
+    'Giga': [
+        'train.article.txt', 'train.title.txt',
+        'small_train.article.txt', 'small_train.title.txt',
+        'valid.article.filter.txt', 'valid.title.filter.txt',
+        'test.article.txt', 'test.title.txt',
+        'train.article.dict.pkl', 'train.title.dict.pkl',
+    ]
 }
