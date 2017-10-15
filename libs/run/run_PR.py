@@ -14,6 +14,7 @@ from ..models.deliberation import DelibNMT
 from ..utility.utils import prepare_data, load_params, set_logging_file, message, load_options_test
 from ..constants import profile
 from ..utility.translate import translate_whole, words2seqs, seqs2words
+from ..utility.basic import arg_top_k
 
 
 def _load_one_file(filename, dic, maxlen, voc_size, UNKID=1):
@@ -230,12 +231,7 @@ def predict(modelpath,
                     y_mask_i = y_mask.astype('int64')
 
                     for i, k in enumerate(k_list):
-                        try:
-                            from bottleneck import argpartsort as part_sort
-                            _predict = part_sort(-probs, k, axis=1)
-                        except ImportError:
-                            from bottleneck import argpartition as part_sort
-                            _predict = part_sort(-probs, k - 1, axis=1)
+                        _predict = arg_top_k(-probs, k, axis=1)
                         _predict = _predict.reshape((y.shape[0], y.shape[1], _predict.shape[-1]))
 
                         if 'v' in action:

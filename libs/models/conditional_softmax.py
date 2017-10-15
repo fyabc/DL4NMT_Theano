@@ -1,29 +1,18 @@
 #! /usr/bin/python
 # -*- coding: utf-8 -*-
 
-import copy
 from collections import OrderedDict
 from contextlib import contextmanager
 
 import numpy as np
-import numexpr as ne
 import theano
 import theano.tensor as T
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
-try:
-    from bottleneck import argpartsort as part_sort
-except ImportError:
-    from bottleneck import argpartition
-    from functools import partial
-
-    def part_sort(arr, int_n, axis=-1):
-        return argpartition(arr, int_n - 1, axis=axis)
-
 from .deliberation import DelibNMT, DelibInitializer, NMTModel
 from ..layers import *
 from ..constants import fX, profile
-from ..utility.basic import floatX
+from ..utility.basic import floatX, arg_top_k
 from ..utility.utils import _p
 
 __author__ = 'fyabc'
@@ -31,7 +20,7 @@ __author__ = 'fyabc'
 
 class ArgPartSortOp(theano.Op):
     """
-    This class is a wrapper of numpy bottleneck argpartsort function.
+    This class is a wrapper of numpy bottleneck arg-top-k function.
 
     """
 
@@ -53,7 +42,7 @@ class ArgPartSortOp(theano.Op):
         a = inputs[0]
         axis = inputs[1]
         z = output_storage[0]
-        z[0] = theano._asarray(part_sort(a, self.k, axis), dtype=node.outputs[0].dtype)
+        z[0] = theano._asarray(arg_top_k(a, self.k, axis), dtype=node.outputs[0].dtype)
 
     def infer_shape(self, node, inputs_shapes):
         if (isinstance(node.inputs[1], theano.Constant) and
