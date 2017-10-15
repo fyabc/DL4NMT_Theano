@@ -11,6 +11,15 @@ import theano
 import theano.tensor as T
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
+try:
+    from bottleneck import argpartsort as part_sort
+except ImportError:
+    from bottleneck import argpartition
+    from functools import partial
+
+    def part_sort(arr, int_n, axis=-1):
+        return argpartition(arr, int_n - 1, axis=axis)
+
 from .deliberation import DelibNMT, DelibInitializer, NMTModel
 from ..layers import *
 from ..constants import fX, profile
@@ -18,6 +27,63 @@ from ..utility.basic import floatX
 from ..utility.utils import _p
 
 __author__ = 'fyabc'
+
+
+class ArgPartSortOp(theano.Op):
+    """
+    This class is a wrapper of numpy bottleneck argpartsort function.
+
+    """
+
+    __props__ = ('k',)
+
+    def __init__(self, k):
+        self.k = k
+
+    def __str__(self):
+        return self.__class__.__name__ + '{%d}' % self.k
+
+    def make_node(self, input_, axis=-1):
+        input_ = T.as_tensor_variable(input_)
+        axis = T.as_tensor_variable(axis)
+        bcast = input_.type.broadcastable
+        return theano.Apply(self, [input_, axis], [T.TensorType(dtype='int64', broadcastable=bcast)()])
+
+    def perform(self, node, inputs, output_storage, params=None):
+        a = inputs[0]
+        axis = inputs[1]
+        z = output_storage[0]
+        z[0] = theano._asarray(part_sort(a, self.k, axis), dtype=node.outputs[0].dtype)
+
+    def infer_shape(self, node, inputs_shapes):
+        if (isinstance(node.inputs[1], theano.Constant) and
+                node.inputs[1].data is None):
+            return [(T.mul(*inputs_shapes[0]),)]
+        # axis should not be None, so there should be the same number of
+        # dimensions in the input and output
+        assert node.inputs[0].ndim == node.outputs[0].ndim
+        assert inputs_shapes[1] == ()
+        return [inputs_shapes[0]]
+
+    def grad(self, inputs, outputs_grads):
+        # No grad defined for integers.
+        inp, axis = inputs
+        inp_grad = inp.zeros_like()
+        axis_grad = theano.gradient.grad_undefined(
+            self, 1, axis,
+            "argpartsort is not defined for non-integer axes so"
+            " argpartsort(x, axis+eps) is undefined")
+        return [inp_grad, axis_grad]
+
+    def R_op(self, inputs, eval_points):
+        raise NotImplementedError('R-op not implemented for argpartsort')
+
+
+def theano_argpartsort(a, k, axis=-1):
+    if axis is None:
+        a = a.flatten()
+        axis = 0
+    return ArgPartSortOp(k)(a, axis)
 
 
 @contextmanager
@@ -477,7 +543,8 @@ class ConditionalSoftmaxModel(DelibNMT):
         k = self.O['cond_softmax_k']
 
         if pw_probs is not None:
-            top_k_args = T.argsort(-pw_probs)[:, :k]
+            # top_k_args = T.argsort(-pw_probs)[:, :k]
+            top_k_args = theano_argpartsort(-pw_probs, k, axis=1)[:, :k]
             # [NOTE] indices to get/set top-k value
             top_k_indices = (T.arange(pw_probs.shape[0]).dimshuffle([0, 'x']), top_k_args)
 
