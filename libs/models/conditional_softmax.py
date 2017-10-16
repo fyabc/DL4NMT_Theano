@@ -420,22 +420,31 @@ class ConditionalSoftmaxModel(DelibNMT):
 
         logit = self.feed_forward(logit, prefix='ff_logit', activation=linear)
 
-        # The timestep t indicator. Every time `f_next` called, increment it.
+        # The timestep t indicator. Every time `f_next` called, increment it (useless now, to be removed).
         t_indicator = theano.shared(np.int64(0), 't_indicator')
 
         # Per-word prediction decoder.
         with _delib_env(self):
-            # [NOTE]: In testing stage of per-word prediction decoder,
-            # y: (1, [Bs]); y_pos_: (1, [Bs]), y_mask: (1, [Bs])
-            # different from RNN decoder one-step mode.
-            y_ = y.dimshuffle(['x', 0])
-            y_pos_ = T.repeat(t_indicator, y.shape[0]).dimshuffle(['x', 0])
-            y_mask = T.alloc(floatX(1.), 1, y.shape[0])
+            y_ = None
+            y_pos_ = T.repeat(T.arange(n_timestep).dimshuffle(0, 'x'), y.shape[0], 1)
+            y_mask = T.alloc(floatX(1.), n_timestep, y.shape[0])
 
             tgt_pos_embed = self.P['Wemb_dec_pos'][y_pos_.flatten()].reshape(
-                [y_pos_.shape[0], y_pos_.shape[1], self.DO['dim_word']])
+                [y_pos_.shape[0], y_pos_.shape[1], self.O['dim_word']])
             pw_probs = self.independent_decoder(tgt_pos_embed, y_, y_mask, ctx, x_mask,
                                                 dropout_params=None, trng=trng, use_noise=use_noise)
+        # with _delib_env(self):
+        #     # [NOTE]: In testing stage of per-word prediction decoder,
+        #     # y: (1, [Bs]); y_pos_: (1, [Bs]), y_mask: (1, [Bs])
+        #     # different from RNN decoder one-step mode.
+        #     y_ = y.dimshuffle(['x', 0])
+        #     y_pos_ = T.repeat(t_indicator, y.shape[0]).dimshuffle(['x', 0])
+        #     y_mask = T.alloc(floatX(1.), 1, y.shape[0])
+        #
+        #     tgt_pos_embed = self.P['Wemb_dec_pos'][y_pos_.flatten()].reshape(
+        #         [y_pos_.shape[0], y_pos_.shape[1], self.O['dim_word']])
+        #     pw_probs = self.independent_decoder(tgt_pos_embed, y_, y_mask, ctx, x_mask,
+        #                                         dropout_params=None, trng=trng, use_noise=use_noise)
 
         # Compute the softmax probability
         next_probs = self._conditional_softmax(logit, pw_probs=pw_probs)
