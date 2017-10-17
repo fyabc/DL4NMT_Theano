@@ -373,16 +373,12 @@ class ConditionalSoftmaxModel(DelibNMT):
         ctx_mean = self.get_context_mean(ctx, x_mask) if batch_mode else ctx.mean(0)
         init_state = self.feed_forward(ctx_mean, prefix='ff_state', activation=tanh)
 
-        # Shared variables for f_next.
-        n_timestep_shared = theano.shared(np.int64(0), name='n_timestep_shared')
-
         print 'Building f_init...',
         inps = [x]
         if batch_mode:
             inps.append(x_mask)
         outs = [init_state, ctx]
-        f_init = theano.function(inps, outs, name='f_init', profile=profile,
-                                 updates={n_timestep_shared: n_timestep})
+        f_init = theano.function(inps, outs, name='f_init', profile=profile,)
         print 'Done'
 
         pre_projected_context_ = self.attention_projected_context(ctx, prefix='decoder')
@@ -424,17 +420,15 @@ class ConditionalSoftmaxModel(DelibNMT):
 
         logit = self.feed_forward(logit, prefix='ff_logit', activation=linear)
 
-        # The timestep t indicator. Every time `f_next` called, increment it (useless now, to be removed).
-        t_indicator = theano.shared(np.int64(0), 't_indicator')
-
         # Per-word prediction decoder.
         with _delib_env(self):
             y_ = None
-            y_pos_ = T.repeat(T.arange(n_timestep_shared).dimshuffle(0, 'x'), y.shape[0], 1)
-            y_mask = T.alloc(floatX(1.), n_timestep_shared, y.shape[0])
+            y_pos_ = T.repeat(T.arange(self.O['maxlen']).dimshuffle(0, 'x'), y.shape[0], 1)
+            y_mask = T.alloc(floatX(1.), self.O['maxlen'], y.shape[0])
 
             tgt_pos_embed = self.P['Wemb_dec_pos'][y_pos_.flatten()].reshape(
                 [y_pos_.shape[0], y_pos_.shape[1], self.O['dim_word']])
+            # todo: fix x_mask for non-batch mode
             pw_probs = self.independent_decoder(tgt_pos_embed, y_, y_mask, ctx, x_mask,
                                                 dropout_params=None, trng=trng, use_noise=use_noise)
         # with _delib_env(self):
@@ -479,7 +473,6 @@ class ConditionalSoftmaxModel(DelibNMT):
             ])
         f_next = theano.function(
             inps, outs, name='f_next', profile=profile,
-            updates={t_indicator: t_indicator + 1},
         )
         print 'Done'
 
