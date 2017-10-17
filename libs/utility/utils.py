@@ -816,6 +816,14 @@ def get_epoch_batch_cnt(dataset_src, dataset_tgt, vocab_filenames, batch_size, m
         n_batches += 1
     return n_batches
 
+
+def debug_print(variable, msg='', attrs=('shape', 'dtype')):
+    print_op = tensor.printing.Print(msg, attrs=attrs)
+    printed_var = print_op(variable)
+
+    return printed_var, variable
+
+
 __all__ = [
     'set_logging_file',
     'get_logging_file',
@@ -859,4 +867,5 @@ __all__ = [
     'make_grads_clip_func',
     'set_optimizer_imm_data',
     'get_batch_place_holder',
+    'debug_print',
 ]

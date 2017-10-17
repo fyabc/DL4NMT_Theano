@@ -107,7 +107,7 @@ class DelibNMT(NMTModel):
         ----------
         context
         x_mask
-        trg_feature
+        trg_feature     ([Tt], [Bs], [W])
 
         Returns
         -------
@@ -274,6 +274,8 @@ class DelibNMT(NMTModel):
 
     def build_model(self, set_instance_variables=False):
         """Build a training model."""
+
+        # todo: add reversed decoder
 
         dropout_rate = self.O['use_dropout']
 

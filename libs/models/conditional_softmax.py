@@ -13,7 +13,7 @@ from .deliberation import DelibNMT, DelibInitializer, NMTModel
 from ..layers import *
 from ..constants import fX, profile
 from ..utility.basic import floatX, arg_top_k
-from ..utility.utils import _p
+from ..utility.utils import _p, debug_print
 
 __author__ = 'fyabc'
 
@@ -389,6 +389,8 @@ class ConditionalSoftmaxModel(DelibNMT):
         init_state = T.tensor3('init_state', dtype=fX)
         init_memory = T.tensor3('init_memory', dtype=fX)
 
+        t_indicator = theano.shared(np.int64(0), name='t_indicator')
+
         # If it's the first word, emb should be all zero and it is indicated by -1
         emb = T.switch(y[:, None] < 0,
                        T.alloc(0., 1, self.P['Wemb_dec'].shape[1]),
@@ -420,15 +422,22 @@ class ConditionalSoftmaxModel(DelibNMT):
 
         logit = self.feed_forward(logit, prefix='ff_logit', activation=linear)
 
+        logit, _ = debug_print(logit, '$ logit:')
+
         # Per-word prediction decoder.
+        # todo: fix shape mismatch bug of pw_probs and logits in test mode
         with _delib_env(self):
             y_ = None
-            y_pos_ = T.repeat(T.arange(self.O['maxlen']).dimshuffle(0, 'x'), y.shape[0], 1)
-            y_mask = T.alloc(floatX(1.), self.O['maxlen'], y.shape[0])
+            # y_pos_ = T.repeat(T.arange(self.O['maxlen']).dimshuffle(0, 'x'), y.shape[0], 1)
+            # y_mask = T.alloc(floatX(1.), self.O['maxlen'], y.shape[0])
+            y_pos_ = T.alloc(t_indicator, 1, y.shape[0])
+            y_mask = T.alloc(floatX(1.), 1, y.shape[0])
+
+            x_mask, _ = debug_print(x_mask, '$ x_mask:')
 
             tgt_pos_embed = self.P['Wemb_dec_pos'][y_pos_.flatten()].reshape(
                 [y_pos_.shape[0], y_pos_.shape[1], self.O['dim_word']])
-            # todo: fix x_mask for non-batch mode
+            # todo: fix `x_mask` for non-batch mode
             pw_probs = self.independent_decoder(tgt_pos_embed, y_, y_mask, ctx, x_mask,
                                                 dropout_params=None, trng=trng, use_noise=use_noise)
         # with _delib_env(self):
@@ -473,6 +482,7 @@ class ConditionalSoftmaxModel(DelibNMT):
             ])
         f_next = theano.function(
             inps, outs, name='f_next', profile=profile,
+            updates={t_indicator: t_indicator + 1}
         )
         print 'Done'
 
@@ -524,7 +534,7 @@ class ConditionalSoftmaxModel(DelibNMT):
         ----------
         logit_2d: Theano tensor variable, 2D-array
             Probabilities from RNN decoder.
-            Shape: ([Tt] * [Bs], n_words) in training stage, ([Bs], n_words) in testing stage
+            Shape: ([Tt] * [Bs], n_words) in training stage, ([lived_Bs], n_words) in testing stage
         pw_probs: Theano tensor variable, 2D-array
             Probabilities (unnormalized) from the per-word prediction decoder.
             Shape: ([Tt] * [Bs], n_words) in training stage, (???, n_words) in testing stage
