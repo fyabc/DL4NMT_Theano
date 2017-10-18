@@ -170,6 +170,8 @@ def main():
     parser.add_argument('--which_word', type=int, default=None, help='')
     parser.add_argument('--fix_encoder', action='store_true', default=False, dest='fix_encoder',
                         help='whether to fix encoder when training deliberation model')
+    parser.add_argument('--delib_reversed', action='store', default=None, dest='delib_reversed',
+                        choices=[None, 'decoder', 'all'], help='Reversed deliberation model, default is %(default)s')
     parser.add_argument('--cond_softmax', action='store', default=None, dest='cond_softmax',
                         help='Deliberation model path to add conditional softmax into decoder, default is %(default)s')
     parser.add_argument('--cond_softmax_k', action='store', default=1000, dest='cond_softmax_k', type=int,
@@ -324,6 +326,7 @@ def main():
         decoder_style=args.decoder_style,
         which_word=args.which_word,
         fix_encoder=args.fix_encoder,
+        delib_reversed=args.delib_reversed,
         cond_softmax=args.cond_softmax,
         cond_softmax_k=args.cond_softmax_k,
 

@@ -435,6 +435,7 @@ class ConditionalSoftmaxModel(DelibNMT):
 
             x_mask, old_x_mask = debug_print(x_mask, '$ x_mask:')
 
+            # todo: fix y position out of bound(64).
             tgt_pos_embed = self.P['Wemb_dec_pos'][y_pos_.flatten()].reshape(
                 [y_pos_.shape[0], y_pos_.shape[1], self.O['dim_word']])
             # todo: fix `x_mask` for non-batch mode

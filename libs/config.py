@@ -151,7 +151,7 @@ DefaultOptions = dict(
     use_src_pos=True,
     which_word=None,
     fix_encoder=False,
-
+    delib_reversed=None,    # Reversed deliberation model, values: None, 'decoder', 'all'
     cond_softmax=False,     # Use RNN with conditional softmax from deliberation model.
     cond_softmax_k=1000,    # Use top-k per-word prediction in conditional softmax.
 

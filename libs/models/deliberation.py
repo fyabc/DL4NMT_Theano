@@ -105,8 +105,8 @@ class DelibNMT(NMTModel):
 
         Parameters
         ----------
-        context
-        x_mask
+        context         ([Ts], [Bs], [Hc])
+        x_mask          ([Ts], [Bs])
         trg_feature     ([Tt], [Bs], [W])
 
         Returns
@@ -194,6 +194,27 @@ class DelibNMT(NMTModel):
         return H_
 
     def independent_decoder(self, tgt_pos_embed, y, y_mask, context, x_mask, dropout_params=None, **kwargs):
+        """
+
+        Parameters
+        ----------
+        tgt_pos_embed
+        y
+        y_mask:         ([Tt], [Bs])
+        context:        ([Ts], [Bs], [Hc])
+        x_mask:         ([Ts], [Bs])
+        dropout_params: tuple
+        kwargs
+
+        Returns
+        -------
+
+        """
+
+        if self.O['delib_reversed'] in ('decoder', 'all'):
+            context = context[::-1]
+            x_mask = x_mask[::-1]
+
         if self.O['decoder_all_attention']:
             projected_context = T.dot(context, self.P['attn_0_ctx2hidden'])
         if self.O['decoder_style'] == 'stackNN':
@@ -220,6 +241,9 @@ class DelibNMT(NMTModel):
             H_ = self.dropout(H_, use_noise, trng)
 
         logit = self.feed_forward(H_, prefix='fc_lastHtoSoftmax', activation=lambda x: x)
+
+        if self.O['delib_reversed'] in ('decoder', 'all'):
+            logit = logit[::-1]
 
         logit_shp = logit.shape
         probs = T.nnet.softmax(logit.reshape([-1, logit_shp[2]]))
