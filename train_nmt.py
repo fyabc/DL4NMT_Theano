@@ -160,6 +160,8 @@ def main():
                         help='Previous bad count during training, default to 0')
     parser.add_argument('--previous_finetune_cnt', action="store", default=0, type=int, dest='previous_finetune_cnt',
                         help='Previous finetune count during training, default to 0')
+    parser.add_argument('--train_steps', action="store", default=10000000, type=int, dest='train_steps',
+                        help='Total training steps, default to 10000000')
     
 
     args = parser.parse_args()
@@ -308,6 +310,7 @@ def main():
         previous_best_valid_cost = args.previous_best_valid_cost,
         previous_bad_count = args.previous_bad_count,
         previous_finetune_cnt = args.previous_finetune_cnt,
+        finish_after = args.train_steps,
     )
 
 
