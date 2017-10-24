@@ -822,7 +822,7 @@ class NMTModel(object):
             return sample, sample_score, kw_ret
         return sample, sample_score
 
-    def gen_batch_sample(self, f_init, f_next, x, x_mask, trng=None, k=1, maxlen=30, eos_id=0, **kwargs):
+    def gen_batch_sample(self, f_init, f_next, x, x_mask, trng=None, k=1, maxlen=30, eos_id=0, attn_src=False, **kwargs):
         """
         Only used for Batch Beam Search;
         Do not Support Stochastic Sampling
