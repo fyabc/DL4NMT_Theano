@@ -840,6 +840,7 @@ class NMTModel(object):
         batch_size = x.shape[1]
         sample = [[] for _ in xrange(batch_size)]
         sample_score = [[] for _ in xrange(batch_size)]
+        sample_attn_src_words = [[] for _ in xrange(batch_size)]
 
         lives_k = [1] * batch_size
         deads_k = [0] * batch_size
@@ -963,8 +964,8 @@ class NMTModel(object):
                     sample_score[jj].append(batch_hyp_scores[jj][idx])
 
         if have_kw_ret:
-            return sample, sample_score, [], kw_ret
-        return sample, sample_score, []
+            return sample, sample_score, sample_attn_src_words, kw_ret
+        return sample, sample_score, sample_attn_src_words
 
     def save_model(self, saveto, history_errs, uidx = -1):
         saveto_path = '{}.iter{}.npz'.format(
