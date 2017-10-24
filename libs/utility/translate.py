@@ -8,11 +8,11 @@ import re
 import cPickle as pkl
 import numpy as np
 import subprocess
+from collections import defaultdict
 
 from .utils import prepare_data_x
 
 __author__ = 'fyabc'
-
 
 def chosen_by_len_alpha(beam_samples, beam_scores, alpha):
     length_penalty = np.power(np.array([len(s) for s in beam_samples], dtype= np.float32), alpha)
@@ -20,7 +20,7 @@ def chosen_by_len_alpha(beam_samples, beam_scores, alpha):
     chosen_idx = np.argmin(score)
     return chosen_idx
 
-def translate(input_, model, f_init, f_next, trng, k, alpha=1., attn_src = False):
+def translate_block(input_, model, f_init, f_next, trng, k, alpha = 1., attn_src = False):
     """Translate for batch sampler.
 
     :return output: a list of word indices
@@ -235,9 +235,9 @@ def translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target, 
             for (trg_idx, src_str, attn, hotfix) in zip(all_chosen_trans, all_src_str, all_attn_src_words, all_src_hotfixes)]
     return trans, all_cand_trans_ids, all_cand_trans_str, all_scores, word_idict_trg
 
-
 def get_bleu(ref_file, hyp_in=None, type_in='filename', zhen = False):
     """Get BLEU score, it will call script 'multi-bleu.perl'.
+
     :param ref_file: standard test filename of target language.
     :param hyp_in: input from _translate_whole script.
     :param type_in: input type, default is 'filename', can be 'filename' or 'string'.

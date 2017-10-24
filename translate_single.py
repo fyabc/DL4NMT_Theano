@@ -13,9 +13,8 @@ from libs.models import build_and_init_model
 from libs.utility.utils import load_options_test
 from libs.utility.translate import translate_whole, chosen_by_len_alpha, get_bleu, seqs2words, de_tc, de_bpe
 
-def main(model, dictionary, dictionary_target, source_file, saveto, k=5, alpha = 0,
-         normalize=False, chr_level=False, batch_size=-1, zhen=False, src_trg_table_path=None, 
-         search_all_alphas=False, ref_file=None, dump_all=False, args=None):
+def main(model, dictionary, dictionary_target, source_file, saveto, k=5,alpha = 0,
+         normalize=False, chr_level=False, batch_size=1, zhen = False, src_trg_table_path = None, search_all_alphas = False, ref_file = None, dump_all = False, args = None):
     batch_mode = batch_size > 1
     assert batch_mode
 
@@ -37,11 +36,11 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5, alpha =
 
     model, _ = build_and_init_model(model, options=options, build=False, model_type=model_type)
 
-    f_init, f_next = model.build_sampler(trng=trng, use_noise=use_noise, batch_mode=batch_mode, dropout=options['use_dropout'], need_srcattn = zhen)
-    
+    f_init, f_next = model.build_sampler(trng=trng, use_noise = use_noise, batch_mode = batch_mode, dropout=options['use_dropout'], need_srcattn = zhen)
+
     trans, all_cand_ids, all_cand_trans, all_scores, word_idic_tgt = translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target, source_file, k, normalize, alpha= alpha,
                                 src_trg_table = src_trg_table, zhen = zhen, n_words_src = options['n_words_src'], echo = True, batch_size = batch_size)
-    
+
     if search_all_alphas:
         all_alpha_values = 0.1 * np.array(xrange(11))
         for alpha_v in all_alpha_values:
@@ -64,7 +63,6 @@ def main(model, dictionary, dictionary_target, source_file, saveto, k=5, alpha =
             with open(saveto_dump_all, 'w') as f:
                 print >> f, '\n'.join(all_cand_trans)
     print 'Done'
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
