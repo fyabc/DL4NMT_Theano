@@ -8,7 +8,7 @@ from pprint import pprint
 import numpy as np
 import theano
 
-from libs.constant import Datasets
+from libs.constants import Datasets
 from libs.models import build_and_init_model
 from libs.utility.utils import load_options_test
 from libs.utility.translate import translate_whole, chosen_by_len_alpha, get_bleu, seqs2words, de_tc, de_bpe
