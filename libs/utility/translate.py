@@ -14,61 +14,85 @@ from .utils import prepare_data_x
 __author__ = 'fyabc'
 
 
-def translate(input_, model, f_init, f_next, trng, k, normalize):
-    def _trans(seq):
-        # sample given an input sequence and obtain scores
-        sample, score = model.gen_sample(
-            f_init, f_next,
-            np.array(seq).reshape([len(seq), 1]),
-            trng=trng, k=k, maxlen=200,
-            stochastic=False, argmax=False,
-        )
+def chosen_by_len_alpha(beam_samples, beam_scores, alpha):
+    length_penalty = np.power(np.array([len(s) for s in beam_samples], dtype= np.float32), alpha)
+    score = beam_scores / length_penalty
+    chosen_idx = np.argmin(score)
+    return chosen_idx
 
-        # normalize scores according to sequence lengths
-        if normalize:
-            lengths = np.array([len(s) for s in sample])
-            score = score / lengths
-        sidx = np.argmin(score)
-        return sample[sidx]
-
-    output = []
-
-    for idx, x in enumerate(input_):
-        output.append(_trans(x))
-
-    return output
-
-
-def translate_block(input_, model, f_init, f_next, trng, k):
+def translate(input_, model, f_init, f_next, trng, k, alpha=1., attn_src = False):
     """Translate for batch sampler.
 
     :return output: a list of word indices
+            all_atten_src_words: a list of attented src words for each src sentence
     """
     x, x_mask = prepare_data_x(input_, maxlen=None, pad_eos=True, pad_sos=False)
 
-    batch_sample, batch_sample_score = model.gen_batch_sample(
+    batch_sample, batch_sample_score, sample_attn_src_words = model.gen_batch_sample(
         f_init, f_next, x, x_mask, trng,
-        k=k, maxlen=200, eos_id=0,
+        k=k, maxlen=200, eos_id=0, attn_src=attn_src,
     )
     assert len(batch_sample) == len(batch_sample_score)
 
-    output = []
+    chosen_trans = []
+    all_atten_src_words = []
+    all_scores = []
+    all_cand_trans = []
 
-    for sample, sample_score in zip(batch_sample, batch_sample_score):
-        score = sample_score / np.array([len(s) for s in sample])
-        # sidx = np.argsort(score)
-        # output.append([sample[ii] for ii in sidx])
-        output.append(sample[np.argmin(score)])
+    for sample, sample_score, sample_attn_src_word in zip(batch_sample, batch_sample_score, sample_attn_src_words): #now sample_score is an np array, with length beam_size, sample is a list of translated idxes
+        chosen_idx = chosen_by_len_alpha(sample, sample_score, alpha)
+        chosen_trans.append(sample[chosen_idx])
+        if len(sample_attn_src_word) != 0:
+            all_atten_src_words.append(sample_attn_src_word[chosen_idx])
+        all_cand_trans.append(sample)
+        all_scores.append(sample_score)
 
-    return output
+    return chosen_trans, all_atten_src_words, all_cand_trans, all_scores
 
+def load_zhen_trans_file(source_file, word_dict, n_words_src):
+    """
+    :param
+    :return
+    """
+
+    source_sentences_str = []
+    source_sentences_num = []
+    source_hotfix = []
+
+    for line in open(source_file, 'r'):
+        if line == '':
+            break
+        sent = line.strip().split('||||')
+        words = sent[0].strip().split()  #the actual content
+
+        if len(sent) > 1:
+            hotfix = defaultdict(lambda: list())
+            hotfix_segs = sent[1].strip().split('}{')
+            hotfix_segs[0] = hotfix_segs[0][1:] #remove {
+            hotfix_segs[-1] = hotfix_segs[-1][:-1] #remove }
+            for segs in hotfix_segs: #an example might be `13 ||| 13 ||| December 26 ||| $day ||| 十二月二十六日'
+                xx = segs.strip().split(' ||| ') #xx[0]: 13; xx[1]:13; xx[2]:December 26; xx[3]: $day; xx[4]:十二月二十六日
+                if xx[0] == xx[1]:
+                    hotfix[xx[3]].append([int(xx[0]), xx[2], xx[4]])
+                    words[int(xx[0])] = xx[3]
+            source_hotfix.append(hotfix)
+        else:
+            source_hotfix.append(None)
+
+        source_sentences_str.append(words)
+        x = map(lambda w: word_dict[w] if w in word_dict else 1, words)
+        x = map(lambda ii: ii if ii < n_words_src else 1, x)
+        x += [0]
+        source_sentences_num.append(x)
+
+    return source_sentences_str, source_sentences_num, source_hotfix
 
 def load_translate_data(dictionary, dictionary_target, source_file, batch_mode=False, **kwargs):
-    chr_level = kwargs.pop('chr_level', False)
     unk_id = kwargs.pop('unk_id', 1)
     n_words_src = kwargs.pop('n_words_src', 30000)
-    echo = kwargs.pop('echo', True)
+    echo = kwargs.pop('echo', False)
     load_input = kwargs.pop('load_input', True)
+    zh_en = kwargs.pop('zhen', False)
 
     # load source dictionary and invert
     if echo:
@@ -95,45 +119,29 @@ def load_translate_data(dictionary, dictionary_target, source_file, batch_mode=F
     if not load_input:
         return word_dict, word_idict, word_idict_trg
 
-    if not batch_mode:
-        input_ = []
+    batch_size = kwargs.pop('batch_size', 30)
+    all_src_str = None
+    all_src_hotfixes = None
 
-        if echo:
-            print('Loading input...', end='')
-
-        with open(source_file, 'r') as f:
-            for idx, line in enumerate(f):
-                if chr_level:
-                    words = list(line.decode('utf-8').strip())
-                else:
-                    words = line.strip().split()
-
-                x = [word_dict[w] if w in word_dict else unk_id for w in words]
-                x = [ii if ii < n_words_src else unk_id for ii in x]
-                x.append(0)
-
-                input_.append(x)
-        if echo:
-            print('Done')
-
-        return word_dict, word_idict, word_idict_trg, input_
-    else:
-        batch_size = kwargs.pop('batch_size', 30)
-
+    if not zh_en:
         with open(source_file, 'r') as f:
             all_src_sent = [line.strip().split() for line in f]
 
         all_src_num = []
+
         for seg in all_src_sent:
             tmp = [word_dict.get(w, unk_id) for w in seg]
             all_src_num.append([w if w < n_words_src else unk_id for w in tmp])
+    else:
+        all_src_str, all_src_num, all_src_hotfixes = load_zhen_trans_file(source_file, word_dict, n_words_src)
 
-        all_src_blocks = []
-        m_block = (len(all_src_num) + batch_size - 1) // batch_size
-        for idx in xrange(m_block):
-            all_src_blocks.append(all_src_num[batch_size * idx: batch_size * (idx + 1)])
+    all_src_num_blocks = []
 
-        return word_dict, word_idict, word_idict_trg, all_src_blocks, m_block
+    m_block = (len(all_src_num) + batch_size - 1) // batch_size
+    for idx in xrange(m_block):
+        all_src_num_blocks.append(all_src_num[batch_size * idx: batch_size * (idx + 1)])
+
+    return word_dict, word_idict, word_idict_trg, all_src_num_blocks, all_src_str, all_src_hotfixes, m_block
 
 
 def seqs2words(caps, word_idict_trg):
@@ -154,59 +162,97 @@ def seqs2words(caps, word_idict_trg):
         capsw.append(' '.join(ww))
     return capsw
 
-
-def _translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target, source_file,
-                     k=5, normalize=False, chr_level=False, **kwargs):
-    n_words_src = kwargs.pop('n_words_src', model.O['n_words_src'])
-    batch_mode = kwargs.pop('batch_mode', False)
-
-    # Translate file
-    if not batch_mode:
-        word_dict, word_idict, word_idict_trg, input_ = load_translate_data(
-            dictionary, dictionary_target, source_file,
-            batch_mode=batch_mode, chr_level=chr_level, n_words_src=n_words_src,
-            echo=False,
-        )
-
-        trans = seqs2words(
-            translate(input_, model, f_init, f_next, trng, k, normalize),
-            word_idict_trg,
-        )
-
-        return '\n'.join(trans) + '\n'
+def idx2str_attnBasedUNKReplace(trg_idx, src_str, src_trg_table, trg_idict, attn, hotfix):
+    result_trg_str = []
+    trg_len = len(trg_idx)
+    if hotfix is None:
+        short_dic = {}
     else:
-        word_dict, word_idict, word_idict_trg, all_src_blocks, m_block = load_translate_data(
-            dictionary, dictionary_target, source_file,
-            batch_mode=batch_mode, chr_level=chr_level, n_words_src=n_words_src,
-            echo=False, batch_size=30,
-        )
+        all_vs = []
+        map(lambda kv: all_vs.extend(kv[1]), hotfix.iteritems())
+        short_dic = dict((ele[0], ele[1]) for ele in all_vs) #map from location to possible translation
 
-        all_sample = []
-        for bidx, seqs in enumerate(all_src_blocks):
-            all_sample.extend(translate_block(seqs, model, f_init, f_next, trng, k))
+    for idx in xrange(trg_len):
+        current_word = trg_idx[idx]
+        if current_word == 0:
+            break
+        elif current_word == 1: #Normal UNK replace
+            srcidx = min(attn[idx], len(src_str)-1)
+            if srcidx in short_dic:
+                current_word = short_dic[srcidx]
+            else:
+                current_word = src_trg_table.get(src_str[srcidx], src_str[srcidx])
+        elif trg_idict[current_word][0] == '$' and len(trg_idict[current_word]) > 1 and hotfix is not None: #Decode each special token
+            special_word_str = trg_idict[current_word]
+            srcidx = min(attn[idx], len(src_str)-1)
+            possible_trans = hotfix.get(special_word_str, None) #a list
+            if possible_trans is None:
+                current_word = src_trg_table.get(src_str[srcidx], src_str[srcidx]) # normal UNK replace
+            else:
+                dist = [abs(vv[0] - srcidx) for vv in possible_trans]
+                selectidx = np.argmin(dist) # find the best matching element index
+                current_word = possible_trans[selectidx][1]
+        else:
+            current_word = trg_idict[current_word]
+        result_trg_str.append(current_word)
 
-        trans = seqs2words(all_sample, word_idict_trg)
+    return ' '.join(result_trg_str)
 
-        return '\n'.join(trans) + '\n'
+def translate_whole(model, f_init, f_next, trng, dictionary, dictionary_target, source_file,
+                     k=5, normalize=False, chr_level=False, src_trg_table = None, alpha = 1.0, **kwargs):
+    n_words_src = kwargs.pop('n_words_src', model.O['n_words_src'])
+    zhen = kwargs.pop('zhen', False)
+    batch_size = kwargs.pop('batch_size', 30)
+    echo = kwargs.pop('echo', False)
+    #must be in batch mode now
+
+    word_dict, word_idict, word_idict_trg, all_src_num_blocks, all_src_str, all_src_hotfixes, m_block \
+            = load_translate_data(dictionary, dictionary_target, source_file, batch_mode=True, chr_level=chr_level, n_words_src=n_words_src, batch_size = batch_size, zhen = zhen, echo= echo)
+
+    if echo:
+        print('Translating ', source_file, '...')
+    all_chosen_trans = []
+    all_attn_src_words = []
+    all_cand_trans_ids = []
+    all_cand_trans_str = []
+    all_scores = []
+    for bidx, seqs in enumerate(all_src_num_blocks):
+        trans, src_words, all_cands, scores = translate_block(seqs, model, f_init, f_next, trng, k, alpha= alpha, attn_src = zhen)
+        all_chosen_trans.extend(trans)
+        all_scores.extend(scores)
+        all_cand_trans_ids.extend(all_cands)
+        if zhen:
+            all_attn_src_words.extend(src_words)
+        if echo:
+            print(bidx, '/', m_block, 'Done')
+
+    if not zhen:
+        trans = seqs2words(all_chosen_trans, word_idict_trg)
+        flattend_trans_ids = [item for xx in all_cand_trans_ids for item in xx]
+        all_cand_trans_str = seqs2words(flattend_trans_ids, word_idict_trg)
+    else:
+        trans = [idx2str_attnBasedUNKReplace(trg_idx, src_str, src_trg_table, word_idict_trg, attn, hotfix)
+            for (trg_idx, src_str, attn, hotfix) in zip(all_chosen_trans, all_src_str, all_attn_src_words, all_src_hotfixes)]
+    return trans, all_cand_trans_ids, all_cand_trans_str, all_scores, word_idict_trg
 
 
-def get_bleu(ref_file, hyp_in=None, type_in='filename'):
+def get_bleu(ref_file, hyp_in=None, type_in='filename', zhen = False):
     """Get BLEU score, it will call script 'multi-bleu.perl'.
-
     :param ref_file: standard test filename of target language.
     :param hyp_in: input from _translate_whole script.
     :param type_in: input type, default is 'filename', can be 'filename' or 'string'.
     :return:
     """
-
+    if zhen:
+        ref_file = ' '.join(['{}{}'.format(ref_file, id) for id in xrange(4)])
     if type_in == 'filename':
         pl_process = subprocess.Popen(
-            'perl scripts/moses/multi-bleu.perl {} < {}\n'.format(ref_file, hyp_in), shell=True,
+            'perl scripts/moses/multi-bleu.perl {} {} < {}\n'.format('-lc' if zhen else '', ref_file, hyp_in), shell=True,
             stdout=subprocess.PIPE)
         pl_output = pl_process.stdout.read()
     elif type_in == 'string':
         pl_process = subprocess.Popen(
-            'perl scripts/moses/multi-bleu.perl {}\n'.format(ref_file), shell=True, stdin=subprocess.PIPE,
+            'perl scripts/moses/multi-bleu.perl {} {}\n'.format('-lc' if zhen else '', ref_file), shell=True, stdin=subprocess.PIPE,
             stdout=subprocess.PIPE)
         pl_output = pl_process.communicate(hyp_in)[0]
     else:
@@ -222,43 +268,48 @@ def get_bleu(ref_file, hyp_in=None, type_in='filename'):
 
     return float(BLEU)
 
-
 def de_bpe(input_str):
     return re.sub(r'(@@ )|(@@ ?$)', '', input_str)
 
+def de_tc(input_str):
+    return subprocess.Popen(
+            'perl scripts/moses/detruecase.perl',
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=open(os.devnull, 'w'),
+            shell=True,
+        ).communicate(input_str)[0]
 
 def translate_dev_get_bleu(model, f_init, f_next, trng, use_noise, **kwargs):
     dataset = kwargs.pop('dataset', model.O['task'])
 
     # [NOTE]: Filenames here are with path prefix.
-    dev1 = kwargs.pop('dev1', model.O['valid_datasets'][0])
-    dev2 = kwargs.pop('dev2', model.O['valid_datasets'][2])
+    dev1 = kwargs.pop('dev1', model.O['valid_datasets'][0]) #dev src
+    dev2 = kwargs.pop('dev2', model.O['valid_datasets'][2]) #dev (real) target
     dic1 = kwargs.pop('dic1', model.O['vocab_filenames'][0])
     dic2 = kwargs.pop('dic2', model.O['vocab_filenames'][1])
+    zhen = kwargs.pop('zhen', False)
+    if zhen:
+        st_table = model.O['valid_datasets'][1]
 
     use_noise.set_value(0.)
 
-    translated_string = _translate_whole(
+    translated_str_list, all_cand_trans_ids, all_cands_trans_str, all_scores, _ = translate_whole(
         model, f_init, f_next, trng,
         dic1, dic2, dev1,
-        k=3, batch_mode=True,
+        k=3, batch_mode = True,
+        zhen = zhen, src_trg_table = st_table if zhen else None,
     )
+    translated_str = '\n'.join(translated_str_list)
 
     use_noise.set_value(1.)
 
     # first de-truecase, then de-bpe
     if 'tc' in dataset:
-        translated_string = subprocess.Popen(
-            'perl scripts/moses/detruecase.perl',
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=open(os.devnull, 'w'),
-            shell=True,
-        ).communicate(translated_string)[0]
+        translated_str = de_tc(translated_str)
 
     if 'bpe' in dataset:
-        translated_string = de_bpe(translated_string)
+        translated_str = de_bpe(translated_str)
 
-    return get_bleu(dev2, translated_string, type_in='string')
-
+    return get_bleu(dev2, translated_str, type_in='string', zhen = zhen)
 
 __all__ = [
     'get_bleu',
