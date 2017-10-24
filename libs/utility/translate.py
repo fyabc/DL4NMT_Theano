@@ -33,7 +33,8 @@ def translate_block(input_, model, f_init, f_next, trng, k, alpha = 1., attn_src
         k=k, maxlen=200, eos_id=0, attn_src=attn_src,
     )
     assert len(batch_sample) == len(batch_sample_score)
-
+    print(batch_sample)
+    print(sample_attn_src_words)
     chosen_trans = []
     all_atten_src_words = []
     all_scores = []
