@@ -132,7 +132,9 @@ def _dense_lstm_step_slice(
         h_, c_,
         U):
     _dim = U.shape[1] // 4
-    h, c = _lstm_step_slice(mask_, x_, h_[:,-_dim:], c_, U)
+    preact = T.dot(h_, U) + x_
+
+    i, f, o, c, h = _lstm_step_kernel(preact, mask_, h_[:,-_dim:], c_, _dim)
     h = concatenate([origin_x_, h], axis=origin_x_.ndim-1)
     return h, c
 
@@ -162,7 +164,9 @@ def _dense_lstm_step_slice_attention(
         h_, c_,
         U, Wc):
     _dim = U.shape[1] // 4
-    h, c = _lstm_step_slice_attention(mask_, x_, context, h_[:,-_dim:], c_, U, Wc)
+    preact = T.dot(h_, U) + x_ + T.dot(context, Wc)
+
+    i, f, o, c, h = _lstm_step_kernel(preact, mask_, h_[:,-_dim:], c_, _dim)
     h = concatenate([origin_x_, h], axis=origin_x_.ndim-1)
     return h, c
 
