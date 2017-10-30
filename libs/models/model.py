@@ -644,10 +644,7 @@ class NMTModel(object):
 
         # x: 1 x 1
         y = T.vector('y_sampler', dtype='int64')
-        if densely_connected:
-            init_state = T.tensor4('init_state', dtype=fX)
-        else:
-            init_state = T.tensor3('init_state', dtype=fX)
+        init_state = T.tensor3('init_state', dtype=fX)
         init_memory = T.tensor3('init_memory', dtype=fX)
 
         # If it's the first word, emb should be all zero and it is indicated by -1
