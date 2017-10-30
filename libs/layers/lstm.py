@@ -131,7 +131,8 @@ def _dense_lstm_step_slice(
         mask_, x_, origin_x_,
         h_, c_,
         U):
-    h, c = _lstm_step_slice(mask_, x_, h_, c_, U)
+    _dim = U.shape[1] // 4
+    h, c = _lstm_step_slice(mask_, x_, h_[:,-_dim:], c_, U)
     h = concatenate([origin_x_, h], axis=origin_x_.ndim-1)
     return h, c
 
@@ -160,7 +161,8 @@ def _dense_lstm_step_slice_attention(
         mask_, x_, origin_x_, context,
         h_, c_,
         U, Wc):
-    h, c = _lstm_step_slice_attention(mask_, x_, context, h_, c_, U, Wc)
+    _dim = U.shape[1] // 4
+    h, c = _lstm_step_slice_attention(mask_, x_, context, h_[:,-_dim:], c_, U, Wc)
     h = concatenate([origin_x_, h], axis=origin_x_.ndim-1)
     return h, c
 
