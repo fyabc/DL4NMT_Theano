@@ -161,7 +161,7 @@ def _dense_lstm_step_slice_attention(
         h_, c_,
         U, Wc):
     h, c = _lstm_step_slice_attention(mask_, x_, context, h_, c_, U, Wc)
-    h = concatenate([origin_x_, h], axis=h.ndim-1)
+    h = concatenate([origin_x_, h], axis=origin_x_.ndim-1)
     return h, c
 
 def _lstm_step_slice_attention_gates(
@@ -204,6 +204,7 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
     else:
         dim = P[_p(prefix, 'U', layer_id)].shape[1] // 4
 
+    hidden_nin = kwargs.pop('hidden_nin', dim)
     mask = T.alloc(1., n_steps, 1) if mask is None else mask
 
     if multi:
@@ -235,8 +236,9 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
         return h, c
 
     # prepare scan arguments
-    init_states = [T.alloc(0., n_samples, dim) if init_state is None else init_state,
-                   T.alloc(0., n_samples, dim) if init_memory is None else init_memory, ]
+    init_states = [T.alloc(0., n_samples, hidden_nin) if init_state is None else init_state,
+                T.alloc(0., n_samples, dim) if init_memory is None else init_memory, ]
+
     if get_gates:
         init_states.extend([T.alloc(0., n_samples, dim) for _ in range(3)])
 
