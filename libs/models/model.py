@@ -628,7 +628,7 @@ class NMTModel(object):
         if densely_connected:
             init_decoder_state = []
             for layer_id in xrange(n_decoder_layers):
-                init_state = self.feed_forward(cxt_mean, prefix=_p('ff_state', layer_id), activation=tanh)
+                init_state = self.feed_forward(ctx_mean, prefix=_p('ff_state', layer_id), activation=tanh)
                 dense_init_state = concatenate([init_decoder_state[-1], init_state], axis=init_state.ndim-1) if layer_id > 0 else init_state
                 init_decoder_state.append(dense_init_state)
         else:
