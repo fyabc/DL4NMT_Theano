@@ -97,7 +97,8 @@ class ParameterInitializer(object):
 
         # init_state, init_cell
         if densely_connected:
-            for layer_id in xrange(n_layers):
+            np_parameters = self.init_feed_forward(np_parameters, prefix=_p('ff_state', layer_id), nin=context_dim, nout=self.O['dim'] + self.O['dim_word'])
+            for layer_id in xrange(1 + n_layers):
                 np_parameters = self.init_feed_forward(np_parameters, prefix=_p('ff_state', layer_id), nin=context_dim, nout=self.O['dim'])
         else:
             np_parameters = self.init_feed_forward(np_parameters, prefix='ff_state', nin=context_dim, nout=self.O['dim'])
@@ -593,6 +594,7 @@ class NMTModel(object):
         dropout_rate = kwargs.pop('dropout', False)
         dropout_rate_out = self.O['dropout_out']
         densely_connected = self.O['densely_connected']
+        n_decoder_layers = self.O['n_decoder_layers']
 
         if dropout_rate is not False:
             dropout_params = [use_noise, trng, dropout_rate]
