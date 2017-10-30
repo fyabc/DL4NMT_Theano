@@ -23,6 +23,7 @@ def param_init_lstm(O, params, prefix='lstm', nin=None, dim=None, **kwargs):
     Unin = kwargs.pop('Unin', nin)
     multi = 'multi' in O.get('unit', 'lstm')
     unit_size = kwargs.pop('unit_size', O.get('unit_size', 2))
+    densely_connected = O.get('densely_connected', False)
 
     if not multi:
         if densely_connected:
