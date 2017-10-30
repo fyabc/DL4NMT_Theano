@@ -1164,18 +1164,19 @@ class NMTModel(object):
 
             # Other layers (forward)
             if densely_connected:
-                concat_feat = concatenate([input_, input_r[::-1]], axis=input_.ndim - 1)
-                concat_feat = concatenate([concat_feat, h_last], axis=concat_feat.ndim - 1)
-
+                #concat_feat = concatenate([input_, input_r[::-1]], axis=input_.ndim - 1)
+                #concat_feat = concatenate([concat_feat, h_last], axis=concat_feat.ndim - 1)
                 for layer_id in xrange(1, n_layers):
+                    input_ = h_last
                     x_mask_ = x_mask
                     if use_zigzag:
-                        concat_feat = concat_feat[::-1]
+                        #concat_feat = concat_feat[::-1]
+                        input_ = input_
                         if layer_id % 2 == 1:
                             x_mask_ = xr_mask
                 
                     layer_out = get_build(self.O['unit'])(
-                        self.P, concat_feat, self.O, prefix='encoder', mask=x_mask_,
+                        self.P, input_, self.O, prefix='encoder', mask=x_mask_,
                         layer_id=layer_id, dropout_params=dropout_params, get_gates=get_gates)
                     h_last, kw_ret_layer = layer_out[0], layer_out[-1]
                     if get_gates:
@@ -1183,8 +1184,8 @@ class NMTModel(object):
                         kw_ret['forget_gates'].append(kw_ret_layer['forget_gates'])
                         kw_ret['output_gates'].append(kw_ret_layer['output_gates'])
                 
-                    concat_feat = concatenate([concat_feat, h_last], axis = concat_feat.ndim - 1)
-                output = concat_feat
+                    #concat_feat = concatenate([concat_feat, h_last], axis = concat_feat.ndim - 1)
+                output = h_last
             else: # Not densely connected
                 inputs = [(input_, input_r)]
                 outputs = [h_last]
@@ -1337,10 +1338,11 @@ class NMTModel(object):
         else: # Not all attention
             if densely_connected:
                 # Layers before attention layer
-                concat_feat = tgt_embedding
+                h_last = tgt_embedding
                 for layer_id in xrange(0, attention_layer_id):
+                    input_ = h_last
                     layer_out = get_build(unit)(
-                        self.P, concat_feat, self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
+                        self.P, input_, self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
                         dropout_params=dropout_params, one_step=one_step, init_state=init_state[layer_id], context=None,
                         init_memory=init_memory[layer_id], get_gates=get_gates, unit_size=unit_size,
                     )
@@ -1354,12 +1356,13 @@ class NMTModel(object):
                         kw_ret['forget_gates'].append(kw_ret_layer['forget_gates'])
                         kw_ret['output_gates'].append(kw_ret_layer['output_gates'])
 
-                    concat_feat = concatenate([concat_feat, layer_out[0]], axis = concat_feat.ndim - 1)
+                    #concat_feat = concatenate([concat_feat, layer_out[0]], axis = concat_feat.ndim - 1)
+                    h_last = layer_out[0]
 
                 # Attention layer
-
+                input_ = h_last
                 hidden_decoder, context_decoder, alpha_decoder, kw_ret_att = get_build(unit + '_cond')(
-                    self.P, concat_feat, self.O, prefix='decoder', mask=y_mask, context=context,
+                    self.P, input_, self.O, prefix='decoder', mask=y_mask, context=context,
                     context_mask=x_mask, one_step=one_step, init_state=init_state[attention_layer_id],
                     dropout_params=dropout_params, layer_id=attention_layer_id, init_memory=init_memory[attention_layer_id],
                     get_gates=get_gates, unit_size=unit_size,
@@ -1376,12 +1379,14 @@ class NMTModel(object):
                     kw_ret['forget_gates_att'] = kw_ret_att['forget_gates_att']
                     kw_ret['output_gates_att'] = kw_ret_att['output_gates_att']
 
-                concat_feat = concatenate([concat_feat, hidden_decoder], axis = concat_feat.ndim - 1)
+                #concat_feat = concatenate([concat_feat, hidden_decoder], axis = concat_feat.ndim - 1)
+                h_last = hidden_decoder
 
                 # Layers after attention layer
                 for layer_id in xrange(attention_layer_id + 1, n_layers):
+                    input_ = h_last
                     layer_out = get_build(unit)(
-                        self.P, concat_feat, self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
+                        self.P, input_, self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
                         dropout_params=dropout_params, context=context_decoder, init_state=init_state[layer_id],
                         one_step=one_step, init_memory=init_memory[layer_id], get_gates=get_gates, unit_size=unit_size,
                     )
@@ -1395,8 +1400,9 @@ class NMTModel(object):
                         kw_ret['forget_gates'].append(kw_ret_layer['forget_gates'])
                         kw_ret['output_gates'].append(kw_ret_layer['output_gates'])
 
-                    concat_feat = concatenate([concat_feat, layer_out[0]], axis = concat_feat.ndim - 1)
-                output = concat_feat
+                    #concat_feat = concatenate([concat_feat, layer_out[0]], axis = concat_feat.ndim - 1)
+                    h_last = layer_out[0]
+                output = h_last #concat_feat
 
             else: # Not densely connected
                 # Layers before attention layer

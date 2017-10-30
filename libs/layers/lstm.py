@@ -20,33 +20,59 @@ def param_init_lstm(O, params, prefix='lstm', nin=None, dim=None, **kwargs):
 
     layer_id = kwargs.pop('layer_id', 0)
     context_dim = kwargs.pop('context_dim', None)
+    Unin = kwargs.pop('Unin', nin)
     multi = 'multi' in O.get('unit', 'lstm')
     unit_size = kwargs.pop('unit_size', O.get('unit_size', 2))
 
     if not multi:
-        params[_p(prefix, 'W', layer_id)] = np.concatenate([
-            normal_weight(nin, dim),
-            normal_weight(nin, dim),
-            normal_weight(nin, dim),
-            normal_weight(nin, dim),
-        ], axis=1)
-
-        params[_p(prefix, 'U', layer_id)] = np.concatenate([
-            orthogonal_weight(dim),
-            orthogonal_weight(dim),
-            orthogonal_weight(dim),
-            orthogonal_weight(dim),
-        ], axis=1)
-
-        params[_p(prefix, 'b', layer_id)] = np.zeros((4 * dim,), dtype=fX)
-
-        if context_dim is not None:
-            params[_p(prefix, 'Wc', layer_id)] = np.concatenate([
-                normal_weight(context_dim, dim),
-                normal_weight(context_dim, dim),
-                normal_weight(context_dim, dim),
-                normal_weight(context_dim, dim),
+        if densely_connected:
+            params[_p(prefix, 'W', layer_id)] = np.concatenate([
+                normal_weight(nin, dim),
+                normal_weight(nin, dim),
+                normal_weight(nin, dim),
+                normal_weight(nin, dim),
             ], axis=1)
+
+            params[_p(prefix, 'U', layer_id)] = np.concatenate([
+                normal_weight(nin+dim, dim),
+                normal_weight(nin+dim, dim),
+                normal_weight(nin+dim, dim),
+                normal_weight(nin+dim, dim),
+            ], axis=1)
+
+            params[_p(prefix, 'b', layer_id)] = np.zeros((4 * dim,), dtype=fX)
+
+            if context_dim is not None:
+                params[_p(prefix, 'Wc', layer_id)] = np.concatenate([
+                    normal_weight(context_dim, dim),
+                    normal_weight(context_dim, dim),
+                    normal_weight(context_dim, dim),
+                    normal_weight(context_dim, dim),
+                ], axis=1)
+        else:
+            params[_p(prefix, 'W', layer_id)] = np.concatenate([
+                normal_weight(nin, dim),
+                normal_weight(nin, dim),
+                normal_weight(nin, dim),
+                normal_weight(nin, dim),
+            ], axis=1)
+
+            params[_p(prefix, 'U', layer_id)] = np.concatenate([
+                orthogonal_weight(dim),
+                orthogonal_weight(dim),
+                orthogonal_weight(dim),
+                orthogonal_weight(dim),
+            ], axis=1)
+
+            params[_p(prefix, 'b', layer_id)] = np.zeros((4 * dim,), dtype=fX)
+
+            if context_dim is not None:
+                params[_p(prefix, 'Wc', layer_id)] = np.concatenate([
+                    normal_weight(context_dim, dim),
+                    normal_weight(context_dim, dim),
+                    normal_weight(context_dim, dim),
+                    normal_weight(context_dim, dim),
+                ], axis=1)
     else:
         params[_p(prefix, 'W', layer_id)] = np.stack([np.concatenate([
             normal_weight(nin, dim),
@@ -100,6 +126,13 @@ def _lstm_step_slice(
     i, f, o, c, h = _lstm_step_kernel(preact, mask_, h_, c_, _dim)
     return h, c
 
+def _dense_lstm_step_slice(
+        mask_, x_, origin_x_,
+        h_, c_,
+        U):
+    h, c = _lstm_step_slice(mask_, x_, h_, c_, U)
+    h = concatenate([origin_x_, h], axis=origin_x_.ndim-1)
+    return h, c
 
 def _lstm_step_slice_gates(
         mask_, x_,
@@ -122,6 +155,13 @@ def _lstm_step_slice_attention(
     i, f, o, c, h = _lstm_step_kernel(preact, mask_, h_, c_, _dim)
     return h, c
 
+def _dense_lstm_step_slice_attention(
+        mask_, x_, origin_x_, context,
+        h_, c_,
+        U, Wc):
+    h, c = _lstm_step_slice_attention(mask_, x_, context, h_, c_, U, Wc)
+    h = concatenate([origin_x_, h], axis=h.ndim-1)
+    return h, c
 
 def _lstm_step_slice_attention_gates(
         mask_, x_, context,
@@ -152,6 +192,7 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
     unit_size = kwargs.pop('unit_size', O.get('unit_size', 2))
     # FIXME: multi-gru/lstm do NOT support get_gates now
     get_gates = kwargs.pop('get_gates', False)
+    densely_connected = O.get('densely_connected',False)
 
     kw_ret = {}
 
@@ -165,12 +206,12 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
     mask = T.alloc(1., n_steps, 1) if mask is None else mask
 
     if multi:
-        state_below = T.concatenate([
+        state_below_ = T.concatenate([
             T.dot(state_below, P[_p(prefix, 'W', layer_id)][j]) + P[_p(prefix, 'b', layer_id)][j]
             for j in range(unit_size)
         ], axis=-1)
     else:
-        state_below = T.dot(state_below, P[_p(prefix, 'W', layer_id)]) + P[_p(prefix, 'b', layer_id)]
+        state_below_ = T.dot(state_below, P[_p(prefix, 'W', layer_id)]) + P[_p(prefix, 'b', layer_id)]
 
     def _step_slice(mask_, x_, h_, c_, U):
         h_tmp = h_
@@ -199,26 +240,32 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
         init_states.extend([T.alloc(0., n_samples, dim) for _ in range(3)])
 
     if context is None:
-        seqs = [mask, state_below]
+        seqs = [mask, state_below_, state_below]
         shared_vars = [P[_p(prefix, 'U', layer_id)]]
-        if multi:
-            _step = _step_slice
+        if densely_connected:
+            _step = _dense_lstm_step_slice
         else:
-            if get_gates:
-                _step = _lstm_step_slice_gates
+            if multi:
+                _step = _step_slice
             else:
-                _step = _lstm_step_slice
+                if get_gates:
+                    _step = _lstm_step_slice_gates
+                else:
+                    _step = _lstm_step_slice
     else:
-        seqs = [mask, state_below, context]
+        seqs = [mask, state_below_, state_below, context]
         shared_vars = [P[_p(prefix, 'U', layer_id)],
                        P[_p(prefix, 'Wc', layer_id)]]
-        if multi:
-            _step = _step_slice_attention
+        if densely_connected:
+            _step = _dense_lstm_step_slice_attention
         else:
-            if get_gates:
-                _step = _lstm_step_slice_attention_gates
+            if multi:
+                _step = _step_slice_attention
             else:
-                _step = _lstm_step_slice_attention
+                if get_gates:
+                    _step = _lstm_step_slice_attention_gates
+                else:
+                    _step = _lstm_step_slice_attention
 
     if one_step:
         outputs = _step(*(seqs + init_states + shared_vars))
@@ -265,33 +312,61 @@ def param_init_lstm_cond(O, params, prefix='lstm_cond', nin=None, dim=None, dimc
     layer_id = kwargs.pop('layer_id', 0)
     multi = 'multi' in O.get('unit', 'lstm_cond')
     unit_size = kwargs.pop('unit_size', O.get('cond_unit_size', 2))
+    Unin = kwargs.pop('Unin', nin)
     dense_attention = O['densely_connected'] and O['dense_attention']
+    densely_connected = O['densely_connected']
 
     if not multi:
-        params[_p(prefix, 'W', layer_id)] = np.concatenate([
-            normal_weight(nin, dim),
-            normal_weight(nin, dim),
-            normal_weight(nin, dim),
-            normal_weight(nin_nonlin, dim),
-        ], axis=1)
-        params[_p(prefix, 'b', layer_id)] = np.zeros((4 * dim,), dtype=fX)
-        params[_p(prefix, 'U', layer_id)] = np.concatenate([
-            orthogonal_weight(dim_nonlin),
-            orthogonal_weight(dim_nonlin),
-            orthogonal_weight(dim_nonlin),
-            orthogonal_weight(dim_nonlin),
-        ], axis=1)
+        if densely_connected:
+            params[_p(prefix, 'W', layer_id)] = np.concatenate([
+                normal_weight(nin, dim),
+                normal_weight(nin, dim),
+                normal_weight(nin, dim),
+                normal_weight(nin_nonlin, dim),
+            ], axis=1)
+            params[_p(prefix, 'b', layer_id)] = np.zeros((4 * dim,), dtype=fX)
+            params[_p(prefix, 'U', layer_id)] = np.concatenate([
+                normal_weight(nin+dim, dim_nonlin),
+                normal_weight(nin+dim, dim_nonlin),
+                normal_weight(nin+dim, dim_nonlin),
+                normal_weight(nin+dim, dim_nonlin),
+            ], axis=1)
 
-        params[_p(prefix, 'U_nl', layer_id)] = np.concatenate([
-            orthogonal_weight(dim_nonlin),
-            orthogonal_weight(dim_nonlin),
-            orthogonal_weight(dim_nonlin),
-            orthogonal_weight(dim_nonlin),
-        ], axis=1)
-        params[_p(prefix, 'b_nl', layer_id)] = np.zeros((4 * dim_nonlin,), dtype=fX)
+            params[_p(prefix, 'U_nl', layer_id)] = np.concatenate([
+                orthogonal_weight(dim_nonlin),
+                orthogonal_weight(dim_nonlin),
+                orthogonal_weight(dim_nonlin),
+                orthogonal_weight(dim_nonlin),
+            ], axis=1)
+            params[_p(prefix, 'b_nl', layer_id)] = np.zeros((4 * dim_nonlin,), dtype=fX)
 
-        # context to LSTM
-        params[_p(prefix, 'Wc', layer_id)] = normal_weight(dimctx, dim * 4)
+            # context to LSTM
+            params[_p(prefix, 'Wc', layer_id)] = normal_weight(dimctx, dim * 4)
+        else:
+            params[_p(prefix, 'W', layer_id)] = np.concatenate([
+                normal_weight(nin, dim),
+                normal_weight(nin, dim),
+                normal_weight(nin, dim),
+                normal_weight(nin_nonlin, dim),
+            ], axis=1)
+            params[_p(prefix, 'b', layer_id)] = np.zeros((4 * dim,), dtype=fX)
+            params[_p(prefix, 'U', layer_id)] = np.concatenate([
+                orthogonal_weight(dim_nonlin),
+                orthogonal_weight(dim_nonlin),
+                orthogonal_weight(dim_nonlin),
+                orthogonal_weight(dim_nonlin),
+            ], axis=1)
+
+            params[_p(prefix, 'U_nl', layer_id)] = np.concatenate([
+                orthogonal_weight(dim_nonlin),
+                orthogonal_weight(dim_nonlin),
+                orthogonal_weight(dim_nonlin),
+                orthogonal_weight(dim_nonlin),
+            ], axis=1)
+            params[_p(prefix, 'b_nl', layer_id)] = np.zeros((4 * dim_nonlin,), dtype=fX)
+
+            # context to LSTM
+            params[_p(prefix, 'Wc', layer_id)] = normal_weight(dimctx, dim * 4)
     else:
         params[_p(prefix, 'W', layer_id)] = np.stack([np.concatenate([
             normal_weight(nin, dim),
@@ -359,6 +434,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
     unit_size = kwargs.pop('unit_size', O.get('cond_unit_size', 2))
     # FIXME: multi-gru/lstm do NOT support get_gates now
     get_gates = kwargs.pop('get_gates', False)
+    densely_connected = O.get('densely_connected', False)
     dense_attention = O['densely_connected'] and O['dense_attention']
 
     kw_ret = {}
@@ -398,12 +474,12 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
 
     # Projected x
     if multi:
-        state_below = T.concatenate([
+        state_below_ = T.concatenate([
             T.dot(state_below, P[_p(prefix, 'W', layer_id)][j]) + P[_p(prefix, 'b', layer_id)][j]
             for j in range(unit_size)
         ], axis=-1)
     else:
-        state_below = T.dot(state_below, P[_p(prefix, 'W', layer_id)]) + P[_p(prefix, 'b', layer_id)]
+        state_below_ = T.dot(state_below, P[_p(prefix, 'W', layer_id)]) + P[_p(prefix, 'b', layer_id)]
 
     def _one_step_attention_slice(mask_, h1, c1, ctx_, Wc, U_nl, b_nl):
         preact2 = T.dot(h1, U_nl) + b_nl + T.dot(ctx_, Wc)
@@ -438,6 +514,27 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
         h2, c2 = _one_step_attention_slice(mask_, h1, c1, ctx_, Wc, U_nl, b_nl)
 
         return h2, c2, ctx_, alpha.T
+
+    def _dense_step_slice(mask_, x_, origin_x_,
+                    h_, c_, ctx_, alpha_,
+                    projected_context_, context_,
+                    U, Wc, U_nl, b_nl, *args):
+        # LSTM 1
+        h1, c1 = _lstm_step_slice(mask_, x_, h_, c_, U)
+
+        # Attention
+        ctx_, alpha = _attention(h1, projected_context_, context_, context_mask, dense_attention, O['dim_word'], O['dim'], O['n_encoder_layers'], *args)
+
+        h1 = concatenate([origin_x_, h1], axis=origin_x_.ndim-1)
+        # LSTM 2 (with attention)
+        h2, c2 = _dense_one_step_attention_slice(mask_, origin_x_, h1, c1, ctx_, Wc, U_nl, b_nl)
+
+        return h2, c2, ctx_, alpha.T
+
+    def _dense_one_step_attention_slice(mask_, origin_x_, h1, c1, ctx_, Wc, U_nl, b_nl):
+        h2, c2 = _one_step_attention_slice(mask_, h1, c1, ctx_, Wc, U_nl, b_nl)
+        h2 = concatenate([origin_x_, h2], axis=origin_x_.ndim-1)
+        return h2, c2
 
     # todo: implement it
     def _step_slice_gates(mask_, x_,
@@ -482,14 +579,17 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
         return h2, c2, ctx_, alpha.T
 
     # Prepare scan arguments
-    seqs = [mask, state_below]
-    if multi:
-        _step = _multi_step_slice
+    seqs = [mask, state_below, state_below_]
+    if densely_connected:
+        _step = _dense_step_slice
     else:
-        if get_gates:
-            _step = _step_slice_gates
+        if multi:
+            _step = _multi_step_slice
         else:
-            _step = _step_slice
+            if get_gates:
+                _step = _step_slice_gates
+            else:
+                _step = _step_slice
     init_states = [
         init_state,
         T.alloc(0., n_samples, dim) if init_memory is None else init_memory,
