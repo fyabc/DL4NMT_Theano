@@ -98,7 +98,7 @@ class ParameterInitializer(object):
         # init_state, init_cell
         if densely_connected:
             np_parameters = self.init_feed_forward(np_parameters, prefix=_p('ff_state', 0), nin=context_dim, nout=self.O['dim'] + self.O['dim_word'])
-            for layer_id in xrange(1 + n_layers):
+            for layer_id in xrange(1, n_layers):
                 np_parameters = self.init_feed_forward(np_parameters, prefix=_p('ff_state', layer_id), nin=context_dim, nout=self.O['dim'])
         else:
             np_parameters = self.init_feed_forward(np_parameters, prefix='ff_state', nin=context_dim, nout=self.O['dim'])
