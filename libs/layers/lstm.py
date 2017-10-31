@@ -467,7 +467,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
 
     if dense_attention:
         dim_word = O['dim_word']
-        #dim = O['dim']
+        dim = O['dim']
         projected_context = T.dot(context[:,:,:2*dim_word], P[_p(prefix, 'Wc_att', layer_id, 0)]) + P[_p(prefix, 'b_att', layer_id, 0)]
         for i in xrange(1, O['n_encoder_layers'] + 1):
             projected_context = concatenate([projected_context, T.dot(context[:, :, 2*(dim_word+(i-1)*dim):2*(dim_word+i*dim)], P[_p(prefix, 'Wc_att', layer_id, i)]) + P[_p(prefix, 'b_att', layer_id, i)]], axis=projected_context.ndim-1)
@@ -527,7 +527,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
         # Attention
         ctx_, alpha = _attention(h1, projected_context_, context_, context_mask, dense_attention, O['dim_word'], O['dim'], O['n_encoder_layers'], *args)
 
-        h1 = concatenate([h_[:,:-dim], h1], axis=origin_x_.ndim-1)
+        h1 = concatenate([h_[:,:-dim], h1], axis=h1.ndim-1)
 
         # LSTM 2 (with attention)
         h2, c2 = _one_step_attention_slice(mask_, h1, c1, ctx_, Wc, U_nl, b_nl)

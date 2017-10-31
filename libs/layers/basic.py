@@ -87,9 +87,9 @@ def _attention(h1, projected_context_, context_, context_mask=None, dense_attent
             W_comb_att, U_att, c_tt = args[i*n_enc], args[i*n_enc + 1], args[i*n_enc + 2]
             pstate_ = T.dot(h1, W_comb_att)  
             if i == 0:
-                pctx__ = projected_context_[:, :, : 2 * dim_word] + pstate_[None, :, :]
+                pctx__ = projected_context_[:, :, :2 * dim_word] + pstate_[None, :, :]
             else:
-                pctx__ = projected_context_[:, :, 2 * (dim_word + (i - 1) * dim):2 * (dim_word + i *dim)] + pstate_[None, :, :]
+                pctx__ = projected_context_[:, :, 2 * (dim_word + (i - 1) * dim):2 * (dim_word + i * dim)] + pstate_[None, :, :]
             pctx__ = T.tanh(pctx__)
             alpha = T.dot(pctx__, U_att) + c_tt
             alpha = alpha.reshape([alpha.shape[0], alpha.shape[1]])
