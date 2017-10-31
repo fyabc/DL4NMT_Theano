@@ -463,7 +463,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
         dim_word = O['dim_word']
         dim = O['dim']
         enc_layer_0_single_output = concatenate([context[:,:,dim_word:dim_word+dim], context[:,:,2*dim_word+dim:2*(dim_word+dim)]],axis=context.ndim-1)
-        projected_context = T.dot(enc_layer_0_single_output, P[_p(prefix, 'Wc_att', layer_id, i)]) + P[_p(prefix, 'b_att', layer_id, i)]]
+        projected_context = T.dot(enc_layer_0_single_output, P[_p(prefix, 'Wc_att', layer_id, i)]) + P[_p(prefix, 'b_att', layer_id, i)]
         for i in xrange(1, O['n_encoder_layers']):
             #if i == 0:
             #    projected_context = T.dot(context[:, :, 2 * dim_word：], P[_p(prefix, 'Wc_att', layer_id, i)]) + P[_p(prefix, 'b_att', layer_id, i)]
