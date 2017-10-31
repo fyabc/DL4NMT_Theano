@@ -467,7 +467,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
 
     if dense_attention:
         dim_word = O['dim_word']
-        dim = O['dim']
+        #dim = O['dim']
         projected_context = T.dot(context[:,:,:2*dim_word], P[_p(prefix, 'Wc_att', layer_id, 0)]) + P[_p(prefix, 'b_att', layer_id, 0)]
         for i in xrange(1, O['n_encoder_layers'] + 1):
             projected_context = concatenate([projected_context, T.dot(context[:, :, 2*(dim_word+(i-1)*dim):2*(dim_word+i*dim)], P[_p(prefix, 'Wc_att', layer_id, i)]) + P[_p(prefix, 'b_att', layer_id, i)]], axis=projected_context.ndim-1)
@@ -483,7 +483,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
     else:
         state_below_ = T.dot(state_below, P[_p(prefix, 'W', layer_id)]) + P[_p(prefix, 'b', layer_id)]
 
-    def _one_step_attention_slice(mask_, h1, c1, ctx_, Wc, U_nl, b_nl, dim):
+    def _one_step_attention_slice(mask_, h1, c1, ctx_, Wc, U_nl, b_nl):
         preact2 = T.dot(h1, U_nl) + b_nl + T.dot(ctx_, Wc)
 
         i2 = T.nnet.sigmoid(_slice(preact2, 0, dim))
@@ -532,7 +532,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
         h1 = concatenate([h_[:,:-_dim], h1], axis=origin_x_.ndim-1)
 
         # LSTM 2 (with attention)
-        h2, c2 = _one_step_attention_slice(mask_, h1, c1, ctx_, Wc, U_nl, b_nl, _dim)
+        h2, c2 = _one_step_attention_slice(mask_, h1, c1, ctx_, Wc, U_nl, b_nl)
         h2 = concatenate([origin_x_, h2], axis=origin_x_.ndim-1)
 
         return h2, c2, ctx_, alpha.T
