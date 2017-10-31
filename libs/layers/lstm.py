@@ -112,7 +112,7 @@ def _lstm_step_kernel(preact, mask_, h_, c_, _dim):
     c = mask_[:, None] * c + (1. - mask_)[:, None] * c_
 
     h = o * T.tanh(c)
-    h = mask_[:, None] * h + (1. - mask_)[:, None] * h_
+    h = mask_[:, None] * h + (1. - mask_)[:, None] * h_[:,-_dim:]
 
     return i, f, o, c, h
 
@@ -131,10 +131,8 @@ def _dense_lstm_step_slice(
         mask_, x_, origin_x_,
         h_, c_,
         U):
-    _dim = U.shape[1] // 4
-    preact = T.dot(h_, U) + x_
 
-    i, f, o, c, h = _lstm_step_kernel(preact, mask_, h_[:,-_dim:], c_, _dim)
+    h, c = _lstm_step_slice(mask_, x_, h_, c_, U)
     h = concatenate([origin_x_, h], axis=origin_x_.ndim-1)
     return h, c
 
@@ -163,10 +161,7 @@ def _dense_lstm_step_slice_attention(
         mask_, x_, origin_x_, context,
         h_, c_,
         U, Wc):
-    _dim = U.shape[1] // 4
-    preact = T.dot(h_, U) + x_ + T.dot(context, Wc)
-
-    i, f, o, c, h = _lstm_step_kernel(preact, mask_, h_[:,-_dim:], c_, _dim)
+    h, c = _lstm_step_slice_attention(mask_, x_, context, h_, c_, U, Wc)
     h = concatenate([origin_x_, h], axis=origin_x_.ndim-1)
     return h, c
 
@@ -405,17 +400,11 @@ def param_init_lstm_cond(O, params, prefix='lstm_cond', nin=None, dim=None, dimc
 
     if dense_attention:
         dim_word = O['dim_word']
-        for i in xrange(O['n_encoder_layers'] + 1):
-            if i == 0:
-                params[_p(prefix, 'W_comb_att', layer_id, i)] = normal_weight(dim, 2 * dim_word)
-                params[_p(prefix, 'Wc_att', layer_id, i)] = normal_weight(2 * dim_word)
-                params[_p(prefix, 'b_att', layer_id, i)] = np.zeros((2 * dim_word,), dtype=fX)
-                params[_p(prefix, 'U_att', layer_id, i)] = normal_weight(2* dim_word, 1)
-            else:
-                params[_p(prefix, 'W_comb_att', layer_id, i)] = normal_weight(dim, 2 * dim)
-                params[_p(prefix, 'Wc_att', layer_id, i)] = normal_weight(2 * dim)
-                params[_p(prefix, 'b_att', layer_id, i)] = np.zeros((2 * dim,), dtype=fX)
-                params[_p(prefix, 'U_att', layer_id, i)] = normal_weight(2 * dim, 1)
+        for i in xrange(O['n_encoder_layers']):
+            params[_p(prefix, 'W_comb_att', layer_id, i)] = normal_weight(dim, 2 * dim)
+            params[_p(prefix, 'Wc_att', layer_id, i)] = normal_weight(2 * dim)
+            params[_p(prefix, 'b_att', layer_id, i)] = np.zeros((2 * dim,), dtype=fX)
+            params[_p(prefix, 'U_att', layer_id, i)] = normal_weight(2 * dim, 1)
             params[_p(prefix, 'c_tt', layer_id, i)] = np.zeros((1,), dtype=fX)
     else:
         # attention: combined -> hidden
@@ -473,11 +462,14 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
     if dense_attention:
         dim_word = O['dim_word']
         dim = O['dim']
-        for i in xrange(O['n_encoder_layers'] + 1):
-            if i == 0:
-                projected_context = T.dot(context[:, :, :2 * dim_word], P[_p(prefix, 'Wc_att', layer_id, i)]) + P[_p(prefix, 'b_att', layer_id, i)]
-            else:
-                projected_context = concatenate([projected_context, T.dot(context[:, :, 2*(dim_word+(i-1)*dim):2*(dim_word+i*dim)], P[_p(prefix, 'Wc_att', layer_id, i)]) + P[_p(prefix, 'b_att', layer_id, i)]], axis=projected_context.ndim - 1)
+        enc_layer_0_single_output = concatenate([context[:,:,dim_word:dim_word+dim], context[:,:,2*dim_word+dim:2*(dim_word+dim)]],axis=context.ndim-1)
+        projected_context = T.dot(enc_layer_0_single_output, P[_p(prefix, 'Wc_att', layer_id, i)]) + P[_p(prefix, 'b_att', layer_id, i)]]
+        for i in xrange(1, O['n_encoder_layers']):
+            #if i == 0:
+            #    projected_context = T.dot(context[:, :, 2 * dim_word：], P[_p(prefix, 'Wc_att', layer_id, i)]) + P[_p(prefix, 'b_att', layer_id, i)]
+            #else:
+            #    projected_context = concatenate([projected_context, T.dot(context[:, :, 2*(dim_word+(i-1)*dim):2*(dim_word+i*dim)], P[_p(prefix, 'Wc_att', layer_id, i)]) + P[_p(prefix, 'b_att', layer_id, i)]], axis=projected_context.ndim - 1)
+            projected_context = concatenate([projected_context, T.dot(context[:, :, 2*(dim_word+i*dim):2*(dim_word+(i+1)*dim)], P[_p(prefix, 'Wc_att', layer_id, i)]) + P[_p(prefix, 'b_att', layer_id, i)]], axis=projected_context.ndim - 1)
     else:
         projected_context = T.dot(context, P[_p(prefix, 'Wc_att', layer_id)]) + P[_p(prefix, 'b_att', layer_id)]
 
@@ -534,16 +526,12 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
         # Attention
         ctx_, alpha = _attention(h1, projected_context_, context_, context_mask, dense_attention, O['dim_word'], O['dim'], O['n_encoder_layers'], *args)
 
-        h1 = concatenate([origin_x_, h1], axis=origin_x_.ndim-1)
+        #h1 = concatenate([origin_x_, h1], axis=origin_x_.ndim-1)
         # LSTM 2 (with attention)
-        h2, c2 = _dense_one_step_attention_slice(mask_, origin_x_, h1, c1, ctx_, Wc, U_nl, b_nl)
-
-        return h2, c2, ctx_, alpha.T
-
-    def _dense_one_step_attention_slice(mask_, origin_x_, h1, c1, ctx_, Wc, U_nl, b_nl):
         h2, c2 = _one_step_attention_slice(mask_, h1, c1, ctx_, Wc, U_nl, b_nl)
         h2 = concatenate([origin_x_, h2], axis=origin_x_.ndim-1)
-        return h2, c2
+
+        return h2, c2, ctx_, alpha.T
 
     # todo: implement it
     def _step_slice_gates(mask_, x_,
