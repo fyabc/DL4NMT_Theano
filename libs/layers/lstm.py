@@ -316,7 +316,6 @@ def param_init_lstm_cond(O, params, prefix='lstm_cond', nin=None, dim=None, dimc
     layer_id = kwargs.pop('layer_id', 0)
     multi = 'multi' in O.get('unit', 'lstm_cond')
     unit_size = kwargs.pop('unit_size', O.get('cond_unit_size', 2))
-    Unin = kwargs.pop('Unin', nin)
     dense_attention = O['densely_connected'] and O['dense_attention']
     densely_connected = O['densely_connected']
 
@@ -400,11 +399,17 @@ def param_init_lstm_cond(O, params, prefix='lstm_cond', nin=None, dim=None, dimc
 
     if dense_attention:
         dim_word = O['dim_word']
-        for i in xrange(O['n_encoder_layers']):
-            params[_p(prefix, 'W_comb_att', layer_id, i)] = normal_weight(dim, 2 * dim)
-            params[_p(prefix, 'Wc_att', layer_id, i)] = normal_weight(2 * dim)
-            params[_p(prefix, 'b_att', layer_id, i)] = np.zeros((2 * dim,), dtype=fX)
-            params[_p(prefix, 'U_att', layer_id, i)] = normal_weight(2 * dim, 1)
+        for i in xrange(1, O['n_encoder_layers'] + 1):
+            if i == 0:
+                params[_p(prefix, 'W_comb_att', layer_id, i)] = normal_weight(dim, 2 * dim_word)
+                params[_p(prefix, 'Wc_att', layer_id, i)] = normal_weight(2 * dim_word)
+                params[_p(prefix, 'b_att', layer_id, i)] = np.zeros((2 * dim_word,), dtype=fX)
+                params[_p(prefix, 'U_att', layer_id, i)] = normal_weight(2 * dim_word, 1)
+            else:
+                params[_p(prefix, 'W_comb_att', layer_id, i)] = normal_weight(dim, 2 * dim)
+                params[_p(prefix, 'Wc_att', layer_id, i)] = normal_weight(2 * dim)
+                params[_p(prefix, 'b_att', layer_id, i)] = np.zeros((2 * dim,), dtype=fX)
+                params[_p(prefix, 'U_att', layer_id, i)] = normal_weight(2 * dim, 1)
             params[_p(prefix, 'c_tt', layer_id, i)] = np.zeros((1,), dtype=fX)
     else:
         # attention: combined -> hidden
@@ -462,14 +467,9 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
     if dense_attention:
         dim_word = O['dim_word']
         dim = O['dim']
-        enc_layer_0_single_output = concatenate([context[:,:,dim_word:dim_word+dim], context[:,:,2*dim_word+dim:2*(dim_word+dim)]],axis=context.ndim-1)
-        projected_context = T.dot(enc_layer_0_single_output, P[_p(prefix, 'Wc_att', layer_id, 0)]) + P[_p(prefix, 'b_att', layer_id, 0)]
-        for i in xrange(1, O['n_encoder_layers']):
-            #if i == 0:
-            #    projected_context = T.dot(context[:, :, 2 * dim_word：], P[_p(prefix, 'Wc_att', layer_id, i)]) + P[_p(prefix, 'b_att', layer_id, i)]
-            #else:
-            #    projected_context = concatenate([projected_context, T.dot(context[:, :, 2*(dim_word+(i-1)*dim):2*(dim_word+i*dim)], P[_p(prefix, 'Wc_att', layer_id, i)]) + P[_p(prefix, 'b_att', layer_id, i)]], axis=projected_context.ndim - 1)
-            projected_context = concatenate([projected_context, T.dot(context[:, :, 2*(dim_word+i*dim):2*(dim_word+(i+1)*dim)], P[_p(prefix, 'Wc_att', layer_id, i)]) + P[_p(prefix, 'b_att', layer_id, i)]], axis=projected_context.ndim - 1)
+        projected_context = T.dot(context[:,:,:2*dim_word], P[_p(prefix, 'Wc_att', layer_id, 0)]) + P[_p(prefix, 'b_att', layer_id, 0)]
+        for i in xrange(1, O['n_encoder_layers'] + 1):
+            projected_context = concatenate([projected_context, T.dot(context[:, :, 2*(dim_word+(i-1)*dim):2*(dim_word+i*dim)], P[_p(prefix, 'Wc_att', layer_id, i)]) + P[_p(prefix, 'b_att', layer_id, i)]], axis=projected_context.ndim-1)
     else:
         projected_context = T.dot(context, P[_p(prefix, 'Wc_att', layer_id)]) + P[_p(prefix, 'b_att', layer_id)]
 

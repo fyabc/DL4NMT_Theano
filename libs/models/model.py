@@ -1187,13 +1187,13 @@ class NMTModel(object):
                 context = concatenate([output[0][::-1], output[1]], axis=h_last.ndim - 1)
             else:
                 context = concatenate([output[0], output[1][::-1]], axis=h_last.ndim - 1)
-        else:# Only first layer is bidirectional
-            # First layer output
-            h_last = concatenate([h_last, h_last_r[::-1]], axis=h_last.ndim - 1)
-
-            # Other layers (forward)
+        else:# Only first layer is bidirectional 
             if densely_connected:
-                #concat_feat = concatenate([input_, input_r[::-1]], axis=input_.ndim - 1)
+                input_ = concatenate([input_, input_r[::-1]], axis=input_.ndim - 1)
+                h_last = h_last[:,:,-self.O['dim']:]
+                h_last_r = h_last_r[:,:,-self.O['dim']]
+                h_last = concatenate([h_last, h_last_r[::-1]], axis=h_last.ndim - 1)
+                h_last = concatenate([input_, h_last], axis=input_.ndim - 1)
                 #concat_feat = concatenate([concat_feat, h_last], axis=concat_feat.ndim - 1)
                 for layer_id in xrange(1, n_layers):
                     input_ = h_last
@@ -1217,6 +1217,7 @@ class NMTModel(object):
                     #concat_feat = concatenate([concat_feat, h_last], axis = concat_feat.ndim - 1)
                 output = h_last
             else: # Not densely connected
+                h_last = concatenate([h_last, h_last_r[::-1]], axis=h_last.ndim - 1)
                 inputs = [(input_, input_r)]
                 outputs = [h_last]
                 for layer_id in xrange(1, n_layers):
