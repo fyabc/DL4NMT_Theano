@@ -1191,7 +1191,7 @@ class NMTModel(object):
             if densely_connected:
                 input_ = concatenate([input_, input_r[::-1]], axis=input_.ndim - 1)
                 h_last = h_last[:,:,-self.O['dim']:]
-                h_last_r = h_last_r[:,:,-self.O['dim']]
+                h_last_r = h_last_r[:,:,-self.O['dim']:]
                 h_last = concatenate([h_last, h_last_r[::-1]], axis=h_last.ndim - 1)
                 h_last = concatenate([input_, h_last], axis=input_.ndim - 1)
                 #concat_feat = concatenate([concat_feat, h_last], axis=concat_feat.ndim - 1)

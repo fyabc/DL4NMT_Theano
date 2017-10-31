@@ -455,6 +455,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
     else:
         dim = P[_p(prefix, 'Wc', layer_id)].shape[1] // 4
     dropout_params = kwargs.pop('dropout_params', None)
+    hidden_nin = kwargs.pop('hidden_nin', dim)
 
     # Mask
     if mask is None:
@@ -462,7 +463,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
 
     # Initial/previous state
     if init_state is None:
-        init_state = T.alloc(0., n_samples, dim)
+        init_state = T.alloc(0., n_samples, hidden_nin)
 
     if dense_attention:
         dim_word = O['dim_word']
@@ -501,7 +502,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
 
         return h2, c2
 
-    def _step_slice(mask_, x_,
+    def _step_slice(mask_, x_, origin_x_,
                     h_, c_, ctx_, alpha_,
                     projected_context_, context_,
                     U, Wc, U_nl, b_nl, *args):
@@ -534,7 +535,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
         return h2, c2, ctx_, alpha.T
 
     # todo: implement it
-    def _step_slice_gates(mask_, x_,
+    def _step_slice_gates(mask_, x_, origin_x_,
                           h_, c_, ctx_, alpha_, i1_, f1_, o1_, i2_, f2_, o2_,
                           projected_context_, context_,
                           U, Wc, U_nl, b_nl, *args):
@@ -549,7 +550,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
 
         return h2, c2, ctx_, alpha.T, i1, f1, o1, i2, f2, o2
 
-    def _multi_step_slice(mask_, x_,
+    def _multi_step_slice(mask_, x_, origin_x_,
                           h_, c_, ctx_, alpha_,
                           projected_context_, context_,
                           U, Wc, U_nl, b_nl, *args):
