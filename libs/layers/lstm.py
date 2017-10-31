@@ -399,7 +399,7 @@ def param_init_lstm_cond(O, params, prefix='lstm_cond', nin=None, dim=None, dimc
 
     if dense_attention:
         dim_word = O['dim_word']
-        for i in xrange(1, O['n_encoder_layers'] + 1):
+        for i in xrange(O['n_encoder_layers'] + 1):
             if i == 0:
                 params[_p(prefix, 'W_comb_att', layer_id, i)] = normal_weight(dim, 2 * dim_word)
                 params[_p(prefix, 'Wc_att', layer_id, i)] = normal_weight(2 * dim_word)
