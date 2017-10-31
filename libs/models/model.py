@@ -1194,12 +1194,11 @@ class NMTModel(object):
                 h_last_r = h_last_r[:,:,-self.O['dim']:]
                 h_last = concatenate([h_last, h_last_r[::-1]], axis=h_last.ndim - 1)
                 h_last = concatenate([input_, h_last], axis=input_.ndim - 1)
-                #concat_feat = concatenate([concat_feat, h_last], axis=concat_feat.ndim - 1)
+
                 for layer_id in xrange(1, n_layers):
                     input_ = h_last
                     x_mask_ = x_mask
                     if use_zigzag:
-                        #concat_feat = concat_feat[::-1]
                         input_ = input_[::-1]
                         if layer_id % 2 == 1:
                             x_mask_ = xr_mask
@@ -1214,7 +1213,6 @@ class NMTModel(object):
                         kw_ret['forget_gates'].append(kw_ret_layer['forget_gates'])
                         kw_ret['output_gates'].append(kw_ret_layer['output_gates'])
                 
-                    #concat_feat = concatenate([concat_feat, h_last], axis = concat_feat.ndim - 1)
                 output = h_last
             else: # Not densely connected
                 h_last = concatenate([h_last, h_last_r[::-1]], axis=h_last.ndim - 1)
@@ -1390,7 +1388,6 @@ class NMTModel(object):
                         kw_ret['forget_gates'].append(kw_ret_layer['forget_gates'])
                         kw_ret['output_gates'].append(kw_ret_layer['output_gates'])
 
-                    #concat_feat = concatenate([concat_feat, layer_out[0]], axis = concat_feat.ndim - 1)
                     h_last = layer_out[0]
 
                 # Attention layer
@@ -1413,7 +1410,6 @@ class NMTModel(object):
                     kw_ret['forget_gates_att'] = kw_ret_att['forget_gates_att']
                     kw_ret['output_gates_att'] = kw_ret_att['output_gates_att']
 
-                #concat_feat = concatenate([concat_feat, hidden_decoder], axis = concat_feat.ndim - 1)
                 h_last = hidden_decoder
 
                 # Layers after attention layer
@@ -1434,7 +1430,6 @@ class NMTModel(object):
                         kw_ret['forget_gates'].append(kw_ret_layer['forget_gates'])
                         kw_ret['output_gates'].append(kw_ret_layer['output_gates'])
 
-                    #concat_feat = concatenate([concat_feat, layer_out[0]], axis = concat_feat.ndim - 1)
                     h_last = layer_out[0]
                 output = h_last #concat_feat
 

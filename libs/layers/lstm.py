@@ -336,10 +336,10 @@ def param_init_lstm_cond(O, params, prefix='lstm_cond', nin=None, dim=None, dimc
             ], axis=1)
 
             params[_p(prefix, 'U_nl', layer_id)] = np.concatenate([
-                orthogonal_weight(dim_nonlin),
-                orthogonal_weight(dim_nonlin),
-                orthogonal_weight(dim_nonlin),
-                orthogonal_weight(dim_nonlin),
+                normal_weight(nin+dim_nonlin, dim_nonlin),
+                normal_weight(nin+dim_nonlin, dim_nonlin),
+                normal_weight(nin+dim_nonlin, dim_nonlin),
+                normal_weight(nin+dim_nonlin, dim_nonlin),
             ], axis=1)
             params[_p(prefix, 'b_nl', layer_id)] = np.zeros((4 * dim_nonlin,), dtype=fX)
 
@@ -483,7 +483,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
     else:
         state_below_ = T.dot(state_below, P[_p(prefix, 'W', layer_id)]) + P[_p(prefix, 'b', layer_id)]
 
-    def _one_step_attention_slice(mask_, h1, c1, ctx_, Wc, U_nl, b_nl):
+    def _one_step_attention_slice(mask_, h1, c1, ctx_, Wc, U_nl, b_nl, dim):
         preact2 = T.dot(h1, U_nl) + b_nl + T.dot(ctx_, Wc)
 
         i2 = T.nnet.sigmoid(_slice(preact2, 0, dim))
@@ -495,7 +495,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
         c2 = mask_[:, None] * c2 + (1. - mask_)[:, None] * c1
 
         h2 = o2 * T.tanh(c2)
-        h2 = mask_[:, None] * h2 + (1. - mask_)[:, None] * h1
+        h2 = mask_[:, None] * h2 + (1. - mask_)[:, None] * h1[:, -dim:]
 
         if get_gates:
             return h2, c2, i2, f2, o2
@@ -521,15 +521,18 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
                     h_, c_, ctx_, alpha_,
                     projected_context_, context_,
                     U, Wc, U_nl, b_nl, *args):
+        _dim = U.shape[1] // 4
+
         # LSTM 1
         h1, c1 = _lstm_step_slice(mask_, x_, h_, c_, U)
 
         # Attention
         ctx_, alpha = _attention(h1, projected_context_, context_, context_mask, dense_attention, O['dim_word'], O['dim'], O['n_encoder_layers'], *args)
 
-        #h1 = concatenate([origin_x_, h1], axis=origin_x_.ndim-1)
+        h1 = concatenate([h_[:,:-_dim], h1], axis=origin_x_.ndim-1)
+
         # LSTM 2 (with attention)
-        h2, c2 = _one_step_attention_slice(mask_, h1, c1, ctx_, Wc, U_nl, b_nl)
+        h2, c2 = _one_step_attention_slice(mask_, h1, c1, ctx_, Wc, U_nl, b_nl, _dim)
         h2 = concatenate([origin_x_, h2], axis=origin_x_.ndim-1)
 
         return h2, c2, ctx_, alpha.T
