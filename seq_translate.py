@@ -29,13 +29,15 @@ def main():
                         help='The beam size for translation, default is 4')
     parser.add_argument('--dataset', action='store', dest='dataset', default='en-fr_bpe',
                         help='Dataset, default is "%(default)s"')
+    parser.add_argument('--outdir', action='store', dest='outdir', default='./translated/complete/', type=str,
+                        help='Output directory for translated results, default is "%(default)s"')
 
     args = parser.parse_args()
 
     if args.result_file == 'trans_result.tsv':
         model_file_name = os.path.split(args.model_prefix)[-1]
-        args.result_file = './translated/complete/{}_bs{}.txt'.format(os.path.splitext(model_file_name)[0],
-                                                                      args.beam_size)
+        args.result_file = os.path.join(args.outdir, '{}_bs{}.txt'.format(os.path.splitext(model_file_name)[0],
+                                                                      args.beam_size))
     else:
         model_file_name = os.path.split(args.result_file)[-1]
 
