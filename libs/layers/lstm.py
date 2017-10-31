@@ -588,7 +588,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
         return h2, c2, ctx_, alpha.T
 
     # Prepare scan arguments
-    seqs = [mask, state_below, state_below_]
+    seqs = [mask, state_below_, state_below]
     if densely_connected:
         _step = _dense_step_slice
     else:

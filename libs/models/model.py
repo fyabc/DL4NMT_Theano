@@ -1200,7 +1200,7 @@ class NMTModel(object):
                     x_mask_ = x_mask
                     if use_zigzag:
                         #concat_feat = concat_feat[::-1]
-                        input_ = input_
+                        input_ = input_[::-1]
                         if layer_id % 2 == 1:
                             x_mask_ = xr_mask
                 
