@@ -605,7 +605,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
     ]
 
     if dense_attention:
-        for i in xrange(O['n_encoder_layers']):
+        for i in xrange(O['n_encoder_layers'] + 1):
             shared_vars += [
                 P[_p(prefix, 'W_comb_att', layer_id, i)]
             ]
