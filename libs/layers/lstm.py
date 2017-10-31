@@ -521,15 +521,13 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
                     h_, c_, ctx_, alpha_,
                     projected_context_, context_,
                     U, Wc, U_nl, b_nl, *args):
-        _dim = U.shape[1] // 4
-
         # LSTM 1
         h1, c1 = _lstm_step_slice(mask_, x_, h_, c_, U)
 
         # Attention
         ctx_, alpha = _attention(h1, projected_context_, context_, context_mask, dense_attention, O['dim_word'], O['dim'], O['n_encoder_layers'], *args)
 
-        h1 = concatenate([h_[:,:-_dim], h1], axis=origin_x_.ndim-1)
+        h1 = concatenate([h_[:,:-dim], h1], axis=origin_x_.ndim-1)
 
         # LSTM 2 (with attention)
         h2, c2 = _one_step_attention_slice(mask_, h1, c1, ctx_, Wc, U_nl, b_nl)
