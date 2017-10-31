@@ -84,7 +84,7 @@ def feed_forward(P, state_below, O, prefix='rconv',
 def _attention(h1, projected_context_, context_, context_mask=None, dense_attention=False, dim_word=512, dim=256, n_enc=6, *args):
     if dense_attention:
         for i in xrange(n_enc + 1):
-            W_comb_att, U_att, c_tt = args[i*n_enc], args[i*n_enc + 1], args[i*n_enc + 2]
+            W_comb_att, U_att, c_tt = args[i*3], args[i*3 + 1], args[i*3 + 2]
             pstate_ = T.dot(h1, W_comb_att)  
             if i == 0:
                 pctx__ = projected_context_[:, :, :2 * dim_word] + pstate_[None, :, :]
