@@ -884,7 +884,9 @@ class NMTModel(object):
         next_state, ctx0 = ret[0], ret[1]
         next_w = np.array([-1] * batch_size, dtype='int64')  # bos indicator
         if densely_connected:
+            print('initial next_state with shape',next_state.shape)
             next_state = np.array([next_state[:,int(i>=1)*self.O['dim_word'] + i*self.O['dim']:self.O['dim_word'] + (i+1)*self.O['dim']] for i in xrange(self.O['n_decoder_layers'])])
+            print('initial next_state with shape after list', next_state.shape)
             next_memory = np.zeros((self.O['n_decoder_layers'], next_state[0].shape[0], next_state[0].shape[1]), dtype=fX)
         else:
             next_state = np.tile(next_state[None, :, :], (self.O['n_decoder_layers'], 1, 1))
