@@ -632,19 +632,19 @@ class NMTModel(object):
                 dense_init_state = concatenate([init_decoder_state[-1], init_state], axis=init_state.ndim-1) if layer_id > 0 else init_state
                 init_decoder_state.append(dense_init_state)
         else:
-            init_state = self.feed_forward(ctx_mean, prefix='ff_state', activation=tanh)
+            init_decoder_state = self.feed_forward(ctx_mean, prefix='ff_state', activation=tanh)
 
         print('Building f_init...', end='')
         inps = [x]
         if batch_mode:
             inps.append(x_mask)
-        outs = [init_state, ctx]
+        outs = [init_decoder_state, ctx]
         f_init = theano.function(inps, outs, name='f_init', profile=profile)
         print('Done')
 
         # x: 1 x 1
         y = T.vector('y_sampler', dtype='int64')
-        init_state = T.tensor3('init_state', dtype=fX)
+        init_decoder_state = T.tensor3('init_decoder_state', dtype=fX)
         init_memory = T.tensor3('init_memory', dtype=fX)
 
         # If it's the first word, emb should be all zero and it is indicated by -1
@@ -654,7 +654,7 @@ class NMTModel(object):
 
         # Apply one step of conditional gru with attention
         hidden_decoder, context_decoder, _, kw_ret = self.decoder(
-            emb, y_mask=None, init_state=init_state, context=ctx,
+            emb, y_mask=None, init_state=init_decoder_state, context=ctx,
             x_mask=x_mask if batch_mode else None,
             dropout_params=dropout_params, one_step=True, init_memory=init_memory,
             get_gates=get_gates,
@@ -686,7 +686,7 @@ class NMTModel(object):
         # Compile a function to do the whole thing above, next word probability,
         # sampled word for the next target, next hidden state to be used
         print('Building f_next..', end='')
-        inps = [y, ctx, init_state]
+        inps = [y, ctx, init_decoder_state]
         if batch_mode:
             inps.insert(2, x_mask)
         outs = [next_probs, next_sample, hiddens_without_dropout]
