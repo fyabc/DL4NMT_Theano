@@ -475,9 +475,9 @@ class NMTModel(object):
             init_decoder_state = []
             for layer_id in xrange(n_decoder_layers):
                 init_state = self.feed_forward(context_mean, prefix=_p('ff_state', layer_id), activation=tanh)
-                dense_init_state = concatenate([init_decoder_state[-1], init_state], axis=init_state.ndim-1) if layer_id > 0 else init_state
-                init_decoder_state.append(dense_init_state)
-
+                #dense_init_state = concatenate([init_decoder_state[-1], init_state], axis=init_state.ndim-1) if layer_id > 0 else init_state
+                #init_decoder_state.append(dense_init_state)
+                init_decoder_state.append(init_state)
         else:   
             init_decoder_state = self.feed_forward(context_mean, prefix='ff_state', activation=tanh)
 
@@ -629,7 +629,7 @@ class NMTModel(object):
             #init_decoder_state = []
             for layer_id in xrange(n_decoder_layers):
                 init_state = self.feed_forward(ctx_mean, prefix=_p('ff_state', layer_id), activation=tanh)
-                init_decoder_state = concatenate([init_decoder_state, init_state], axis=init_state.ndim-1) if layer_id > 0 else init_state
+                init_decoder_state = concatenate([init_decoder_state, init_state], axis=init_decoder_state.ndim-1) if layer_id > 0 else init_state
                 #dense_init_state = concatenate([init_decoder_state[-1], init_state], axis=init_state.ndim-1) if layer_id > 0 else init_state
                 #init_decoder_state.append(dense_init_state)
         else:
@@ -753,8 +753,8 @@ class NMTModel(object):
         next_state, ctx0 = ret[0], ret[1]
         next_w = -1 * np.ones((1,), dtype='int64')  # bos indicator
         if densely_connected:
-            next_state = np.array([next_state[:,int(i>=1)*self.O['dim_word'] + i*self.O['dim']:self.O['dim_word'] + (i+1)*self.O['dim']] for i in xrange(self.O['n_decoder_layers'])])
-            next_memory = np.zeros((self.O['n_decoder_layers'], next_state[0].shape[0], next_state[0].shape[1]), dtype=fX)
+            next_state = next_state[None,:,:]
+            next_memory = np.zeros((self.O['n_decoder_layers'], next_state.shape[0], self.O['dim']), dtype=fX)
         else:
             next_state = np.tile(next_state[None, :, :], (self.O['n_decoder_layers'], 1, 1))
             next_memory = np.zeros((self.O['n_decoder_layers'], next_state.shape[1], next_state.shape[2]), dtype=fX)
@@ -838,7 +838,10 @@ class NMTModel(object):
                     break
 
                 next_w = np.array([w[-1] for w in hyp_samples])
-                next_state = np.concatenate([xx[:, None, :] for xx in hyp_states], axis=1)
+                if densely_connected:
+                    next_state = np.concatenate([xx[-1:, None, :] for xx in hyp_states], axis=1)
+                else:
+                    next_state = np.concatenate([xx[:, None, :] for xx in hyp_states], axis=1)
                 next_memory = np.concatenate([xx[:, None, :] for xx in hyp_memories], axis=1)
 
         if not stochastic:
@@ -884,16 +887,13 @@ class NMTModel(object):
         next_state, ctx0 = ret[0], ret[1]
         next_w = np.array([-1] * batch_size, dtype='int64')  # bos indicator
         if densely_connected:
-            print('initial next_state with shape',next_state.shape)
-            next_state = np.array([next_state[:,int(i>=1)*self.O['dim_word'] + i*self.O['dim']:self.O['dim_word'] + (i+1)*self.O['dim']] for i in xrange(self.O['n_decoder_layers'])])
-            print('initial next_state with shape after list', next_state.shape)
-            next_memory = np.zeros((self.O['n_decoder_layers'], next_state[0].shape[0], next_state[0].shape[1]), dtype=fX)
+            next_state = next_state[None,:,:] #layer * bs * hidden_size
+            next_memory = np.zeros((self.O['n_decoder_layers'], next_state.shape[0], self.O['dim']), dtype=fX)
         else:
             next_state = np.tile(next_state[None, :, :], (self.O['n_decoder_layers'], 1, 1))
             next_memory = np.zeros((self.O['n_decoder_layers'], next_state.shape[1], next_state.shape[2]), dtype=fX)
 
         for ii in xrange(maxlen):
-            print('in gen_batch_sample, ii=%d'%ii)
             ctx = np.repeat(ctx0, lives_k, axis=1)
             x_extend_masks = np.repeat(x_mask, lives_k, axis=1)
             cursor_start, cursor_end = 0, lives_k[0]
@@ -905,7 +905,6 @@ class NMTModel(object):
                     cursor_start = cursor_end
                     cursor_end += lives_k[jj + 1]
 
-            print('next_state shape=',next_state.shape)
             inps = [next_w, ctx, x_extend_masks, next_state]
             if 'lstm' in unit:
                 inps.append(next_memory)
@@ -985,7 +984,10 @@ class NMTModel(object):
 
                 if hyp_states:
                     next_w_list += [w[-1] for w in batch_hyp_samples[jj]]
-                    next_state_list += [xx[:, None, :] for xx in hyp_states]
+                    if densely_connected:
+                        next_state_list += [xx[-1:, None, :] for xx in hyp_states]
+                    else:
+                        next_state_list += [xx[:, None, :] for xx in hyp_states]
                     next_memory_list += [xx[:, None, :] for xx in hyp_memories]
 
             if np.array(lives_k).sum() > 0:
@@ -1311,10 +1313,19 @@ class NMTModel(object):
         #   each layer use the state of its index.
         if not one_step:
             if densely_connected:
-                pass
+                init_state_list = init_state
+                init_state = [init_state_list[0]]
+                _axis = init_state_list[0].ndim-1
+                for i in xrange(1, n_layers):
+                    init_state.append(concatenate(init_state_list[0:i+1], axis=_axis))
             else:
                 init_state = [init_state for _ in xrange(n_layers)]
             init_memory = [init_memory for _ in xrange(n_layers)]
+        else:
+            if densely_connected:
+                init_state_tensor = init_state
+                init_state = [init_state_tensor[0,:,int(i>=1)*self.O['dim_word']+i*self.O['dim']:self.O['dim_word']+(i+1)*self.O['dim']] for i in xrange(n_layers)]
+
 
         if all_att:
             # All decoder layers have attention.
