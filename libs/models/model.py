@@ -1324,7 +1324,7 @@ class NMTModel(object):
         else:
             if densely_connected:
                 init_state_tensor = init_state
-                init_state = [init_state_tensor[0,:,int(i>=1)*self.O['dim_word']+i*self.O['dim']:self.O['dim_word']+(i+1)*self.O['dim']] for i in xrange(n_layers)]
+                init_state = [init_state_tensor[0,:,:self.O['dim_word']+(i+1)*self.O['dim']] for i in xrange(n_layers)]
 
 
         if all_att:
