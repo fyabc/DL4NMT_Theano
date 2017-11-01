@@ -572,7 +572,7 @@ class NMTModel(object):
         :returns f_init, f_next
             f_init: Theano function
                 inputs: x, [if batch mode: x_mask]
-                outputs: init_state, ctx
+                outputs: init_decoder_state, ctx
 
             f_next: Theano function
                 inputs: y, ctx, [if batch mode: x_mask], init_state, [if LSTM unit: init_memory]
