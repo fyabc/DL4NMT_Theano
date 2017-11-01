@@ -626,11 +626,12 @@ class NMTModel(object):
         # Get the input for decoder rnn initializer mlp
         ctx_mean = self.get_context_mean(ctx, x_mask) if batch_mode else ctx.mean(0)
         if densely_connected:
-            init_decoder_state = []
+            #init_decoder_state = []
             for layer_id in xrange(n_decoder_layers):
                 init_state = self.feed_forward(ctx_mean, prefix=_p('ff_state', layer_id), activation=tanh)
-                dense_init_state = concatenate([init_decoder_state[-1], init_state], axis=init_state.ndim-1) if layer_id > 0 else init_state
-                init_decoder_state.append(dense_init_state)
+                init_decoder_state = concatenate([init_decoder_state, init_state], axis=init_state.ndim-1) if layer_id > 0 else init_state
+                #dense_init_state = concatenate([init_decoder_state[-1], init_state], axis=init_state.ndim-1) if layer_id > 0 else init_state
+                #init_decoder_state.append(dense_init_state)
         else:
             init_decoder_state = self.feed_forward(ctx_mean, prefix='ff_state', activation=tanh)
 
@@ -881,6 +882,8 @@ class NMTModel(object):
         next_w = np.array([-1] * batch_size, dtype='int64')  # bos indicator
         if not densely_connected:
             next_state = np.tile(next_state[None, :, :], (self.O['n_decoder_layers'], 1, 1))
+        else:
+            next_state = [next_state[:,int(i>=1)*self.O['dim_word'] + i*self.O['dim']:self.O['dim_word'] + (i+1)*self.O['dim']] for i in xrange(self.O['n_decoder_layers'])]
         next_memory = np.zeros((self.O['n_decoder_layers'], next_state.shape[1], next_state.shape[2]), dtype=fX)
 
         for ii in xrange(maxlen):

@@ -86,10 +86,7 @@ def _attention(h1, projected_context_, context_, context_mask=None, dense_attent
         for i in xrange(n_enc + 1):
             W_comb_att, U_att, c_tt = args[i*3], args[i*3 + 1], args[i*3 + 2]
             pstate_ = T.dot(h1, W_comb_att)  
-            if i == 0:
-                pctx__ = projected_context_[:, :, :2 * dim_word] + pstate_[None, :, :]
-            else:
-                pctx__ = projected_context_[:, :, 2 * (dim_word + (i - 1) * dim):2 * (dim_word + i * dim)] + pstate_[None, :, :]
+            pctx__ = projected_context_[:, :, int(i>=1) * 2 * (dim_word + (i - 1) * dim):2 * (dim_word + i * dim)] + pstate_[None, :, :]
             pctx__ = T.tanh(pctx__)
             alpha = T.dot(pctx__, U_att) + c_tt
             alpha = alpha.reshape([alpha.shape[0], alpha.shape[1]])
@@ -97,11 +94,8 @@ def _attention(h1, projected_context_, context_, context_mask=None, dense_attent
             if context_mask:
                 alpha = alpha * context_mask
             alpha = alpha / alpha.sum(0, keepdims=True)
-            if i == 0:
-                ctx_ = (context_[:, :, :2 * dim_word] * alpha[:, :, None]).sum(0)
-            else:
-                _ctx_ = (context_[:, :, 2 * (dim_word + (i - 1) * dim): 2 * (dim_word + i * dim)] * alpha[:, :, None]).sum(0)
-                ctx_ = concatenate([ctx_, _ctx_], axis = ctx_.ndim - 1)
+            _ctx_ = (context_[:, :, int(i>=1) * 2 * (dim_word + (i - 1) * dim): 2 * (dim_word + i * dim)] * alpha[:, :, None]).sum(0)
+            ctx_ = concatenate([ctx_, _ctx_], axis = ctx_.ndim - 1) if i >= 1 else _ctx_
     else:
         W_comb_att, U_att, c_tt = args
         pstate_ = T.dot(h1, W_comb_att)
