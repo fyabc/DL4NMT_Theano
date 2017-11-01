@@ -881,13 +881,14 @@ class NMTModel(object):
         next_state, ctx0 = ret[0], ret[1]
         next_w = np.array([-1] * batch_size, dtype='int64')  # bos indicator
         if densely_connected:
-            next_state = [next_state[:,int(i>=1)*self.O['dim_word'] + i*self.O['dim']:self.O['dim_word'] + (i+1)*self.O['dim']] for i in xrange(self.O['n_decoder_layers'])]
+            next_state = np.array([next_state[:,int(i>=1)*self.O['dim_word'] + i*self.O['dim']:self.O['dim_word'] + (i+1)*self.O['dim']] for i in xrange(self.O['n_decoder_layers'])])
             next_memory = np.zeros((self.O['n_decoder_layers'], next_state[0].shape[0], next_state[0].shape[1]), dtype=fX)
         else:
             next_state = np.tile(next_state[None, :, :], (self.O['n_decoder_layers'], 1, 1))
             next_memory = np.zeros((self.O['n_decoder_layers'], next_state.shape[1], next_state.shape[2]), dtype=fX)
 
         for ii in xrange(maxlen):
+            print('in gen_batch_sample, ii=%d'%ii)
             ctx = np.repeat(ctx0, lives_k, axis=1)
             x_extend_masks = np.repeat(x_mask, lives_k, axis=1)
             cursor_start, cursor_end = 0, lives_k[0]
@@ -899,6 +900,7 @@ class NMTModel(object):
                     cursor_start = cursor_end
                     cursor_end += lives_k[jj + 1]
 
+            print('next_state shape=',next_state.shape)
             inps = [next_w, ctx, x_extend_masks, next_state]
             if 'lstm' in unit:
                 inps.append(next_memory)
