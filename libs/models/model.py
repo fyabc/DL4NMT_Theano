@@ -888,7 +888,7 @@ class NMTModel(object):
         next_w = np.array([-1] * batch_size, dtype='int64')  # bos indicator
         if densely_connected:
             next_state = next_state[None,:,:] #layer * bs * hidden_size
-            next_memory = np.zeros((self.O['n_decoder_layers'], next_state.shape[0], self.O['dim']), dtype=fX)
+            next_memory = np.zeros((self.O['n_decoder_layers'], next_state.shape[1], self.O['dim']), dtype=fX)
         else:
             next_state = np.tile(next_state[None, :, :], (self.O['n_decoder_layers'], 1, 1))
             next_memory = np.zeros((self.O['n_decoder_layers'], next_state.shape[1], next_state.shape[2]), dtype=fX)
@@ -1311,7 +1311,7 @@ class NMTModel(object):
         #   each layer just use a copy of them.
         # In sample mode (one_step is True), init_state and init_memory are list of states,
         #   each layer use the state of its index.
-        if not one_step:
+        if not one_step: #training
             if densely_connected:
                 init_state_list = init_state
                 init_state = [init_state_list[0]]
@@ -1321,9 +1321,10 @@ class NMTModel(object):
             else:
                 init_state = [init_state for _ in xrange(n_layers)]
             init_memory = [init_memory for _ in xrange(n_layers)]
-        else:
+        else:# sampling
             if densely_connected:
                 init_state_tensor = init_state
+                print(init_state_tensor.shape)
                 init_state = [init_state_tensor[0,:,:self.O['dim_word']+(i+1)*self.O['dim']] for i in xrange(n_layers)]
 
 
@@ -1334,10 +1335,11 @@ class NMTModel(object):
             alpha_decoder = None
 
             if densely_connected:
-                concat_feat = tgt_embedding
+                h_last = tgt_embedding
                 for layer_id in xrange(0, n_layers):
+                    input_ = h_last
                     hidden_decoder, context_decoder, alpha_decoder, kw_ret_att = get_build(unit + '_cond')(
-                        self.P, concat_feat, self.O, prefix='decoder', mask=y_mask, context=context,
+                        self.P, input_, self.O, prefix='decoder', mask=y_mask, context=context,
                         context_mask=x_mask, one_step=one_step, init_state=init_state[layer_id],
                         dropout_params=dropout_params, layer_id=layer_id,
                         init_memory=init_memory[layer_id], unit_size=unit_size,
@@ -1349,8 +1351,9 @@ class NMTModel(object):
                     if 'lstm' in unit:
                         memory_outputs.append(kw_ret_att['memory_output'])
 
-                    concat_feat = concatenate([concat_feat, hidden_decoder], axis = concat_feat.ndim-1)
-                output = concat_feat
+                    #concat_feat = concatenate([concat_feat, hidden_decoder], axis = concat_feat.ndim-1)
+                    h_last = hidden_decoder
+                output = h_last
             else: # Not densely connected
                 for layer_id in xrange(0, n_layers):
                     # [NOTE] Do not add residual on layer 0 and 1
