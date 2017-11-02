@@ -1342,12 +1342,6 @@ class NMTModel(object):
             if not densely_connected:
                 init_state = [init_state for _ in xrange(n_layers)]
             init_memory = [init_memory for _ in xrange(n_layers)]
-        else:# sampling
-            if densely_connected:
-                init_state_tensor = init_state
-                print("init_state_tensor shape is ",init_state_tensor.shape)
-                init_state = [init_state_tensor[0,:,:self.O['dim_word']+(i+1)*self.O['dim']] for i in xrange(n_layers)]
-                print("init_state shape is", len(init_state), [item.shape for item in init_state])
 
         if all_att:
             # All decoder layers have attention.
