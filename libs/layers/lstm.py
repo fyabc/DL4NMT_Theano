@@ -221,6 +221,8 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
         state_below_ = T.dot(state_below, P[_p(prefix, 'W', layer_id)]) + P[_p(prefix, 'b', layer_id)]
 
     if densely_connected:
+        if not last_state:
+            last_state = T.alloc(0., n_samples, O['dim_word'] + layer_id * O['dim'])
         state_below = concatenate([last_state, state_below], axis=0)
 
     def _step_slice(mask_, x_, h_, c_, U):
@@ -246,9 +248,7 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
     # prepare scan arguments
     init_states = [T.alloc(0., n_samples, dim) if init_state is None else init_state,
                 T.alloc(0., n_samples, dim) if init_memory is None else init_memory, ]
-    if not last_state:
-        last_state = T.alloc(0., n_samples, O['dim_word'] + layer_id * O['dim'])
-
+    
     if get_gates:
         init_states.extend([T.alloc(0., n_samples, dim) for _ in range(3)])
 
@@ -470,7 +470,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
     else:
         dim = P[_p(prefix, 'Wc', layer_id)].shape[1] // 4
     dropout_params = kwargs.pop('dropout_params', None)
-    
+
     # Mask
     if mask is None:
         mask = T.alloc(1., n_steps, 1)

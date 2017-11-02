@@ -1339,9 +1339,7 @@ class NMTModel(object):
         # In sample mode (one_step is True), init_state and init_memory are list of states,
         #   each layer use the state of its index.
         if not one_step: #training
-            if densely_connected:
-                pass
-            else:
+            if not densely_connected:
                 init_state = [init_state for _ in xrange(n_layers)]
             init_memory = [init_memory for _ in xrange(n_layers)]
         else:# sampling
