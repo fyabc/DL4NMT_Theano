@@ -779,7 +779,9 @@ class NMTModel(object):
         for ii in xrange(maxlen):
             ctx = np.tile(ctx0, [live_k, 1])
             if densely_connected:
-                inps = [next_w, ctx, x_extend_masks, last_state, *next_state]
+                inps = [next_w, ctx, x_extend_masks, last_state]
+                for item in next_state:
+                    inps.append(item)
                 last_state = next_w
             else:
                 inps = [next_w, ctx, next_state]
@@ -929,7 +931,9 @@ class NMTModel(object):
                     cursor_end += lives_k[jj + 1]
 
             if densely_connected:
-                inps = [next_w, ctx, x_extend_masks, last_state, *next_state]
+                inps = [next_w, ctx, x_extend_masks, last_state]
+                for item in next_state:
+                    inps.append(item)
                 last_state = next_w # last_state points to the newest 
             else:
                 inps = [next_w, ctx, x_extend_masks, next_state]
