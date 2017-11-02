@@ -628,7 +628,6 @@ class NMTModel(object):
         # Get the input for decoder rnn initializer mlp
         ctx_mean = self.get_context_mean(ctx, x_mask) if batch_mode else ctx.mean(0)
         if densely_connected:
-            init_decoder_state = []
             init_state_l1 = self.feed_forward(context_mean, prefix=_p('ff_state', 0), activation=tanh)
             init_state = init_state_l1[:, -self.O['dim']:]
             last_state = init_state_l1[:, :self.O['dim_word']]
@@ -644,7 +643,10 @@ class NMTModel(object):
         if batch_mode:
             inps.append(x_mask)
         if densely_connected:
-            outs = [last_state, *init_decoder_state, ctx]
+            outs = [last_state]
+            for item in init_decoder_state:
+                outs.append(item)
+            outs.append(ctx)
         else:
             outs = [init_decoder_state, ctx]
         f_init = theano.function(inps, outs, name='f_init', profile=profile)
@@ -696,7 +698,9 @@ class NMTModel(object):
         # sampled word for the next target, next hidden state to be used
         print('Building f_next..', end='')
         if densely_connected:
-            inps = [y, ctx, last_state, *init_decoder_state]
+            inps = [y, ctx, last_state]
+            for item in init_decoder_state:
+                inps.append(item)
         else:
             inps = [y, ctx, init_decoder_state]
         if batch_mode:
