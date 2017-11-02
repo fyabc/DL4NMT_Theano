@@ -761,7 +761,10 @@ class NMTModel(object):
 
         # get initial state of decoder rnn and encoder context
         ret = f_init(x)
-        last_state, next_state, ctx0 = ret[0], ret[1:-1], ret[-1]
+        if densely_connected:
+            last_state, next_state, ctx0 = ret[0], ret[1:-1], ret[-1]
+        else:
+            next_state, ctx0 = ret[0], ret[1]
         next_w = -1 * np.ones((1,), dtype='int64')  # bos indicator
         if densely_connected:
             next_memory = np.zeros((self.O['n_decoder_layers'], next_state[0].shape[0], next_state[0].shape[1]), dtype=fX)
@@ -771,7 +774,11 @@ class NMTModel(object):
 
         for ii in xrange(maxlen):
             ctx = np.tile(ctx0, [live_k, 1])
-            inps = [next_w, ctx, next_state]
+            if densely_connected:
+                inps = [next_w, ctx, x_extend_masks, last_state, *next_state]
+                last_state = next_w
+            else:
+                inps = [next_w, ctx, next_state]
             if 'lstm' in unit:
                 inps.append(next_memory)
 
@@ -894,7 +901,10 @@ class NMTModel(object):
 
         # get initial state of decoder rnn and encoder context
         ret = f_init(x, x_mask)
-        last_state, next_state, ctx0 = ret[0], ret[1:-1], ret[-1]
+        if densely_connected:
+            last_state, next_state, ctx0 = ret[0], ret[1:-1], ret[-1]
+        else:
+            next_state, ctx0 = ret[0], ret[-1]
         next_w = np.array([-1] * batch_size, dtype='int64')  # bos indicator
         if densely_connected:
             next_memory = np.zeros((self.O['n_decoder_layers'], next_state[0].shape[0], next_state[0].shape[1]), dtype=fX)
@@ -914,8 +924,12 @@ class NMTModel(object):
                     cursor_start = cursor_end
                     cursor_end += lives_k[jj + 1]
 
-            inps = [next_w, ctx, x_extend_masks, last_state, *next_state]
-            last_state = next_w # last_state points to the newest 
+            if densely_connected:
+                inps = [next_w, ctx, x_extend_masks, last_state, *next_state]
+                last_state = next_w # last_state points to the newest 
+            else:
+                inps = [next_w, ctx, x_extend_masks, next_state]
+
             if 'lstm' in unit:
                 inps.append(next_memory)
 
