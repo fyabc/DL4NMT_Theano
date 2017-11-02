@@ -628,12 +628,12 @@ class NMTModel(object):
         # Get the input for decoder rnn initializer mlp
         ctx_mean = self.get_context_mean(ctx, x_mask) if batch_mode else ctx.mean(0)
         if densely_connected:
-            init_state_l1 = self.feed_forward(context_mean, prefix=_p('ff_state', 0), activation=tanh)
+            init_state_l1 = self.feed_forward(ctx_mean, prefix=_p('ff_state', 0), activation=tanh)
             init_state = init_state_l1[:, -self.O['dim']:]
             last_state = init_state_l1[:, :self.O['dim_word']]
             init_decoder_state = [init_state]
             for layer_id in xrange(1, n_decoder_layers):
-                init_state = self.feed_forward(context_mean, prefix=_p('ff_state', layer_id), activation=tanh)
+                init_state = self.feed_forward(ctx_mean, prefix=_p('ff_state', layer_id), activation=tanh)
                 init_decoder_state.append(init_state)
         else:
             init_decoder_state = self.feed_forward(ctx_mean, prefix='ff_state', activation=tanh)
