@@ -223,8 +223,6 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
     if densely_connected:
         if not last_state:#encoder layer
             last_state = T.alloc(0., state_below.shape[1], state_below.shape[2])
-        print("last_state shape is", last_state.shape)
-        print("state_below shape is", state_below.shape)
         state_below = concatenate([last_state[None, :, :], state_below], axis=0)
 
     def _step_slice(mask_, x_, h_, c_, U):

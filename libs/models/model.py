@@ -655,7 +655,7 @@ class NMTModel(object):
         # x: 1 x 1
         y = T.vector('y_sampler', dtype='int64')
         init_decoder_state = T.tensor3('init_decoder_state', dtype=fX)
-        last_state = T.tensor2('init_decoder_last_state', dtype=fX)
+        last_state = T.matrix('init_decoder_last_state', dtype=fX)
         init_memory = T.tensor3('init_memory', dtype=fX)
 
         # If it's the first word, emb should be all zero and it is indicated by -1
