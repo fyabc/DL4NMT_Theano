@@ -210,7 +210,6 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
     else:
         dim = P[_p(prefix, 'U', layer_id)].shape[1] // 4
 
-    hidden_nin = kwargs.pop('hidden_nin', dim)
     mask = T.alloc(1., n_steps, 1) if mask is None else mask
 
     if multi:
@@ -471,8 +470,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
     else:
         dim = P[_p(prefix, 'Wc', layer_id)].shape[1] // 4
     dropout_params = kwargs.pop('dropout_params', None)
-    hidden_nin = kwargs.pop('hidden_nin', dim)
-
+    
     # Mask
     if mask is None:
         mask = T.alloc(1., n_steps, 1)

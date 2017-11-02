@@ -1149,7 +1149,7 @@ class NMTModel(object):
 
         # First layer (bidirectional)
         layer_out = get_build(unit)(self.P, input_, self.O, prefix='encoder', mask=x_mask, layer_id=0,
-                                    dropout_params=dropout_params, get_gates=get_gates, hidden_nin=hidden_nin)
+                                    dropout_params=dropout_params, get_gates=get_gates)
         h_last, kw_ret_layer = layer_out[0], layer_out[-1]
         if get_gates:
             kw_ret['input_gates_first'] = kw_ret_layer['input_gates']
@@ -1157,7 +1157,7 @@ class NMTModel(object):
             kw_ret['output_gates_first'] = kw_ret_layer['output_gates']
 
         layer_out_r = get_build(unit)(self.P, input_r, self.O, prefix='encoder_r', mask=xr_mask,
-                                      layer_id=0, dropout_params=dropout_params, get_gates=get_gates, hidden_nin=hidden_nin)
+                                      layer_id=0, dropout_params=dropout_params, get_gates=get_gates)
         h_last_r, kw_ret_layer = layer_out_r[0], layer_out_r[-1]
         if get_gates:
             kw_ret['input_gates_first_r'] = kw_ret_layer['input_gates']
