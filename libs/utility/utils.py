@@ -14,6 +14,7 @@ import random
 import gzip
 import sys
 import time
+from contextlib import contextmanager
 
 import theano
 import theano.tensor as tensor
@@ -824,6 +825,37 @@ def debug_print(variable, msg='', attrs=('shape', 'dtype')):
     return printed_var, variable
 
 
+@contextmanager
+def delib_env(obj, keys=None):
+    """Context manager to set the per-word prediction options `obj.DO` as options.
+
+    Or only set some keys.
+    """
+
+    if isinstance(keys, str):
+        keys = [keys]
+
+    if keys:
+        tmp_o = {}
+        for key in keys:
+            tmp_o[key] = obj.O[key]
+            obj.O[key] = obj.DO[key]
+    else:
+        tmp_o = obj.O
+        obj.O = obj.DO
+
+    try:
+        yield tmp_o
+    finally:
+        if keys:
+            for key in keys:
+                obj.DO[key] = obj.O[key]
+                obj.O[key] = tmp_o[key]
+        else:
+            obj.DO = obj.O
+            obj.O = tmp_o
+
+
 __all__ = [
     'set_logging_file',
     'get_logging_file',
@@ -868,4 +900,5 @@ __all__ = [
     'set_optimizer_imm_data',
     'get_batch_place_holder',
     'debug_print',
+    'delib_env',
 ]

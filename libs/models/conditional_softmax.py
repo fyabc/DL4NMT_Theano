@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 from collections import OrderedDict
-from contextlib import contextmanager
 
 import numpy as np
 import theano
@@ -12,98 +11,11 @@ from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 from .deliberation import DelibNMT, DelibInitializer, NMTModel
 from ..layers import *
 from ..constants import fX, profile
-from ..utility.basic import floatX, arg_top_k
-from ..utility.utils import _p, debug_print
+from ..utility.basic import floatX
+from ..utility.utils import _p, debug_print, delib_env
+from ..utility.theano_arg_top_k import theano_argpartsort
 
 __author__ = 'fyabc'
-
-
-class ArgPartSortOp(theano.Op):
-    """
-    This class is a wrapper of numpy bottleneck arg-top-k function.
-
-    """
-
-    __props__ = ('k',)
-
-    def __init__(self, k):
-        self.k = k
-
-    def __str__(self):
-        return self.__class__.__name__ + '{%d}' % self.k
-
-    def make_node(self, input_, axis=-1):
-        input_ = T.as_tensor_variable(input_)
-        axis = T.as_tensor_variable(axis)
-        bcast = input_.type.broadcastable
-        return theano.Apply(self, [input_, axis], [T.TensorType(dtype='int64', broadcastable=bcast)()])
-
-    def perform(self, node, inputs, output_storage, params=None):
-        a = inputs[0]
-        axis = inputs[1]
-        z = output_storage[0]
-        z[0] = theano._asarray(arg_top_k(a, self.k, axis), dtype=node.outputs[0].dtype)
-
-    def infer_shape(self, node, inputs_shapes):
-        if (isinstance(node.inputs[1], theano.Constant) and
-                node.inputs[1].data is None):
-            return [(T.mul(*inputs_shapes[0]),)]
-        # axis should not be None, so there should be the same number of
-        # dimensions in the input and output
-        assert node.inputs[0].ndim == node.outputs[0].ndim
-        assert inputs_shapes[1] == ()
-        return [inputs_shapes[0]]
-
-    def grad(self, inputs, outputs_grads):
-        # No grad defined for integers.
-        inp, axis = inputs
-        inp_grad = inp.zeros_like()
-        axis_grad = theano.gradient.grad_undefined(
-            self, 1, axis,
-            "argpartsort is not defined for non-integer axes so"
-            " argpartsort(x, axis+eps) is undefined")
-        return [inp_grad, axis_grad]
-
-    def R_op(self, inputs, eval_points):
-        raise NotImplementedError('R-op not implemented for argpartsort')
-
-
-def theano_argpartsort(a, k, axis=-1):
-    if axis is None:
-        a = a.flatten()
-        axis = 0
-    return ArgPartSortOp(k)(a, axis)
-
-
-@contextmanager
-def _delib_env(obj, keys=None):
-    """Context manager to set the per-word prediction options `obj.DO` as options.
-
-    Or only set some keys.
-    """
-
-    if isinstance(keys, str):
-        keys = [keys]
-
-    if keys:
-        tmp_o = {}
-        for key in keys:
-            tmp_o[key] = obj.O[key]
-            obj.O[key] = obj.DO[key]
-    else:
-        tmp_o = obj.O
-        obj.O = obj.DO
-
-    try:
-        yield tmp_o
-    finally:
-        if keys:
-            for key in keys:
-                obj.DO[key] = obj.O[key]
-                obj.O[key] = tmp_o[key]
-        else:
-            obj.DO = obj.O
-            obj.O = tmp_o
 
 
 class ConditionalSoftmaxInitializer(DelibInitializer):
@@ -143,7 +55,7 @@ class ConditionalSoftmaxInitializer(DelibInitializer):
 
         # Per-word prediction part.
 
-        with _delib_env(self):
+        with delib_env(self):
             # Source position embedding
             if self.O['use_src_pos']:
                 self.init_embedding(np_parameters, 'Wemb_pos', self.O['maxlen'] + 1, self.O['dim_word'])
@@ -158,6 +70,12 @@ class ConditionalSoftmaxInitializer(DelibInitializer):
 
 
 class ConditionalSoftmaxModel(DelibNMT):
+    # TODO:
+    # 1. Share more parameters between RNN and Per-word (share bottom-up parameters of LSTM)
+    #    (May need to change base class to NMTModel?
+    # 2. Use positional embedding in both decoder parts
+    # 3. Run per-word prediction in f_init, not in f_next
+
     def __init__(self, options, delib_options, given_params=None):
         super(ConditionalSoftmaxModel, self).__init__(options, given_params)
         self.initializer = ConditionalSoftmaxInitializer(options, delib_options)
@@ -165,14 +83,10 @@ class ConditionalSoftmaxModel(DelibNMT):
         # Per-word prediction options
         self.DO = delib_options
 
-        # Share context info between RNN and per-word prediction.
-        # Not used now.
-        self._ctx_info = None
+        self._check_options()
 
-    def get_context_info(self, context, x_mask, trg_feature):
-        ctx_info = super(ConditionalSoftmaxModel, self).get_context_info(context, x_mask, trg_feature)
-        self._ctx_info = ctx_info
-        return ctx_info
+    def _check_options(self):
+        assert self.O['dim_word'] == self.DO['dim_word'], 'Word dimensions must be same between two decoders'
 
     def trainable_parameters(self):
         # todo: remove per-word prediction parameters from trainable parameters
@@ -208,61 +122,6 @@ class ConditionalSoftmaxModel(DelibNMT):
             del params[k]
         return params
 
-    def independent_decoder(self, tgt_pos_embed, y, y_mask, context, x_mask, dropout_params=None, **kwargs):
-        """
-        Build per-word prediction decoder.
-
-        Parameters
-        ----------
-        tgt_pos_embed
-        y : Theano variable
-            ([Tt], [Bs])
-        y_mask : Theano variable
-            ([Tt], [Bs])
-        context
-        x_mask
-        dropout_params
-        kwargs
-
-        Returns
-        -------
-
-        Notes
-        -----
-        This method must be called in context `_delib_env`.
-        """
-
-        if self.O['decoder_all_attention']:
-            projected_context = T.dot(context, self.P['attn_0_ctx2hidden'])
-        if self.O['decoder_style'] == 'stackNN':
-            ctx_info = self.get_context_info(context, x_mask, tgt_pos_embed)
-            H_ = T.dot(tgt_pos_embed, self.P['decoder_W_pose2h']) + \
-                T.dot(ctx_info, self.P['decoder_W_ctx2h']) + self.P['decoder_b_i2h']
-            for layer_id in xrange(self.O['n_decoder_layers']):
-                H_ = T.tanh(H_)
-                if self.O['decoder_all_attention']:
-                    ctx_info = self.attention_layer(context, x_mask, projected_context, H_, layer_id)
-                    H_ = T.dot(H_, self.P['decoder_W_h2h'][layer_id]) + \
-                        T.dot(ctx_info, self.P['decoder_W_att2h'][layer_id]) + \
-                        self.P['decoder_b_h2h'][layer_id]
-                else:
-                    H_ = T.dot(H_, self.P['decoder_W_h2h'][layer_id]) + self.P['decoder_b_h2h'][layer_id]
-            H_ = T.tanh(H_)
-        elif self.O['decoder_style'] == 'stackLSTM':
-            H_ = self.stackLSTM(tgt_pos_embed, 'decoder', y_mask, context, x_mask)
-        else:
-            raise Exception('Not implemented yet')
-        trng = kwargs.pop('trng', RandomStreams(1234))
-        use_noise = kwargs.pop('use_noise', theano.shared(np.float32(1.)))
-        if self.O['use_dropout']:
-            H_ = self.dropout(H_, use_noise, trng)
-
-        logit = self.feed_forward(H_, prefix='fc_lastHtoSoftmax', activation=lambda x: x)
-        logit_shp = logit.shape
-
-        unnormalized_probs = logit.reshape([-1, logit_shp[2]])
-        return unnormalized_probs
-
     def build_model(self, set_instance_variables=False):
         """
         Build a training model.
@@ -290,16 +149,16 @@ class ConditionalSoftmaxModel(DelibNMT):
 
         # Encoder.
         # [NOTE] Encoder options of self.O and self.DO must be same. Switch to use self.DO['use_src_pos'].
-        with _delib_env(self, 'use_src_pos'):
+        with delib_env(self, 'use_src_pos'):
             (x, x_mask, y, y_mask), context, _ = self.input_to_context(dropout_params=dropout_params)
 
         # Per-word prediction decoder.
-        with _delib_env(self):
+        with delib_env(self):
             y_pos_ = T.repeat(T.arange(y.shape[0]).dimshuffle(0, 'x'), y.shape[1], 1)
             tgt_pos_embed = self.P['Wemb_dec_pos'][y_pos_.flatten()].reshape(
                 [y_pos_.shape[0], y_pos_.shape[1], self.DO['dim_word']])
             pw_probs = self.independent_decoder(tgt_pos_embed, y, y_mask, context, x_mask,
-                                                dropout_params=None, trng=trng, use_noise=use_noise)
+                                                trng=trng, use_noise=use_noise, softmax=False)
 
         # RNN decoder.
         n_timestep, n_timestep_tgt, n_samples = self.input_dimensions(x, y)
@@ -331,7 +190,7 @@ class ConditionalSoftmaxModel(DelibNMT):
         test_cost = self.build_cost(y, y_mask, probs, epsilon=1e-6)
         cost = test_cost / self.O['cost_normalization']  # cost used to derive gradient in training
 
-        return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost, test_cost, self._ctx_info
+        return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost, test_cost, context_mean
 
     def build_sampler(self, **kwargs):
         batch_mode = kwargs.pop('batch_mode', False)
@@ -372,6 +231,26 @@ class ConditionalSoftmaxModel(DelibNMT):
         # Get the input for decoder rnn initializer mlp
         ctx_mean = self.get_context_mean(ctx, x_mask) if batch_mode else ctx.mean(0)
         init_state = self.feed_forward(ctx_mean, prefix='ff_state', activation=tanh)
+
+        # Per-word prediction decoder.
+        with delib_env(self):
+            y_ = None
+            y_pos_ = T.repeat(T.arange(self.O['maxlen']).dimshuffle(0, 'x'), x.shape[0], 1)
+            y_mask = T.alloc(floatX(1.), self.O['maxlen'], x.shape[0])
+
+            # todo: fix y position out of bound(64).
+            tgt_pos_embed = self.P['Wemb_dec_pos'][y_pos_.flatten()].reshape(
+                [y_pos_.shape[0], y_pos_.shape[1], self.O['dim_word']])
+            # todo: fix `x_mask` for non-batch mode
+            # Output: probabilities of target words in this batch, ([Tt], [Bs], n_words)
+            pw_probs = self.independent_decoder(tgt_pos_embed, y_, y_mask, ctx, x_mask,
+                                                trng=trng, use_noise=use_noise, softmax=False)
+            k = self.O['cond_softmax_k']
+            top_k_args = theano_argpartsort(-pw_probs, k, axis=1)[:, :k]
+            # [NOTE] indices to get/set top-k value
+            top_k_indices = (T.arange(pw_probs.shape[0]).dimshuffle([0, 'x']), top_k_args)
+
+            # TODO: union top-k indices in each sentences
 
         print 'Building f_init...',
         inps = [x]
@@ -425,8 +304,7 @@ class ConditionalSoftmaxModel(DelibNMT):
         logit, _ = debug_print(logit, '$ logit:')
 
         # Per-word prediction decoder.
-        # todo: fix shape mismatch bug of pw_probs and logits in test mode
-        with _delib_env(self):
+        with delib_env(self):
             y_ = None
             # y_pos_ = T.repeat(T.arange(self.O['maxlen']).dimshuffle(0, 'x'), y.shape[0], 1)
             # y_mask = T.alloc(floatX(1.), self.O['maxlen'], y.shape[0])
@@ -440,19 +318,7 @@ class ConditionalSoftmaxModel(DelibNMT):
                 [y_pos_.shape[0], y_pos_.shape[1], self.O['dim_word']])
             # todo: fix `x_mask` for non-batch mode
             pw_probs = self.independent_decoder(tgt_pos_embed, y_, y_mask, ctx, x_mask,
-                                                dropout_params=None, trng=trng, use_noise=use_noise)
-        # with _delib_env(self):
-        #     # [NOTE]: In testing stage of per-word prediction decoder,
-        #     # y: (1, [Bs]); y_pos_: (1, [Bs]), y_mask: (1, [Bs])
-        #     # different from RNN decoder one-step mode.
-        #     y_ = y.dimshuffle(['x', 0])
-        #     y_pos_ = T.repeat(t_indicator, y.shape[0]).dimshuffle(['x', 0])
-        #     y_mask = T.alloc(floatX(1.), 1, y.shape[0])
-        #
-        #     tgt_pos_embed = self.P['Wemb_dec_pos'][y_pos_.flatten()].reshape(
-        #         [y_pos_.shape[0], y_pos_.shape[1], self.O['dim_word']])
-        #     pw_probs = self.independent_decoder(tgt_pos_embed, y_, y_mask, ctx, x_mask,
-        #                                         dropout_params=None, trng=trng, use_noise=use_noise)
+                                                trng=trng, use_noise=use_noise, softmax=False)
 
         # Compute the softmax probability
         next_probs = self._conditional_softmax(logit, pw_probs=pw_probs)
@@ -549,8 +415,10 @@ class ConditionalSoftmaxModel(DelibNMT):
         k = self.O['cond_softmax_k']
 
         if pw_probs is not None:
-            # top_k_args = T.argsort(-pw_probs)[:, :k]
             top_k_args = theano_argpartsort(-pw_probs, k, axis=1)[:, :k]
+
+            # [NOTE] The top-k indices may not in order. This sort may slow down the training?
+            top_k_args = top_k_args.sort()
             # [NOTE] indices to get/set top-k value
             top_k_indices = (T.arange(pw_probs.shape[0]).dimshuffle([0, 'x']), top_k_args)
 

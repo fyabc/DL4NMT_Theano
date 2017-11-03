@@ -193,7 +193,7 @@ class DelibNMT(NMTModel):
             self.P[_p(prefix, 'W', 'TolastH')]) + self.P[_p(prefix, 'b', 'TolastH')]
         return H_
 
-    def independent_decoder(self, tgt_pos_embed, y, y_mask, context, x_mask, dropout_params=None, **kwargs):
+    def independent_decoder(self, tgt_pos_embed, y, y_mask, context, x_mask, **kwargs):
         """
 
         Parameters
@@ -246,8 +246,12 @@ class DelibNMT(NMTModel):
             logit = logit[::-1]
 
         logit_shp = logit.shape
-        probs = T.nnet.softmax(logit.reshape([-1, logit_shp[2]]))
-        return probs
+        if kwargs.pop('softmax', True):
+            probs = T.nnet.softmax(logit.reshape([-1, logit_shp[2]]))
+            return probs
+        else:
+            unnormalized_probs = logit.reshape([-1, logit_shp[2]])
+            return unnormalized_probs
 
     def build_cost(self, y, y_mask, probs, epsilon=0.0):
         """Build the cost from probabilities and target."""
@@ -261,40 +265,6 @@ class DelibNMT(NMTModel):
         cost = cost.reshape([y.shape[0], y.shape[1]])
         cost = (cost * y_mask).sum() / y_mask.sum()
         return cost
-
-    def input_to_context(self, given_input=None, **kwargs):
-        """Build the part of the model that from input to context vector.
-
-                Used for regression of deeper encoder.
-
-                :param given_input: List of input Theano tensors or None
-                    If None, this method will create them by itself.
-                :returns tuple of input list and output
-                """
-
-        x, x_mask, y, y_mask = self.get_input() if given_input is None else given_input
-
-        # For the backward rnn, we just need to invert x and x_mask
-        x_r, x_mask_r = self.reverse_input(x, x_mask)
-
-        n_timestep, n_timestep_tgt, n_samples = self.input_dimensions(x, y)
-
-        # Word embedding for forward rnn and backward rnn (source)
-        src_embedding = self.embedding(x, n_timestep, n_samples)
-        src_embedding_r = self.embedding(x_r, n_timestep, n_samples)
-
-        if self.O['use_src_pos']:
-            x_pos = T.repeat(T.arange(n_timestep).dimshuffle(0, 'x'), n_samples, 1)
-            emb_pos = self.P['Wemb_pos'][x_pos.flatten()]
-            emb_pos = emb_pos.reshape([n_timestep, n_samples, self.O['dim_word']])
-            src_embedding += emb_pos
-            src_embedding_r += emb_pos[::-1]
-
-        # Encoder
-        context, kw_ret = self.encoder(src_embedding, src_embedding_r, x_mask, x_mask_r,
-                                       dropout_params=kwargs.pop('dropout_params', None))
-
-        return [x, x_mask, y, y_mask], context, kw_ret
 
     def build_model(self, set_instance_variables=False):
         """Build a training model."""
@@ -318,7 +288,7 @@ class DelibNMT(NMTModel):
         tgt_pos_embed = self.P['Wemb_dec_pos'][y_pos_.flatten()].reshape(
             [y_pos_.shape[0], y_pos_.shape[1], self.O['dim_word']])
         probs = self.independent_decoder(tgt_pos_embed, y, y_mask, context, x_mask,
-                                         dropout_params=None, trng=trng, use_noise=use_noise)
+                                         trng=trng, use_noise=use_noise)
 
         # [NOTE]: difference between ``DelibNMT.build_cost`` and ``NMTModel.build_cost``
         test_cost = self.build_cost(y, y_mask, probs)

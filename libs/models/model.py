@@ -342,8 +342,6 @@ class NMTModel(object):
         :returns tuple of input list and output
         """
 
-        get_gates = kwargs.pop('get_gates', False)
-
         x, x_mask, y, y_mask = self.get_input() if given_input is None else given_input
 
         # For the backward rnn, we just need to invert x and x_mask
@@ -355,9 +353,17 @@ class NMTModel(object):
         src_embedding = self.embedding(x, n_timestep, n_samples)
         src_embedding_r = self.embedding(x_r, n_timestep, n_samples)
 
+        if self.O['use_src_pos']:
+            x_pos = T.repeat(T.arange(n_timestep).dimshuffle(0, 'x'), n_samples, 1)
+            emb_pos = self.P['Wemb_pos'][x_pos.flatten()]
+            emb_pos = emb_pos.reshape([n_timestep, n_samples, self.O['dim_word']])
+            src_embedding += emb_pos
+            src_embedding_r += emb_pos[::-1]
+
         # Encoder
         context, kw_ret = self.encoder(src_embedding, src_embedding_r, x_mask, x_mask_r,
-                                       dropout_params=kwargs.pop('dropout_params', None), get_gates=get_gates)
+                                       dropout_params=kwargs.pop('dropout_params', None),
+                                       get_gates=kwargs.pop('get_gates', False))
 
         return [x, x_mask, y, y_mask], context, kw_ret
 
