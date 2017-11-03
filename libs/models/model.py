@@ -1410,7 +1410,7 @@ class NMTModel(object):
                     layer_out = get_build(unit)(
                         self.P, input_, self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
                         dropout_params=dropout_params, one_step=one_step, init_state=init_state[layer_id], context=None,
-                        init_memory=init_memory[layer_id], get_gates=get_gates, unit_size=unit_size, last_state=last_state,
+                        init_memory=init_memory[layer_id], get_gates=get_gates, unit_size=unit_size, #last_state=last_state,
                     )
                     kw_ret_layer = layer_out[-1]
 
@@ -1422,8 +1422,7 @@ class NMTModel(object):
                         kw_ret['forget_gates'].append(kw_ret_layer['forget_gates'])
                         kw_ret['output_gates'].append(kw_ret_layer['output_gates'])
 
-                    h_last = layer_out[0]
-                    h_last = concatenate([input_, h_last], axis=input_.ndim-1)
+                    h_last = concatenate([input_, layer_out[0]], axis=input_.ndim-1)
                     last_state = concatenate([last_state, init_state[layer_id][None, :, :]], axis=last_state.ndim-1)
 
                 # Attention layer
