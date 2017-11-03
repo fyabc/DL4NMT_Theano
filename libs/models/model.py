@@ -476,7 +476,6 @@ class NMTModel(object):
             init_state_l1 = self.feed_forward(context_mean, prefix=_p('ff_state', 0), activation=tanh)
             init_state = init_state_l1[:, -self.O['dim']:]
             last_state = init_state_l1[:, :self.O['dim_word']]
-            last_state = last_state[None, :, :]
             init_decoder_state = [init_state]
             for layer_id in xrange(1, n_decoder_layers):
                 init_state = self.feed_forward(context_mean, prefix=_p('ff_state', layer_id), activation=tanh)
@@ -632,7 +631,6 @@ class NMTModel(object):
             init_state_l1 = self.feed_forward(ctx_mean, prefix=_p('ff_state', 0), activation=tanh)
             init_state = init_state_l1[:, -self.O['dim']:]
             last_state = init_state_l1[:, :self.O['dim_word']]
-            last_state = last_state[None, :, :]
             init_decoder_state = [init_state[None, :, :]]
             for layer_id in xrange(1, n_decoder_layers):
                 init_state = self.feed_forward(ctx_mean, prefix=_p('ff_state', layer_id), activation=tanh)
@@ -655,7 +653,7 @@ class NMTModel(object):
         # x: 1 x 1
         y = T.vector('y_sampler', dtype='int64')
         init_decoder_state = T.tensor3('init_decoder_state', dtype=fX)
-        last_state = T.tensor3('init_decoder_last_state', dtype=fX)
+        last_state = T.matrix('init_decoder_last_state', dtype=fX)
         init_memory = T.tensor3('init_memory', dtype=fX)
 
         # If it's the first word, emb should be all zero and it is indicated by -1
@@ -1410,7 +1408,7 @@ class NMTModel(object):
                     layer_out = get_build(unit)(
                         self.P, input_, self.O, prefix='decoder', mask=y_mask, layer_id=layer_id,
                         dropout_params=dropout_params, one_step=one_step, init_state=init_state[layer_id], context=None,
-                        init_memory=init_memory[layer_id], get_gates=get_gates, unit_size=unit_size, #last_state=last_state,
+                        init_memory=init_memory[layer_id], get_gates=get_gates, unit_size=unit_size, last_state=last_state,
                     )
                     kw_ret_layer = layer_out[-1]
 
@@ -1423,7 +1421,7 @@ class NMTModel(object):
                         kw_ret['output_gates'].append(kw_ret_layer['output_gates'])
 
                     h_last = concatenate([input_, layer_out[0]], axis=input_.ndim-1)
-                    last_state = concatenate([last_state, init_state[layer_id][None, :, :]], axis=last_state.ndim-1)
+                    last_state = concatenate([last_state, init_state[layer_id]], axis=last_state.ndim-1)
 
                 # Attention layer
                 input_ = h_last
@@ -1447,7 +1445,7 @@ class NMTModel(object):
 
                 h_last = hidden_decoder
                 h_last = concatenate([input_, h_last], axis=input_.ndim-1)
-                last_state = concatenate([last_state, init_state[attention_layer_id][None, :, :]], axis=last_state.ndim-1)
+                last_state = concatenate([last_state, init_state[attention_layer_id]], axis=last_state.ndim-1)
 
                 # Layers after attention layer
                 for layer_id in xrange(attention_layer_id + 1, n_layers):
@@ -1469,7 +1467,7 @@ class NMTModel(object):
 
                     h_last = layer_out[0]
                     h_last = concatenate([input_, h_last], axis=input_.ndim-1)
-                    last_state = concatenate([last_state, init_state[layer_id][None, :, :]], axis=last_state.ndim-1)
+                    last_state = concatenate([last_state, init_state[layer_id]], axis=last_state.ndim-1)
 
                 output = h_last #concat_feat
 

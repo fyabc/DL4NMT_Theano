@@ -224,8 +224,12 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
 
     if densely_connected:
         if not last_state:#encoder layer
-            last_state = T.alloc(0., 1, state_below.shape[1], state_below.shape[2])
-        state_below = concatenate([last_state, state_below], axis=0)
+            last_state = T.alloc(0., state_below.shape[1], state_below.shape[2])
+        if state_below.ndim == 3:
+            state_below = concatenate([last_state[None, :, :], state_below], axis=0)
+        else:
+            #state_below = T.stack([last_state, state_below], axis=0)
+            state_below = last_state
 
     def _step_slice(mask_, x_, h_, c_, U):
         h_tmp = h_
@@ -500,7 +504,10 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
         state_below_ = T.dot(state_below, P[_p(prefix, 'W', layer_id)]) + P[_p(prefix, 'b', layer_id)]
     
     if densely_connected:
-        state_below = concatenate([last_state, state_below], axis=0)
+        if state_below.ndim == 3:
+            state_below = concatenate([last_state[None, :, :], state_below], axis=0)
+        else:
+            state_below = last_state
 
     def _one_step_attention_slice(mask_, h1, c1, ctx_, Wc, U_nl, b_nl):
         preact2 = T.dot(h1, U_nl) + b_nl + T.dot(ctx_, Wc)
