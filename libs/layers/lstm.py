@@ -498,7 +498,7 @@ def lstm_cond_layer(P, state_below, O, prefix='lstm', mask=None, context=None, o
         state_below_ = T.dot(state_below, P[_p(prefix, 'W', layer_id)]) + P[_p(prefix, 'b', layer_id)]
     
     if densely_connected:
-        state_below = concatenate([last_state[None, :, :], state_below], axis=0)
+        state_below = concatenate([last_state, state_below], axis=0)
 
     def _one_step_attention_slice(mask_, h1, c1, ctx_, Wc, U_nl, b_nl):
         preact2 = T.dot(h1, U_nl) + b_nl + T.dot(ctx_, Wc)
