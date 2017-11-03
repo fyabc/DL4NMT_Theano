@@ -1028,7 +1028,7 @@ class NMTModel(object):
                     next_memory_list += [xx[:, None, :] for xx in hyp_memories]
 
             if np.array(lives_k).sum() > 0:
-                print("live_k=%d", np.array(live_k).sum())
+                print("live_k=%d", np.array(lives_k).sum())
                 next_w = np.array(next_w_list)
                 next_state = np.concatenate(next_state_list[:], axis=1)
                 next_memory = np.concatenate(next_memory_list[:], axis=1)
