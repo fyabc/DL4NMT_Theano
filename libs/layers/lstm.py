@@ -206,7 +206,7 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
     n_steps = state_below.shape[0] if state_below.ndim == 3 else 1
     n_samples = state_below.shape[1] if state_below.ndim == 3 else state_below.shape[0]
     if state_below.ndim != 3:
-        print("state_below.shape =", state_below.shape, "n_dim = %d, n_steps = %d, n_samples = %d" % (state_below.ndim, n_steps, n_samples))
+        print("state_below.shape =", state_below.shape, "n_dim = %d, n_steps = %d" % (state_below.ndim, n_steps))
     if multi:
         dim = P[_p(prefix, 'U', layer_id)][0].shape[1] // 4
     else:
