@@ -476,6 +476,7 @@ class NMTModel(object):
             init_state_l1 = self.feed_forward(context_mean, prefix=_p('ff_state', 0), activation=tanh)
             init_state = init_state_l1[:, -self.O['dim']:]
             last_state = init_state_l1[:, :self.O['dim_word']]
+            last_state = last_state[None, :, :]
             init_decoder_state = [init_state]
             for layer_id in xrange(1, n_decoder_layers):
                 init_state = self.feed_forward(context_mean, prefix=_p('ff_state', layer_id), activation=tanh)
