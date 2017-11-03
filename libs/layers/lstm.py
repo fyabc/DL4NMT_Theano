@@ -205,8 +205,7 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
 
     n_steps = state_below.shape[0] if state_below.ndim == 3 else 1
     n_samples = state_below.shape[1] if state_below.ndim == 3 else state_below.shape[0]
-    if state_below.ndim != 3:
-        print("state_below.shape =", state_below.shape, "n_dim = %d, n_steps = %d" % (state_below.ndim, n_steps))
+    
     if multi:
         dim = P[_p(prefix, 'U', layer_id)][0].shape[1] // 4
     else:
@@ -223,7 +222,7 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
         state_below_ = T.dot(state_below, P[_p(prefix, 'W', layer_id)]) + P[_p(prefix, 'b', layer_id)]
 
     if densely_connected:
-        if not last_state:#encoder layer
+        if not last_state:#encoder layer, state_below.ndim must be 3
             last_state = T.alloc(0., state_below.shape[1], state_below.shape[2])
         if state_below.ndim == 3:
             state_below = concatenate([last_state[None, :, :], state_below], axis=0)
