@@ -631,10 +631,12 @@ class NMTModel(object):
             init_state_l1 = self.feed_forward(ctx_mean, prefix=_p('ff_state', 0), activation=tanh)
             init_state = init_state_l1[:, -self.O['dim']:]
             last_state = init_state_l1[:, :self.O['dim_word']]
-            init_decoder_state = [init_state]
+            last_state = last_state[None, :, :]
+            init_decoder_state = [init_state[None, :, :]]
             for layer_id in xrange(1, n_decoder_layers):
                 init_state = self.feed_forward(ctx_mean, prefix=_p('ff_state', layer_id), activation=tanh)
-                init_decoder_state.append(init_state)
+                init_decoder_state.append(init_state[None, :, :])
+            init_decoder_state = concatenate(init_decoder_state, axis=0)
         else:
             init_decoder_state = self.feed_forward(ctx_mean, prefix='ff_state', activation=tanh)
 
@@ -643,10 +645,7 @@ class NMTModel(object):
         if batch_mode:
             inps.append(x_mask)
         if densely_connected:
-            outs = [last_state]
-            for item in init_decoder_state:
-                outs.append(item)
-            outs.append(ctx)
+            outs = [last_state, init_decoder_state, ctx]
         else:
             outs = [init_decoder_state, ctx]
         f_init = theano.function(inps, outs, name='f_init', profile=profile)
@@ -655,7 +654,7 @@ class NMTModel(object):
         # x: 1 x 1
         y = T.vector('y_sampler', dtype='int64')
         init_decoder_state = T.tensor3('init_decoder_state', dtype=fX)
-        last_state = T.matrix('init_decoder_last_state', dtype=fX)
+        last_state = T.tensor3('init_decoder_last_state', dtype=fX)
         init_memory = T.tensor3('init_memory', dtype=fX)
 
         # If it's the first word, emb should be all zero and it is indicated by -1
@@ -698,9 +697,7 @@ class NMTModel(object):
         # sampled word for the next target, next hidden state to be used
         print('Building f_next..', end='')
         if densely_connected:
-            inps = [y, ctx, last_state]
-            for item in init_decoder_state:
-                inps.append(item)
+            inps = [y, ctx, last_state, init_decoder_state]
         else:
             inps = [y, ctx, init_decoder_state]
         if batch_mode:
@@ -779,9 +776,7 @@ class NMTModel(object):
         for ii in xrange(maxlen):
             ctx = np.tile(ctx0, [live_k, 1])
             if densely_connected:
-                inps = [next_w, ctx, x_extend_masks, last_state]
-                for item in next_state:
-                    inps.append(item)
+                inps = [next_w, ctx, x_extend_masks, last_state, next_state]
                 last_state = next_w
             else:
                 inps = [next_w, ctx, next_state]
@@ -908,12 +903,12 @@ class NMTModel(object):
         # get initial state of decoder rnn and encoder context
         ret = f_init(x, x_mask)
         if densely_connected:
-            last_state, next_state, ctx0 = ret[0], ret[1:-1], ret[-1]
+            last_state, next_state, ctx0 = ret[0], ret[1], ret[2]
         else:
             next_state, ctx0 = ret[0], ret[-1]
         next_w = np.array([-1] * batch_size, dtype='int64')  # bos indicator
         if densely_connected:
-            next_memory = np.zeros((self.O['n_decoder_layers'], next_state[0].shape[0], next_state[0].shape[1]), dtype=fX)
+            next_memory = np.zeros((self.O['n_decoder_layers'], next_state.shape[1], next_state.shape[2]), dtype=fX)
         else:
             next_state = np.tile(next_state[None, :, :], (self.O['n_decoder_layers'], 1, 1))
             next_memory = np.zeros((self.O['n_decoder_layers'], next_state.shape[1], next_state.shape[2]), dtype=fX)
@@ -931,9 +926,7 @@ class NMTModel(object):
                     cursor_end += lives_k[jj + 1]
 
             if densely_connected:
-                inps = [next_w, ctx, x_extend_masks, last_state]
-                for item in next_state:
-                    inps.append(item)
+                inps = [next_w, ctx, x_extend_masks, last_state, next_state]
                 last_state = next_w # last_state points to the newest 
             else:
                 inps = [next_w, ctx, x_extend_masks, next_state]
