@@ -268,9 +268,13 @@ Start Time = {}
         model = TrgAttnNMTModel(model_options)
     elif use_delib:
         model = DelibNMT(model_options)
-    elif cond_softmax:
-        message('Loading per-word predictor options')
-        delib_options = load_options_test(cond_softmax)
+    elif cond_softmax is not None:
+        if cond_softmax == '':
+            message('Using model options as per-word predictor options')
+            delib_options = model_options.copy()
+        else:
+            message('Loading per-word predictor options')
+            delib_options = load_options_test(cond_softmax)
 
         model = ConditionalSoftmaxModel(model_options, delib_options)
     else:
@@ -283,6 +287,7 @@ Start Time = {}
         print 'Reloading model parameters'
         load_params(preload, params, src_map_file = src_vocab_map_file, tgt_map_file = tgt_vocab_map_file)
     if cond_softmax:
+        # cond_softmax is not None and not empty string
         print 'Reloading deliberation model'
         load_params(cond_softmax, params)
     sys.stdout.flush()

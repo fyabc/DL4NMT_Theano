@@ -152,45 +152,88 @@ class ConditionalSoftmaxModel(DelibNMT):
         with delib_env(self, 'use_src_pos'):
             (x, x_mask, y, y_mask), context, _ = self.input_to_context(dropout_params=dropout_params)
 
-        # Per-word prediction decoder.
-        with delib_env(self):
+        if False:
+            # Per-word prediction decoder.
+            with delib_env(self):
+                y_pos_ = T.repeat(T.arange(y.shape[0]).dimshuffle(0, 'x'), y.shape[1], 1)
+                tgt_pos_embed = self.P['Wemb_dec_pos'][y_pos_.flatten()].reshape(
+                    [y_pos_.shape[0], y_pos_.shape[1], self.DO['dim_word']])
+                pw_probs = self.independent_decoder(tgt_pos_embed, y, y_mask, context, x_mask,
+                                                    trng=trng, use_noise=use_noise, softmax=False)
+
+            # RNN decoder.
+            n_timestep, n_timestep_tgt, n_samples = self.input_dimensions(x, y)
+
+            context_mean = self.get_context_mean(context, x_mask)
+            # Initial decoder state
+            init_decoder_state = self.feed_forward(context_mean, prefix='ff_state', activation=tanh)
+
+            # Word embedding (target), we will shift the target sequence one time step
+            # to the right. This is done because of the bi-gram connections in the
+            # readout and decoder rnn. The first target will be all zeros and we will
+            # not condition on the last output.
+            tgt_embedding = self.embedding(y, n_timestep_tgt, n_samples, 'Wemb_dec')
+            emb_shifted = T.zeros_like(tgt_embedding)
+            emb_shifted = T.set_subtensor(emb_shifted[1:], tgt_embedding[:-1])
+            tgt_embedding = emb_shifted
+            pre_projected_context = self.attention_projected_context(context, prefix='decoder')
+
+            # Decoder - pass through the decoder conditional gru with attention
+            hidden_decoder, context_decoder, opt_ret['dec_alphas'], _ = self.decoder(
+                tgt_embedding, y_mask=y_mask, init_state=init_decoder_state, context=context, x_mask=x_mask,
+                projected_context=pre_projected_context, dropout_params=dropout_params, one_step=False,
+            )
+
+            trng, use_noise, probs = self.get_word_probability(hidden_decoder, context_decoder, tgt_embedding,
+                                                               trng=trng, use_noise=use_noise, pw_probs=pw_probs)
+
+            # [NOTE]: Only use RNN decoder loss.
+            test_cost = self.build_cost(y, y_mask, probs, epsilon=1e-6)
+            cost = test_cost / self.O['cost_normalization']  # cost used to derive gradient in training
+
+            return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost, test_cost, context_mean
+        else:
+            n_timestep, n_timestep_tgt, n_samples = self.input_dimensions(x, y)
+
+            # Word embedding (target).
+            tgt_embedding = self.embedding(y, n_timestep_tgt, n_samples, 'Wemb_dec')
+
+            # Target embedding (with position embedding).
             y_pos_ = T.repeat(T.arange(y.shape[0]).dimshuffle(0, 'x'), y.shape[1], 1)
             tgt_pos_embed = self.P['Wemb_dec_pos'][y_pos_.flatten()].reshape(
                 [y_pos_.shape[0], y_pos_.shape[1], self.DO['dim_word']])
-            pw_probs = self.independent_decoder(tgt_pos_embed, y, y_mask, context, x_mask,
-                                                trng=trng, use_noise=use_noise, softmax=False)
+            tgt_embedding += tgt_pos_embed
 
-        # RNN decoder.
-        n_timestep, n_timestep_tgt, n_samples = self.input_dimensions(x, y)
+            # We will shift the target sequence one time step
+            # to the right. This is done because of the bi-gram connections in the
+            # readout and decoder rnn. The first target will be all zeros and we will
+            # not condition on the last output.
+            emb_shifted = T.zeros_like(tgt_embedding)
+            emb_shifted = T.set_subtensor(emb_shifted[1:], tgt_embedding[:-1])
+            tgt_embedding = emb_shifted
+            pre_projected_context = self.attention_projected_context(context, prefix='decoder')
 
-        context_mean = self.get_context_mean(context, x_mask)
-        # Initial decoder state
-        init_decoder_state = self.feed_forward(context_mean, prefix='ff_state', activation=tanh)
+            # Context info.
+            context_info = self.get_context_info(context, x_mask, tgt_embedding)
+            if self.O['use_attn']:
+                # Use target attention, 3-d context info; else context mean, 2-d
+                context_mean = T.mean(context_info, axis=0)
+            else:
+                context_mean = context_info
+            init_decoder_state = self.feed_forward(context_mean, prefix='ff_state', activation=tanh)
 
-        # Word embedding (target), we will shift the target sequence one time step
-        # to the right. This is done because of the bi-gram connections in the
-        # readout and decoder rnn. The first target will be all zeros and we will
-        # not condition on the last output.
-        tgt_embedding = self.embedding(y, n_timestep_tgt, n_samples, 'Wemb_dec')
-        emb_shifted = T.zeros_like(tgt_embedding)
-        emb_shifted = T.set_subtensor(emb_shifted[1:], tgt_embedding[:-1])
-        tgt_embedding = emb_shifted
-        pre_projected_context = self.attention_projected_context(context, prefix='decoder')
+            # Per-word prediction decoder.
+            with delib_env(self):
+                pw_probs = self.independent_decoder(tgt_embedding, y_mask, context, x_mask,
+                                                    dropout_params=None, trng=trng, use_noise=use_noise)
 
-        # Decoder - pass through the decoder conditional gru with attention
-        hidden_decoder, context_decoder, opt_ret['dec_alphas'], _ = self.decoder(
-            tgt_embedding, y_mask=y_mask, init_state=init_decoder_state, context=context, x_mask=x_mask,
-            projected_context=pre_projected_context, dropout_params=dropout_params, one_step=False,
-        )
+            # RNN Decoder - pass through the decoder conditional gru with attention
+            hidden_decoder, context_decoder, opt_ret['dec_alphas'], _ = self.decoder(
+                tgt_embedding, y_mask=y_mask, init_state=init_decoder_state, context=context, x_mask=x_mask,
+                projected_context=pre_projected_context, dropout_params=dropout_params, one_step=False,
+            )
 
-        trng, use_noise, probs = self.get_word_probability(hidden_decoder, context_decoder, tgt_embedding,
-                                                           trng=trng, use_noise=use_noise, pw_probs=pw_probs)
-
-        # [NOTE]: Only use RNN decoder loss.
-        test_cost = self.build_cost(y, y_mask, probs, epsilon=1e-6)
-        cost = test_cost / self.O['cost_normalization']  # cost used to derive gradient in training
-
-        return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost, test_cost, context_mean
+            # TODO
 
     def build_sampler(self, **kwargs):
         batch_mode = kwargs.pop('batch_mode', False)
