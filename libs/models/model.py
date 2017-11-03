@@ -1424,7 +1424,7 @@ class NMTModel(object):
 
                     h_last = layer_out[0]
                     h_last = concatenate([input_, h_last], axis=input_.ndim-1)
-                    last_state = concatenate([last_state, init_state[layer_id]], axis=last_state.ndim-1)
+                    last_state = concatenate([last_state, init_state[layer_id][None, :, :]], axis=last_state.ndim-1)
 
                 # Attention layer
                 input_ = h_last
@@ -1448,7 +1448,7 @@ class NMTModel(object):
 
                 h_last = hidden_decoder
                 h_last = concatenate([input_, h_last], axis=input_.ndim-1)
-                last_state = concatenate([last_state, init_state[attention_layer_id]], axis=last_state.ndim-1)
+                last_state = concatenate([last_state, init_state[attention_layer_id][None, :, :]], axis=last_state.ndim-1)
 
                 # Layers after attention layer
                 for layer_id in xrange(attention_layer_id + 1, n_layers):
@@ -1470,7 +1470,7 @@ class NMTModel(object):
 
                     h_last = layer_out[0]
                     h_last = concatenate([input_, h_last], axis=input_.ndim-1)
-                    last_state = concatenate([last_state, init_state[layer_id]], axis=last_state.ndim-1)
+                    last_state = concatenate([last_state, init_state[layer_id][None, :, :]], axis=last_state.ndim-1)
 
                 output = h_last #concat_feat
 
