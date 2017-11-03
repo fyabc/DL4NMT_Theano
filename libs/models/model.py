@@ -697,11 +697,12 @@ class NMTModel(object):
         print('Building f_next..', end='')
         if densely_connected:
             inps = [y, ctx, last_state, init_decoder_state]
+            outs = [next_probs, next_sample, hiddens_without_dropout, emb]
         else:
             inps = [y, ctx, init_decoder_state]
+            outs = [next_probs, next_sample, hiddens_without_dropout]
         if batch_mode:
             inps.insert(2, x_mask)
-        outs = [next_probs, next_sample, hiddens_without_dropout]
         if 'lstm' in unit:
             inps.append(init_memory)
             outs.append(memory_out)
@@ -776,7 +777,6 @@ class NMTModel(object):
             ctx = np.tile(ctx0, [live_k, 1])
             if densely_connected:
                 inps = [next_w, ctx, x_extend_masks, last_state, next_state]
-                last_state = next_w
             else:
                 inps = [next_w, ctx, next_state]
             if 'lstm' in unit:
@@ -784,8 +784,14 @@ class NMTModel(object):
 
             ret = f_next(*inps)
             next_p, next_w, next_state = ret[0], ret[1], ret[2]
-            if 'lstm' in unit:
-                next_memory = ret[3]
+
+            if densely_connected:
+                last_state = ret[3]
+                if 'lstm' in unit:
+                    next_memory = ret[4]
+            else:
+                if 'lstm' in unit:
+                    next_memory = ret[3]
 
             if get_gates:
                 kw_ret['input_gates_list'].append(ret[-6])
@@ -796,7 +802,10 @@ class NMTModel(object):
                 kw_ret['output_gates_att_list'].append(ret[-1])
                 kw_ret['state_list'].append(next_state)
                 if 'lstm' in unit:
-                    kw_ret['memory_list'].append(ret[3])
+                    if densely_connected:
+                        kw_ret['memory_list'].append(ret[4])
+                    else:
+                        kw_ret['memory_list'].append(ret[3])
 
             if stochastic:
                 if argmax:
@@ -926,7 +935,6 @@ class NMTModel(object):
 
             if densely_connected:
                 inps = [next_w, ctx, x_extend_masks, last_state, next_state]
-                last_state = next_w # last_state points to the newest 
             else:
                 inps = [next_w, ctx, x_extend_masks, next_state]
 
@@ -935,11 +943,17 @@ class NMTModel(object):
 
             ret = f_next(*inps)
 
-            if 'lstm' in unit:
-                next_memory = ret[3]
-
-                if ret_memory:
-                    kw_ret['memory'].append(next_memory)
+            if densely_connected:
+                last_state = ret[3]
+                if 'lstm' in unit:
+                    next_memory = ret[4]
+                    if ret_memory:
+                        kw_ret['memory'].append(next_memory)
+            else:
+                if 'lstm' in unit:
+                    next_memory = ret[3]
+                    if ret_memory:
+                        kw_ret['memory'].append(next_memory)
 
             next_w_list = []
             next_state_list = []
