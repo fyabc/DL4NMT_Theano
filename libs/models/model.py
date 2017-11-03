@@ -925,6 +925,7 @@ class NMTModel(object):
             ctx = np.repeat(ctx0, lives_k, axis=1)
             x_extend_masks = np.repeat(x_mask, lives_k, axis=1)
             cursor_start, cursor_end = 0, lives_k[0]
+            print('ii=',ii)
             for jj in xrange(batch_size):
                 if lives_k[jj] > 0:
                     ctx[:, cursor_start: cursor_end, :] = np.repeat(ctx0[:, jj, :][:, None, :], lives_k[jj], axis=1)
@@ -963,6 +964,7 @@ class NMTModel(object):
             cursor_start, cursor_end = 0, lives_k[0]
 
             for jj in xrange(batch_size):
+                print('jj=',jj)
                 if cursor_start == cursor_end:
                     if jj < batch_size - 1:
                         cursor_end += lives_k[jj + 1]
@@ -1026,9 +1028,11 @@ class NMTModel(object):
                     next_memory_list += [xx[:, None, :] for xx in hyp_memories]
 
             if np.array(lives_k).sum() > 0:
+                print("live_k=%d", np.array(live_k).sum())
                 next_w = np.array(next_w_list)
                 next_state = np.concatenate(next_state_list[:], axis=1)
                 next_memory = np.concatenate(next_memory_list[:], axis=1)
+                #last_state = np.repeat(last_state, np.array(lives_k).sum(), axis=0)
             else:
                 break
 
