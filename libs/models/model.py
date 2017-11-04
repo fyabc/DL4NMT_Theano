@@ -1033,7 +1033,7 @@ class NMTModel(object):
                     next_w_list += [w[-1] for w in batch_hyp_samples[jj]]
                     next_state_list += [xx[:, None, :] for xx in hyp_states]
                     next_memory_list += [xx[:, None, :] for xx in hyp_memories]
-                    last_state_list += [xx for xx in last_states]
+                    last_state_list += [xx[None, :] for xx in last_states]
 
             if np.array(lives_k).sum() > 0:
                 print("live_k=", np.array(lives_k).sum())
