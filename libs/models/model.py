@@ -1009,6 +1009,7 @@ class NMTModel(object):
                 hyp_scores = []
                 hyp_states = []
                 hyp_memories = []
+                last_states = []
                 print("len of new_hyp_samples is", len(new_hyp_samples))
                 for idx in xrange(len(new_hyp_samples)):
                     if new_hyp_samples[idx][-1] == eos_id:
