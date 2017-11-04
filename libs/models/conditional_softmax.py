@@ -195,10 +195,8 @@ class ConditionalSoftmaxModel(DelibNMT):
         else:
             n_timestep, n_timestep_tgt, n_samples = self.input_dimensions(x, y)
 
-            # Word embedding (target).
-            tgt_embedding = self.embedding(y, n_timestep_tgt, n_samples, 'Wemb_dec')
-
             # Target embedding (with position embedding).
+            tgt_embedding = self.embedding(y, n_timestep_tgt, n_samples, 'Wemb_dec')
             y_pos_ = T.repeat(T.arange(y.shape[0]).dimshuffle(0, 'x'), y.shape[1], 1)
             tgt_pos_embed = self.P['Wemb_dec_pos'][y_pos_.flatten()].reshape(
                 [y_pos_.shape[0], y_pos_.shape[1], self.DO['dim_word']])
@@ -401,6 +399,10 @@ class ConditionalSoftmaxModel(DelibNMT):
     def gen_batch_sample(self, f_init, f_next, x, x_mask, trng=None, k=1, maxlen=30, eos_id=0, attn_src=False, **kwargs):
         return NMTModel.gen_batch_sample(self, f_init, f_next, x, x_mask, trng=trng, k=k, maxlen=maxlen, eos_id=eos_id,
                                          attn_src=attn_src, **kwargs)
+
+    def independent_decoder(self, tgt_embedding, y_mask, context, x_mask, **kwargs):
+        return super(ConditionalSoftmaxModel, self).independent_decoder(
+            tgt_embedding, None, y_mask, context, x_mask, **kwargs)
 
     def get_word_probability(self, hidden_decoder, context_decoder, tgt_embedding, **kwargs):
         """Compute word probabilities.

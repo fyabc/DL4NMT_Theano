@@ -203,7 +203,6 @@ class DelibNMT(NMTModel):
         y_mask:         ([Tt], [Bs])
         context:        ([Ts], [Bs], [Hc])
         x_mask:         ([Ts], [Bs])
-        dropout_params: tuple
         kwargs
 
         Returns
@@ -241,9 +240,6 @@ class DelibNMT(NMTModel):
             H_ = self.dropout(H_, use_noise, trng)
 
         logit = self.feed_forward(H_, prefix='fc_lastHtoSoftmax', activation=lambda x: x)
-
-        if self.O['delib_reversed'] in ('decoder', 'all'):
-            logit = logit[::-1]
 
         logit_shp = logit.shape
         if kwargs.pop('softmax', True):

@@ -347,6 +347,10 @@ class NMTModel(object):
         # For the backward rnn, we just need to invert x and x_mask
         x_r, x_mask_r = self.reverse_input(x, x_mask)
 
+        if self.O['delib_reversed'] in ('encoder', 'all'):
+            x, x_r = x_r, x
+            x_mask, x_mask_r = x_mask_r, x_mask
+
         n_timestep, n_timestep_tgt, n_samples = self.input_dimensions(x, y)
 
         # Word embedding for forward rnn and backward rnn (source)
