@@ -946,6 +946,7 @@ class NMTModel(object):
 
             if densely_connected:
                 last_state = ret[3]
+                
                 if 'lstm' in unit:
                     next_memory = ret[4]
                     if ret_memory:
@@ -979,13 +980,14 @@ class NMTModel(object):
                 except ImportError:
                     from bottleneck import argpartsort as part_sort
                     ranks_flat = part_sort(cand_flat, k - deads_k[jj])[:k - deads_k[jj]]
-
+                print('ranks_flat ', ranks_flat.shape)
                 voc_size = next_p.shape[1]
                 trans_indices = ranks_flat / voc_size
                 word_indices = ranks_flat % voc_size
                 costs = cand_flat[ranks_flat]
 
                 new_hyp_samples = []
+
                 new_hyp_scores = np.zeros(k - deads_k[jj]).astype('float32')
                 new_hyp_states = []
                 new_hyp_memories = []
