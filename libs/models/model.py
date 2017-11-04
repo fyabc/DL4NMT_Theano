@@ -1042,6 +1042,7 @@ class NMTModel(object):
                 next_memory = np.concatenate(next_memory_list[:], axis=1)
                 #last_state = np.repeat(last_state, np.array(lives_k).sum(), axis=0)
                 last_state = np.concatenate(last_state_list[:], axis=0)
+                print("last_state", last_state.shape)
             else:
                 break
 
