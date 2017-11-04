@@ -960,6 +960,7 @@ class NMTModel(object):
             next_w_list = []
             next_state_list = []
             next_memory_list = []
+            last_state_list = []
 
             next_p, next_state = ret[0], ret[2]
             cursor_start, cursor_end = 0, lives_k[0]
@@ -980,17 +981,20 @@ class NMTModel(object):
                 except ImportError:
                     from bottleneck import argpartsort as part_sort
                     ranks_flat = part_sort(cand_flat, k - deads_k[jj])[:k - deads_k[jj]]
-                print('ranks_flat ', ranks_flat.shape)
+                print('ranks_flat ', ranks_flat.shape, ranks_flat)
                 voc_size = next_p.shape[1]
                 trans_indices = ranks_flat / voc_size
                 word_indices = ranks_flat % voc_size
                 costs = cand_flat[ranks_flat]
+                print("trans_indices = ", trans_indices)
+                print("word_indices = ", word_indices)
 
                 new_hyp_samples = []
 
                 new_hyp_scores = np.zeros(k - deads_k[jj]).astype('float32')
                 new_hyp_states = []
                 new_hyp_memories = []
+                last_states = []
 
                 for idx, [ti, wi] in enumerate(zip(trans_indices, word_indices)):
                     new_hyp_samples.append(batch_hyp_samples[jj][ti] + [wi])
@@ -1016,6 +1020,7 @@ class NMTModel(object):
                         hyp_scores.append(new_hyp_scores[idx])
                         hyp_states.append(new_hyp_states[idx])
                         hyp_memories.append(new_hyp_memories[idx])
+                        last_states.append(last_state[jj])
 
                 batch_hyp_scores[jj] = np.array(hyp_scores)
                 lives_k[jj] = new_live_k
@@ -1028,6 +1033,7 @@ class NMTModel(object):
                     next_w_list += [w[-1] for w in batch_hyp_samples[jj]]
                     next_state_list += [xx[:, None, :] for xx in hyp_states]
                     next_memory_list += [xx[:, None, :] for xx in hyp_memories]
+                    last_state_list += [xx for xx in last_states]
 
             if np.array(lives_k).sum() > 0:
                 print("live_k=%d", np.array(lives_k).sum())
@@ -1035,6 +1041,7 @@ class NMTModel(object):
                 next_state = np.concatenate(next_state_list[:], axis=1)
                 next_memory = np.concatenate(next_memory_list[:], axis=1)
                 #last_state = np.repeat(last_state, np.array(lives_k).sum(), axis=0)
+                last_state = np.concatenate(last_state_list[:], axis=0)
             else:
                 break
 
