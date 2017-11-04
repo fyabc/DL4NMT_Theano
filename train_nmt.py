@@ -171,7 +171,8 @@ def main():
     parser.add_argument('--fix_encoder', action='store_true', default=False, dest='fix_encoder',
                         help='whether to fix encoder when training deliberation model')
     parser.add_argument('--delib_reversed', action='store', default=None, dest='delib_reversed',
-                        choices=[None, 'decoder', 'all'], help='Reversed deliberation model, default is %(default)s')
+                        choices=[None, 'encoder', 'decoder', 'all'],
+                        help='Reversed deliberation model, default is %(default)s')
     parser.add_argument('--cond_softmax', nargs='?', action='store', default=None, dest='cond_softmax', const='',
                         help='Deliberation model path to add conditional softmax into decoder, '
                              'set "--cond_softmax" without argument to train from scratch, default is %(default)s')
