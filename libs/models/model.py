@@ -343,6 +343,7 @@ class NMTModel(object):
         """
 
         x, x_mask, y, y_mask = self.get_input() if given_input is None else given_input
+        orig_x, orig_x_mask = x, x_mask
 
         # For the backward rnn, we just need to invert x and x_mask
         x_r, x_mask_r = self.reverse_input(x, x_mask)
@@ -369,7 +370,7 @@ class NMTModel(object):
                                        dropout_params=kwargs.pop('dropout_params', None),
                                        get_gates=kwargs.pop('get_gates', False))
 
-        return [x, x_mask, y, y_mask], context, kw_ret
+        return [orig_x, orig_x_mask, y, y_mask], context, kw_ret
 
     def input_to_decoder_context(self, given_input=None):
         """Build the part of the model that from input to context vector of decoder.
