@@ -925,7 +925,7 @@ class NMTModel(object):
             ctx = np.repeat(ctx0, lives_k, axis=1)
             x_extend_masks = np.repeat(x_mask, lives_k, axis=1)
             cursor_start, cursor_end = 0, lives_k[0]
-            print('ii=',ii)
+            #print('ii=',ii)
             for jj in xrange(batch_size):
                 if lives_k[jj] > 0:
                     ctx[:, cursor_start: cursor_end, :] = np.repeat(ctx0[:, jj, :][:, None, :], lives_k[jj], axis=1)
@@ -966,7 +966,7 @@ class NMTModel(object):
             cursor_start, cursor_end = 0, lives_k[0]
 
             for jj in xrange(batch_size):
-                print('jj=',jj)
+                #print('jj=',jj)
                 if cursor_start == cursor_end:
                     if jj < batch_size - 1:
                         cursor_end += lives_k[jj + 1]
@@ -981,13 +981,13 @@ class NMTModel(object):
                 except ImportError:
                     from bottleneck import argpartsort as part_sort
                     ranks_flat = part_sort(cand_flat, k - deads_k[jj])[:k - deads_k[jj]]
-                print('ranks_flat ', ranks_flat.shape, ranks_flat)
+                #print('ranks_flat ', ranks_flat.shape, ranks_flat)
                 voc_size = next_p.shape[1]
                 trans_indices = ranks_flat / voc_size
                 word_indices = ranks_flat % voc_size
                 costs = cand_flat[ranks_flat]
-                print("trans_indices = ", trans_indices)
-                print("word_indices = ", word_indices)
+                #print("trans_indices = ", trans_indices)
+                #print("word_indices = ", word_indices)
 
                 new_hyp_samples = []
 
@@ -1010,7 +1010,7 @@ class NMTModel(object):
                 hyp_states = []
                 hyp_memories = []
                 last_states = []
-                print("len of new_hyp_samples is", len(new_hyp_samples))
+                #print("len of new_hyp_samples is", len(new_hyp_samples))
                 for idx in xrange(len(new_hyp_samples)):
                     if new_hyp_samples[idx][-1] == eos_id:
                         sample[jj].append(new_hyp_samples[idx])
@@ -1038,13 +1038,13 @@ class NMTModel(object):
                     last_state_list += [xx[None, :] for xx in last_states]
 
             if np.array(lives_k).sum() > 0:
-                print("live_k=", np.array(lives_k).sum())
+                #print("live_k=", np.array(lives_k).sum())
                 next_w = np.array(next_w_list)
                 next_state = np.concatenate(next_state_list[:], axis=1)
                 next_memory = np.concatenate(next_memory_list[:], axis=1)
                 #last_state = np.repeat(last_state, np.array(lives_k).sum(), axis=0)
                 last_state = np.concatenate(last_state_list[:], axis=0)
-                print("last_state", last_state.shape)
+                #print("last_state", last_state.shape)
             else:
                 break
 
