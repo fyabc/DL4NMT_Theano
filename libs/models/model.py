@@ -994,13 +994,14 @@ class NMTModel(object):
                 new_hyp_scores = np.zeros(k - deads_k[jj]).astype('float32')
                 new_hyp_states = []
                 new_hyp_memories = []
-                last_states = []
+                last_hyp_states = []
 
                 for idx, [ti, wi] in enumerate(zip(trans_indices, word_indices)):
                     new_hyp_samples.append(batch_hyp_samples[jj][ti] + [wi])
                     new_hyp_scores[idx] = copy.copy(costs[idx])
                     new_hyp_states.append(copy.copy(next_state[:, cursor_start + ti, :]))
                     new_hyp_memories.append(copy.copy(next_memory[:, cursor_start + ti, :]))
+                    last_hyp_states.append(last_state[cursor_start + ti, :])
 
                 # check the finished samples
                 new_live_k = 0
@@ -1008,7 +1009,7 @@ class NMTModel(object):
                 hyp_scores = []
                 hyp_states = []
                 hyp_memories = []
-
+                print("len of new_hyp_samples is", len(new_hyp_samples))
                 for idx in xrange(len(new_hyp_samples)):
                     if new_hyp_samples[idx][-1] == eos_id:
                         sample[jj].append(new_hyp_samples[idx])
@@ -1020,7 +1021,7 @@ class NMTModel(object):
                         hyp_scores.append(new_hyp_scores[idx])
                         hyp_states.append(new_hyp_states[idx])
                         hyp_memories.append(new_hyp_memories[idx])
-                        last_states.append(last_state[jj])
+                        last_states.append(last_hyp_states[idx])
 
                 batch_hyp_scores[jj] = np.array(hyp_scores)
                 lives_k[jj] = new_live_k
@@ -1029,7 +1030,7 @@ class NMTModel(object):
                     cursor_start = cursor_end
                     cursor_end += lives_k[jj + 1]
 
-                if hyp_states:
+                if hyp_states: #[:, None, :] layer, batch_size, dim
                     next_w_list += [w[-1] for w in batch_hyp_samples[jj]]
                     next_state_list += [xx[:, None, :] for xx in hyp_states]
                     next_memory_list += [xx[:, None, :] for xx in hyp_memories]
