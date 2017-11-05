@@ -898,15 +898,15 @@ class NMTModel(object):
         densely_connected = self.O['densely_connected']
 
         batch_size = x.shape[1]
-        sample = [[] for _ in xrange(batch_size)]
-        sample_score = [[] for _ in xrange(batch_size)]
+        sample = [[] for _ in xrange(batch_size)] #bs * timestep
+        sample_score = [[] for _ in xrange(batch_size)] #bs * timestep
         sample_attn_src_words = [[] for _ in xrange(batch_size)]
 
-        lives_k = [1] * batch_size
-        deads_k = [0] * batch_size
+        lives_k = [1] * batch_size #bs
+        deads_k = [0] * batch_size #bs
 
-        batch_hyp_samples = [[[]] for _ in xrange(batch_size)]
-        batch_hyp_scores = [np.zeros(ii, dtype=fX) for ii in lives_k]
+        batch_hyp_samples = [[[]] for _ in xrange(batch_size)] #bs * beamsize * timestep
+        batch_hyp_scores = [np.zeros(ii, dtype=fX) for ii in lives_k] #bs * live_k
 
         # get initial state of decoder rnn and encoder context
         ret = f_init(x, x_mask)
@@ -922,16 +922,15 @@ class NMTModel(object):
             next_memory = np.zeros((self.O['n_decoder_layers'], next_state.shape[1], next_state.shape[2]), dtype=fX)
 
         for ii in xrange(maxlen):
-            ctx = np.repeat(ctx0, lives_k, axis=1)
+            ctx = np.repeat(ctx0, lives_k, axis=1) #[timestep, (bs*live_k), ctx_dim]
             x_extend_masks = np.repeat(x_mask, lives_k, axis=1)
-            cursor_start, cursor_end = 0, lives_k[0]
-            #print('ii=',ii)
+            cursor_start, cursor_end = 0, lives_k[0] #0, 1
             for jj in xrange(batch_size):
-                if lives_k[jj] > 0:
+                if lives_k[jj] > 0: #there are alive(unfinished) sentences
                     ctx[:, cursor_start: cursor_end, :] = np.repeat(ctx0[:, jj, :][:, None, :], lives_k[jj], axis=1)
                     x_extend_masks[:, cursor_start: cursor_end] = np.repeat(x_mask[:, jj][:, None], lives_k[jj], axis=1)
-                if jj < batch_size - 1:
-                    cursor_start = cursor_end
+                if jj < batch_size - 1: #not the last batch
+                    cursor_start = cursor_end #start and end of next batch
                     cursor_end += lives_k[jj + 1]
 
             if densely_connected:
@@ -963,31 +962,27 @@ class NMTModel(object):
             last_state_list = []
 
             next_p, next_state = ret[0], ret[2]
-            cursor_start, cursor_end = 0, lives_k[0]
+            cursor_start, cursor_end = 0, lives_k[0] #0, 1, start and end of first batch
 
             for jj in xrange(batch_size):
-                #print('jj=',jj)
-                if cursor_start == cursor_end:
-                    if jj < batch_size - 1:
-                        cursor_end += lives_k[jj + 1]
+                if cursor_start == cursor_end: #no alive?
+                    if jj < batch_size - 1:    #not last batch
+                        cursor_end += lives_k[jj + 1] #move to next batch
                     continue
                 index_range = range(cursor_start, cursor_end)
-                cand_scores = batch_hyp_scores[jj][:, None] - np.log(next_p[index_range, :])
-                cand_flat = cand_scores.flatten()
+                cand_scores = batch_hyp_scores[jj][:, None] - np.log(next_p[index_range, :])#[live_k, voc_size]
+                cand_flat = cand_scores.flatten()#[live_k*voc_size]
 
                 try:
                     from bottleneck import argpartition as part_sort
                     ranks_flat = part_sort(cand_flat, kth=k - deads_k[jj] - 1)[:k - deads_k[jj]]
                 except ImportError:
                     from bottleneck import argpartsort as part_sort
-                    ranks_flat = part_sort(cand_flat, k - deads_k[jj])[:k - deads_k[jj]]
-                #print('ranks_flat ', ranks_flat.shape, ranks_flat)
+                    ranks_flat = part_sort(cand_flat, k - deads_k[jj])[:k - deads_k[jj]] #[beam_size - dead_k]
                 voc_size = next_p.shape[1]
-                trans_indices = ranks_flat / voc_size
-                word_indices = ranks_flat % voc_size
+                trans_indices = ranks_flat / voc_size #which beam
+                word_indices = ranks_flat % voc_size  #which word
                 costs = cand_flat[ranks_flat]
-                #print("trans_indices = ", trans_indices)
-                #print("word_indices = ", word_indices)
 
                 new_hyp_samples = []
 
@@ -997,11 +992,11 @@ class NMTModel(object):
                 last_hyp_states = []
 
                 for idx, [ti, wi] in enumerate(zip(trans_indices, word_indices)):
-                    new_hyp_samples.append(batch_hyp_samples[jj][ti] + [wi])
+                    new_hyp_samples.append(batch_hyp_samples[jj][ti] + [wi]) # jj-th sentence, ti-th beam + new wi-th word
                     new_hyp_scores[idx] = copy.copy(costs[idx])
-                    new_hyp_states.append(copy.copy(next_state[:, cursor_start + ti, :]))
+                    new_hyp_states.append(copy.copy(next_state[:, cursor_start + ti, :]))#[n_layers, 1, dim]
                     new_hyp_memories.append(copy.copy(next_memory[:, cursor_start + ti, :]))
-                    last_hyp_states.append(last_state[cursor_start + ti, :])
+                    last_hyp_states.append(last_state[cursor_start + ti, :])#[1, dim_word]
 
                 # check the finished samples
                 new_live_k = 0
@@ -1010,7 +1005,7 @@ class NMTModel(object):
                 hyp_states = []
                 hyp_memories = []
                 last_states = []
-                #print("len of new_hyp_samples is", len(new_hyp_samples))
+                
                 for idx in xrange(len(new_hyp_samples)):
                     if new_hyp_samples[idx][-1] == eos_id:
                         sample[jj].append(new_hyp_samples[idx])
@@ -1031,20 +1026,17 @@ class NMTModel(object):
                     cursor_start = cursor_end
                     cursor_end += lives_k[jj + 1]
 
-                if hyp_states: #[:, None, :] layer, batch_size, dim
+                if hyp_states: #[:, None, :] [layer, batch_size, dim]
                     next_w_list += [w[-1] for w in batch_hyp_samples[jj]]
                     next_state_list += [xx[:, None, :] for xx in hyp_states]
                     next_memory_list += [xx[:, None, :] for xx in hyp_memories]
                     last_state_list += [xx[None, :] for xx in last_states]
 
             if np.array(lives_k).sum() > 0:
-                #print("live_k=", np.array(lives_k).sum())
                 next_w = np.array(next_w_list)
                 next_state = np.concatenate(next_state_list[:], axis=1)
                 next_memory = np.concatenate(next_memory_list[:], axis=1)
-                #last_state = np.repeat(last_state, np.array(lives_k).sum(), axis=0)
                 last_state = np.concatenate(last_state_list[:], axis=0)
-                #print("last_state", last_state.shape)
             else:
                 break
 
