@@ -168,4 +168,20 @@ Datasets = {
         'sorted_Nist2006.dev.txt.zh.tok, sorted_Nist2008.dev.txt.zh.tok, sorted_Nist2012.dev.txt.zh.tok', 'NIST2006.reference, NIST2008.reference, NIST2012.reference',
         'tc_zh-en.1.25M.zh.pkl', 'tc_zh-en.1.25M.en.pkl',
     ],
+
+    'wmt17-zhen':[
+        'train.zh','train.en',
+        'small_train.zh','small_train.en',
+        'valid.zh','valid.en','valid.en.tok',
+        'test.zh','test.en.tok',
+        'wmt17_zhen.zh.vocab.pkl','wmt17_zhen.en.vocab.pkl',
+    ],
+
+    'wmt17-enzh':[
+        'train.en','train.zh',
+        'small_train.en','small_train.zh',
+        'valid.en','valid.zh','valid.zh.tok',
+        'test.en','test.zh.tok',
+        'wmt17_zhen.en.vocab.pkl','wmt17_zhen.zh.vocab.pkl',
+    ],
 }
