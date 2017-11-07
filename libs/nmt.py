@@ -250,11 +250,11 @@ Start Time = {}
         )
 
     if not zhen:
-        valid_iterator.append(TextIterator(
-            valid_datasets[0], valid_datasets[1] if not zhen else valid_datasets[2],
+        valid_iterator=TextIterator(
+            valid_datasets[0], valid_datasets[1],
             vocab_filenames[0], vocab_filenames[1],
-            valid_batch_size, n_words_src, n_words,k = io_buffer_size,
-        ))
+            valid_batch_size, n_words_src, n_words, k = io_buffer_size,
+        )
     else:
         valid_iterator = []
         for i in range(4, 8): # NIST2005.reference4-7
