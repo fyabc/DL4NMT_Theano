@@ -170,18 +170,18 @@ Datasets = {
     ],
 
     'wmt17-zhen':[
-        'train.zh','train.en',
-        'small_train.zh','small_train.en',
-        'valid.zh','valid.en','valid.en.tok',
-        'test.zh','test.en.tok',
+        'wmt17train.zh.original','wmt17train.en.original',
+        'small_wmt17train.zh.original','small_wmt17train.en.original',
+        'wmt17valid.zh','wmt17valid.en','wmt17valid.en.tok',
+        'wmt17test.zh','wmt17test.en.tok',
         'wmt17_zhen.zh.vocab.pkl','wmt17_zhen.en.vocab.pkl',
     ],
 
     'wmt17-enzh':[
-        'train.en','train.zh',
-        'small_train.en','small_train.zh',
-        'valid.en','valid.zh','valid.zh.tok',
-        'test.en','test.zh.tok',
+        'wmt17train.en.original','wmt17train.zh.original',
+        'small_wmt17train.en.original','small_wmt17train.zh.original',
+        'wmt17valid.en','wmt17valid.zh','wmt17valid.zh.tok',
+        'wmt17test.en','wmt17test.zh.tok',
         'wmt17_zhen.en.vocab.pkl','wmt17_zhen.zh.vocab.pkl',
     ],
 }
