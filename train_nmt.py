@@ -193,7 +193,7 @@ def main():
     if args.dataset != 'en-fr':
         args.train1, args.train2, args.small1, args.small2, args.valid1, args.valid2, valid3, test1, test2, args.dic1, args.dic2 = \
             Datasets[args.dataset]
-    zhen = 'zh' in args.dataset and 'en' in args.dataset
+    zhen = 'zh-en' in args.dataset and 'wmt17' not in args.dataset
 
     print 'Command line arguments:'
     print args
