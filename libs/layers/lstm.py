@@ -139,7 +139,38 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
 
     inputs and outputs are same as GRU layer.
 
-    outputs[1]: hidden memory
+    [n_in] = [W] if layer 0 else [H]
+    input:
+        state_below: ([T], [Bs], [n_in])
+        mask: ([T], [Bs])
+        context (context): ([T], [Bs], [Hc])
+    parameters:
+        W: ([n_in], 4 * [H])        # i, f, o, c
+        b: ([H],)
+        U: ([H], 4 * [H])
+        Wc (context): ([Hc], 4 * [H])
+    structure:
+        # todo: add multi-lstm
+
+        x = state_below @ W + b
+        h[0], c[0] = init_h, init_c
+        for i in range([T]):
+            preact = h[i] @ U + x[i]
+            if context:
+                preact += context[i] @ Wc
+            i = sigmoid(preact[slice 0])
+            f = sigmoid(preact[slice 1])
+            o = sigmoid(preact[slice 2])
+            c = tanh(preact[slice 3])
+
+            c' = f * c[i] + i * c'
+            c' = masked c'          # c' = mask[i] * c' + (1 - mask[i]) * c[i]
+            h' = o * tanh(c')
+            h' = masked h'
+
+            c[i + 1], h[i + 1] = c', h'
+    output:
+        h, c, kw_ret
     """
 
     layer_id = kwargs.pop('layer_id', 0)

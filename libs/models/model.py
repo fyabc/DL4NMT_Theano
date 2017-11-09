@@ -550,6 +550,7 @@ class NMTModel(object):
         dropout_rate = kwargs.pop('dropout', False)
         dropout_rate_out = self.O['dropout_out']
         need_srcattn = kwargs.pop('need_srcattn', False)
+        delib_vocab_file = kwargs.pop('delib_vocab', None)
 
         if dropout_rate is not False:
             dropout_params = [use_noise, trng, dropout_rate]
@@ -566,6 +567,12 @@ class NMTModel(object):
         if batch_mode:
             x_mask = T.matrix('x_mask', dtype=fX)
             xr_mask = x_mask[::-1]
+
+        # Deliberation vocabulary
+        if delib_vocab_file is not None:
+            # delib_vocab: ([#sentences], [k]); current_index: shared variable of current index of the delib_vocab
+            delib_vocab = T.constant(np.load(delib_vocab_file)['delib_vocab'], name='delib_vocab')
+            current_index = theano.shared(0, name='current_index')
 
         # Word embedding for forward rnn and backward rnn (source)
         src_embedding = self.embedding(x, n_timestep, n_samples)
@@ -587,7 +594,11 @@ class NMTModel(object):
         if batch_mode:
             inps.append(x_mask)
         outs = [init_state, ctx]
-        f_init = theano.function(inps, outs, name='f_init', profile=profile)
+        f_init = theano.function(
+            inps, outs,
+            name='f_init', profile=profile,
+            updates={current_index: current_index + n_samples} if delib_vocab_file else None,
+        )
         print('Done')
 
         pre_projected_context_ = self.attention_projected_context(ctx, prefix='decoder')
@@ -629,11 +640,25 @@ class NMTModel(object):
 
         logit = self.feed_forward(logit, prefix='ff_logit', activation=linear)
 
-        # Compute the softmax probability
-        next_probs = T.nnet.softmax(logit)
+        if delib_vocab_file:
+            row_index = T.arange(y.shape[0]).dimshuffle([0, 'x'])
 
-        # Sample from softmax distribution to get the sample
-        next_sample = trng.multinomial(pvals=next_probs).argmax(1)
+            part_delib_vocab = delib_vocab[current_index: current_index + y.shape[0]]
+            part_logit = logit[row_index, part_delib_vocab]
+
+            # Compute the softmax probability
+            next_probs = T.nnet.softmax(part_logit)
+
+            # Sample from softmax distribution to get the sample
+            next_sample_top_k = trng.multinomial(pvals=next_probs).argmax(1)
+
+            next_sample = part_delib_vocab[row_index, next_sample_top_k.dimshuffle([0, 'x'])].flatten()
+        else:
+            # Compute the softmax probability
+            next_probs = T.nnet.softmax(logit)
+
+            # Sample from softmax distribution to get the sample
+            next_sample = trng.multinomial(pvals=next_probs).argmax(1)
 
         # Compile a function to do the whole thing above, next word probability,
         # sampled word for the next target, next hidden state to be used

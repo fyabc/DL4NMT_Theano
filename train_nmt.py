@@ -166,7 +166,8 @@ def main():
                         help='whether use deliberation model')
     parser.add_argument('--use_attn', action="store_true", default=False, help='whether use attention')
     parser.add_argument('--use_src_pos', action="store_true", default=False, help='whether use source embedding')
-    parser.add_argument('--decoder_style', type=str, default='stackNN', help='Style of decoder, default is %(default)s')
+    parser.add_argument('--decoder_style', type=str, default='stackNN', choices=['stackNN', 'stackLSTM', 'ffLSTM'],
+                        help='Style of decoder, default is %(default)s')
     parser.add_argument('--which_word', type=int, default=None, help='')
     parser.add_argument('--fix_encoder', action='store_true', default=False, dest='fix_encoder',
                         help='whether to fix encoder when training deliberation model')

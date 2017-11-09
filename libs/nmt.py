@@ -270,8 +270,7 @@ Start Time = {}
         model = DelibNMT(model_options)
     elif cond_softmax is not None:
         if cond_softmax == '':
-            message('Using model options as per-word predictor options')
-            delib_options = model_options.copy()
+            delib_options = None
         else:
             message('Loading per-word predictor options')
             delib_options = load_options_test(cond_softmax)
@@ -279,6 +278,7 @@ Start Time = {}
         model = ConditionalSoftmaxModel(model_options, delib_options)
     else:
         model = NMTModel(model_options)
+    message('Model type: {}'.format(model.__class__.__name__))
 
     params = model.initializer.init_params()
 

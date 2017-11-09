@@ -10,20 +10,18 @@ from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
 from .deliberation import DelibNMT, DelibInitializer, NMTModel
 from ..layers import *
+from ..layers.basic import _slice
 from ..constants import fX, profile
 from ..utility.basic import floatX
-from ..utility.utils import _p, debug_print, delib_env
+from ..utility.utils import _p, debug_print, delib_env, message
 from ..utility.theano_arg_top_k import theano_argpartsort
 
 __author__ = 'fyabc'
 
 
 class ConditionalSoftmaxInitializer(DelibInitializer):
-    def __init__(self, options, delib_options):
+    def __init__(self, options):
         super(ConditionalSoftmaxInitializer, self).__init__(options)
-
-        # Per-word prediction options
-        self.DO = delib_options
 
     def init_params(self):
         np_parameters = OrderedDict()
@@ -55,18 +53,21 @@ class ConditionalSoftmaxInitializer(DelibInitializer):
 
         # Per-word prediction part.
 
-        with delib_env(self):
-            # Source position embedding
-            if self.O['use_src_pos']:
-                self.init_embedding(np_parameters, 'Wemb_pos', self.O['maxlen'] + 1, self.O['dim_word'])
+        # Source position embedding
+        if self.O['use_src_pos']:
+            self.init_embedding(np_parameters, 'Wemb_pos', self.O['maxlen'] + 1, self.O['dim_word'])
 
-            # Target position embedding
-            self.init_embedding(np_parameters, 'Wemb_dec_pos', self.O['maxlen'] + 1, self.O['dim_word'])
+        # Target position embedding
+        self.init_embedding(np_parameters, 'Wemb_dec_pos', self.O['maxlen'] + 1, self.O['dim_word'])
 
-            # Deliberation decoder
-            self.init_independent_decoder(np_parameters)
+        # Deliberation decoder
+        self.init_independent_decoder(np_parameters)
 
         return np_parameters
+
+    def init_independent_decoder(self, np_parameters):
+        # TODO
+        return super(ConditionalSoftmaxInitializer, self).init_independent_decoder(np_parameters)
 
 
 class ConditionalSoftmaxModel(DelibNMT):
@@ -78,15 +79,33 @@ class ConditionalSoftmaxModel(DelibNMT):
 
     def __init__(self, options, delib_options, given_params=None):
         super(ConditionalSoftmaxModel, self).__init__(options, given_params)
-        self.initializer = ConditionalSoftmaxInitializer(options, delib_options)
+        self.initializer = ConditionalSoftmaxInitializer(options)
 
-        # Per-word prediction options
-        self.DO = delib_options
+        self._check_options(delib_options)
 
-        self._check_options()
+    def _check_options(self, delib_options):
+        if delib_options is None:
+            return
 
-    def _check_options(self):
-        assert self.O['dim_word'] == self.DO['dim_word'], 'Word dimensions must be same between two decoders'
+        def _assert_same(key):
+            assert self.O[key] == delib_options[key], \
+                'Option "{}" not same ({} vs {})'.format(key, self.O[key], delib_options[key])
+
+        def _move(key):
+            if self.O[key] != delib_options[key]:
+                message('WARNING: move option "{}" value {} from deliberation'.format(key, delib_options[key]))
+                self.O[key] = delib_options[key]
+
+        _assert_same('dim')
+        _assert_same('dim_word')
+        _assert_same('maxlen')
+        _assert_same('n_encoder_layers')
+        _assert_same('n_decoder_layers')
+        _assert_same('decoder_all_attention')
+        _move('use_src_pos')
+        _move('decoder_style')
+        _move('use_attn')
+        _move('delib_reversed')
 
     def trainable_parameters(self):
         # todo: remove per-word prediction parameters from trainable parameters
@@ -149,89 +168,54 @@ class ConditionalSoftmaxModel(DelibNMT):
 
         # Encoder.
         # [NOTE] Encoder options of self.O and self.DO must be same. Switch to use self.DO['use_src_pos'].
-        with delib_env(self, 'use_src_pos'):
-            (x, x_mask, y, y_mask), context, _ = self.input_to_context(dropout_params=dropout_params)
+        (x, x_mask, y, y_mask), context, _ = self.input_to_context(dropout_params=dropout_params)
 
-        if False:
-            # Per-word prediction decoder.
-            with delib_env(self):
-                y_pos_ = T.repeat(T.arange(y.shape[0]).dimshuffle(0, 'x'), y.shape[1], 1)
-                tgt_pos_embed = self.P['Wemb_dec_pos'][y_pos_.flatten()].reshape(
-                    [y_pos_.shape[0], y_pos_.shape[1], self.DO['dim_word']])
-                pw_probs = self.independent_decoder(tgt_pos_embed, y, y_mask, context, x_mask,
-                                                    trng=trng, use_noise=use_noise, softmax=False)
+        n_timestep, n_timestep_tgt, n_samples = self.input_dimensions(x, y)
 
-            # RNN decoder.
-            n_timestep, n_timestep_tgt, n_samples = self.input_dimensions(x, y)
+        # Target embedding (with position embedding).
+        tgt_embedding = self.embedding(y, n_timestep_tgt, n_samples, 'Wemb_dec')
+        y_pos_ = T.repeat(T.arange(y.shape[0]).dimshuffle(0, 'x'), y.shape[1], 1)
+        tgt_pos_embed = self.P['Wemb_dec_pos'][y_pos_.flatten()].reshape(
+            [y_pos_.shape[0], y_pos_.shape[1], self.O['dim_word']])
+        tgt_embedding += tgt_pos_embed
 
-            context_mean = self.get_context_mean(context, x_mask)
-            # Initial decoder state
-            init_decoder_state = self.feed_forward(context_mean, prefix='ff_state', activation=tanh)
+        # We will shift the target sequence one time step
+        # to the right. This is done because of the bi-gram connections in the
+        # readout and decoder rnn. The first target will be all zeros and we will
+        # not condition on the last output.
+        emb_shifted = T.zeros_like(tgt_embedding)
+        emb_shifted = T.set_subtensor(emb_shifted[1:], tgt_embedding[:-1])
+        tgt_embedding = emb_shifted
+        pre_projected_context = self.attention_projected_context(context, prefix='decoder')
 
-            # Word embedding (target), we will shift the target sequence one time step
-            # to the right. This is done because of the bi-gram connections in the
-            # readout and decoder rnn. The first target will be all zeros and we will
-            # not condition on the last output.
-            tgt_embedding = self.embedding(y, n_timestep_tgt, n_samples, 'Wemb_dec')
-            emb_shifted = T.zeros_like(tgt_embedding)
-            emb_shifted = T.set_subtensor(emb_shifted[1:], tgt_embedding[:-1])
-            tgt_embedding = emb_shifted
-            pre_projected_context = self.attention_projected_context(context, prefix='decoder')
-
-            # Decoder - pass through the decoder conditional gru with attention
-            hidden_decoder, context_decoder, opt_ret['dec_alphas'], _ = self.decoder(
-                tgt_embedding, y_mask=y_mask, init_state=init_decoder_state, context=context, x_mask=x_mask,
-                projected_context=pre_projected_context, dropout_params=dropout_params, one_step=False,
-            )
-
-            trng, use_noise, probs = self.get_word_probability(hidden_decoder, context_decoder, tgt_embedding,
-                                                               trng=trng, use_noise=use_noise, pw_probs=pw_probs)
-
-            # [NOTE]: Only use RNN decoder loss.
-            test_cost = self.build_cost(y, y_mask, probs, epsilon=1e-6)
-            cost = test_cost / self.O['cost_normalization']  # cost used to derive gradient in training
-
-            return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost, test_cost, context_mean
+        # Context info.
+        context_info = self.get_context_info(context, x_mask, tgt_embedding)
+        if self.O['use_attn']:
+            # Use target attention, 3-d context info; else context mean, 2-d
+            # [NOTE] need test
+            context_mean = T.mean(context_info, axis=0)
         else:
-            n_timestep, n_timestep_tgt, n_samples = self.input_dimensions(x, y)
+            context_mean = context_info
+        init_decoder_state = self.feed_forward(context_mean, prefix='ff_state', activation=tanh)
 
-            # Target embedding (with position embedding).
-            tgt_embedding = self.embedding(y, n_timestep_tgt, n_samples, 'Wemb_dec')
-            y_pos_ = T.repeat(T.arange(y.shape[0]).dimshuffle(0, 'x'), y.shape[1], 1)
-            tgt_pos_embed = self.P['Wemb_dec_pos'][y_pos_.flatten()].reshape(
-                [y_pos_.shape[0], y_pos_.shape[1], self.DO['dim_word']])
-            tgt_embedding += tgt_pos_embed
+        # Per-word prediction decoder.
+        pw_probs = self.independent_decoder(tgt_embedding, y_mask, context, x_mask,
+                                            dropout_params=None, trng=trng, use_noise=use_noise, softmax=False)
 
-            # We will shift the target sequence one time step
-            # to the right. This is done because of the bi-gram connections in the
-            # readout and decoder rnn. The first target will be all zeros and we will
-            # not condition on the last output.
-            emb_shifted = T.zeros_like(tgt_embedding)
-            emb_shifted = T.set_subtensor(emb_shifted[1:], tgt_embedding[:-1])
-            tgt_embedding = emb_shifted
-            pre_projected_context = self.attention_projected_context(context, prefix='decoder')
+        # RNN Decoder - pass through the decoder conditional gru with attention
+        hidden_decoder, context_decoder, opt_ret['dec_alphas'], _ = self.decoder(
+            tgt_embedding, y_mask=y_mask, init_state=init_decoder_state, context=context, x_mask=x_mask,
+            projected_context=pre_projected_context, dropout_params=dropout_params, one_step=False,
+        )
 
-            # Context info.
-            context_info = self.get_context_info(context, x_mask, tgt_embedding)
-            if self.O['use_attn']:
-                # Use target attention, 3-d context info; else context mean, 2-d
-                context_mean = T.mean(context_info, axis=0)
-            else:
-                context_mean = context_info
-            init_decoder_state = self.feed_forward(context_mean, prefix='ff_state', activation=tanh)
+        trng, use_noise, probs = self.get_word_probability(hidden_decoder, context_decoder, tgt_embedding,
+                                                           trng=trng, use_noise=use_noise, pw_probs=pw_probs)
 
-            # Per-word prediction decoder.
-            with delib_env(self):
-                pw_probs = self.independent_decoder(tgt_embedding, y_mask, context, x_mask,
-                                                    dropout_params=None, trng=trng, use_noise=use_noise)
+        # [NOTE]: Only use RNN decoder loss.
+        test_cost = self.build_cost(y, y_mask, probs, epsilon=1e-6)
+        cost = test_cost / self.O['cost_normalization']  # cost used to derive gradient in training
 
-            # RNN Decoder - pass through the decoder conditional gru with attention
-            hidden_decoder, context_decoder, opt_ret['dec_alphas'], _ = self.decoder(
-                tgt_embedding, y_mask=y_mask, init_state=init_decoder_state, context=context, x_mask=x_mask,
-                projected_context=pre_projected_context, dropout_params=dropout_params, one_step=False,
-            )
-
-            # TODO
+        return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost, test_cost, context_mean
 
     def build_sampler(self, **kwargs):
         batch_mode = kwargs.pop('batch_mode', False)
@@ -401,8 +385,70 @@ class ConditionalSoftmaxModel(DelibNMT):
                                          attn_src=attn_src, **kwargs)
 
     def independent_decoder(self, tgt_embedding, y_mask, context, x_mask, **kwargs):
-        return super(ConditionalSoftmaxModel, self).independent_decoder(
-            tgt_embedding, None, y_mask, context, x_mask, **kwargs)
+        """
+
+        Parameters
+        ----------
+        tgt_embedding
+        y_mask:         ([Tt], [Bs])
+        context:        ([Ts], [Bs], [Hc])
+        x_mask:         ([Ts], [Bs])
+        kwargs
+
+        Returns
+        -------
+        ([Tt] * [Bs], [V_tgt])      # [V_tgt] = target vocab size = 30000
+        """
+
+        # TODO: Change it to share parameters with RNN decoder.
+
+        dim = self.O['dim']
+
+        if self.O['delib_reversed'] in ('decoder', 'all'):
+            context = context[::-1]
+            x_mask = x_mask[::-1]
+
+        if self.O['decoder_style'] == 'stackNN':
+            projected_context = T.dot(context, self.P['attn_0_ctx2hidden'])     # projected_ctx: ([Ts], [Bs], [H])
+            ctx_info = self.get_context_info(context, x_mask, tgt_embedding)
+            H_ = T.dot(tgt_embedding, self.P['decoder_W_pose2h']) + \
+                T.dot(ctx_info, self.P['decoder_W_ctx2h']) + self.P['decoder_b_i2h']
+            for layer_id in xrange(self.O['n_decoder_layers']):
+                H_ = T.tanh(H_)
+
+                # TODO: change parameter shape
+
+                # W: ([n_in], [H]); b: ([H])
+                W = _slice(self.P[_p('decoder', 'W', layer_id)], 0, dim)
+                b = self.P[_p('decoder', 'W', layer_id)][0 * dim: 1 * dim]
+                if self.O['decoder_all_attention']:
+                    ctx_info = self.attention_layer(context, x_mask, projected_context, H_, layer_id)
+                    H_ = T.dot(H_, W) + T.dot(ctx_info, self.P['decoder_W_att2h'][layer_id]) + b
+                else:
+                    H_ = T.dot(H_, W) + b
+            H_ = T.tanh(H_)     # H_: ([Tt], [Bs], [H])
+
+        elif self.O['decoder_style'] == 'stackLSTM':
+            H_ = self.stackLSTM(tgt_embedding, 'decoder', y_mask, context, x_mask)
+        else:
+            raise Exception('Not implemented yet')
+        trng = kwargs.pop('trng', RandomStreams(1234))
+        use_noise = kwargs.pop('use_noise', theano.shared(np.float32(1.)))
+
+        # [NOTE] Share logit parameters with LSTM
+        logit_stackNN = self.feed_forward(H_, prefix='ff_logit_lstm', activation=linear)
+        logit = T.tanh(logit_stackNN)
+        if self.O['use_dropout']:
+            logit = self.dropout(logit, use_noise, trng)
+        logit = self.feed_forward(logit, prefix='ff_logit', activation=linear)
+
+        logit_shp = logit.shape
+        unnormalized_probs = logit.reshape([-1, logit_shp[2]])
+        if kwargs.pop('softmax', True):
+            probs = T.nnet.softmax(unnormalized_probs)
+            return probs
+        else:
+            return unnormalized_probs
 
     def get_word_probability(self, hidden_decoder, context_decoder, tgt_embedding, **kwargs):
         """Compute word probabilities.

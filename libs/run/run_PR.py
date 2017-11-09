@@ -188,7 +188,7 @@ def predict(modelpath,
             vocab_size_y, vocab_size_top_k = [], []
 
             # Data and path to be dumped.
-            dump_data_path = 'log/complete/data-{}.pkl'.format(uuid.uuid4())
+            dump_data_path = 'log/complete/data-iter{}-{}.pkl'.format(curidx, uuid.uuid4())
             dump_data = {
                 'modelpath': modelpath,
                 'action': action,
