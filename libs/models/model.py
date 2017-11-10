@@ -23,6 +23,7 @@ from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 from ..constants import fX, profile
 from ..config import DefaultOptions
 from ..utility.utils import *
+from ..utility.theano_ops import theano_unique
 from ..layers import *
 
 __author__ = 'fyabc'
@@ -573,6 +574,7 @@ class NMTModel(object):
             # delib_vocab: ([#sentences], [k]); current_index: shared variable of current index of the delib_vocab
             delib_vocab = T.constant(np.load(delib_vocab_file)['delib_vocab'], name='delib_vocab')
             current_index = theano.shared(0, name='current_index')
+            batch_size = theano.shared(0, name='batch_size')
 
         # Word embedding for forward rnn and backward rnn (source)
         src_embedding = self.embedding(x, n_timestep, n_samples)
@@ -597,7 +599,10 @@ class NMTModel(object):
         f_init = theano.function(
             inps, outs,
             name='f_init', profile=profile,
-            updates={current_index: current_index + n_samples} if delib_vocab_file else None,
+            updates={
+                current_index: current_index + n_samples,
+                batch_size: n_samples,
+            } if delib_vocab_file else None,
         )
         print('Done')
 
@@ -643,7 +648,7 @@ class NMTModel(object):
         if delib_vocab_file:
             row_index = T.arange(y.shape[0]).dimshuffle([0, 'x'])
 
-            part_delib_vocab = delib_vocab[current_index: current_index + y.shape[0]]
+            part_delib_vocab = theano_unique(delib_vocab[current_index: current_index + batch_size])
             part_logit = logit[row_index, part_delib_vocab]
 
             # Compute the softmax probability
@@ -652,7 +657,7 @@ class NMTModel(object):
             # Sample from softmax distribution to get the sample
             next_sample_top_k = trng.multinomial(pvals=next_probs).argmax(1)
 
-            next_sample = part_delib_vocab[row_index, next_sample_top_k.dimshuffle([0, 'x'])].flatten()
+            next_sample = part_delib_vocab[next_sample_top_k]
         else:
             # Compute the softmax probability
             next_probs = T.nnet.softmax(logit)

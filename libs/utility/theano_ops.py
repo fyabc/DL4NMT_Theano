@@ -1,8 +1,9 @@
 #! /usr/bin/python
 # -*- coding: utf-8 -*-
 
-"""The Theano operator of arg-top-k."""
+"""Some Theano operations."""
 
+import numpy as np
 import theano
 import theano.tensor as T
 
@@ -80,7 +81,14 @@ def theano_argpartsort(a, k, axis=-1):
     return ArgPartSortOp(k)(a, axis)
 
 
+@theano.as_op(itypes=[T.imatrix], otypes=[T.ivector])
+def theano_unique(a):
+    """Apply symbolic unique operation"""
+    return np.unique(a)
+
+
 __all__ = [
     'arg_top_k',
     'theano_argpartsort',
+    'theano_unique',
 ]

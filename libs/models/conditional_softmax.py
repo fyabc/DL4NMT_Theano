@@ -14,7 +14,7 @@ from ..layers.basic import _slice
 from ..constants import fX, profile
 from ..utility.basic import floatX
 from ..utility.utils import *
-from ..utility.theano_arg_top_k import theano_argpartsort
+from ..utility.theano_ops import theano_argpartsort, theano_unique
 
 __author__ = 'fyabc'
 
@@ -277,25 +277,31 @@ class ConditionalSoftmaxModel(DelibNMT):
             [y_pos_.shape[0], y_pos_.shape[1], self.O['dim_word']])
 
         # Per-word prediction decoder.
-        with delib_env(self):
-            y_mask = T.alloc(floatX(1.), self.O['maxlen'], x.shape[0])
+        y_mask = T.alloc(floatX(1.), self.O['maxlen'], x.shape[0])
 
-            # Output: probabilities of target words in this batch, ([Tt], [Bs], [V_tgt])
-            pw_probs = self.independent_decoder(tgt_pos_embed, y_mask, ctx, x_mask,
-                                                trng=trng, use_noise=use_noise, softmax=False)
-            k = self.O['cond_softmax_k']
-            top_k_args = theano_argpartsort(-pw_probs, k, axis=1)[:, :k]
-            # [NOTE] indices to get/set top-k value
-            top_k_indices = (T.arange(pw_probs.shape[0]).dimshuffle([0, 'x']), top_k_args)
+        # Output: probabilities of target words in this batch, ([Tt], [Bs], [V_tgt])
+        pw_probs = self.independent_decoder(tgt_pos_embed, y_mask, ctx, x_mask,
+                                            trng=trng, use_noise=use_noise, softmax=False)
+        k = self.O['cond_softmax_k']
+        top_k_args = theano_argpartsort(-pw_probs, k, axis=1)[:, :k]
 
-            # TODO: union top-k indices in each sentences
+        # Top-k vocabulary of this batch. ([Total vocab size of a batch],)
+        top_k_vocab_tensor = theano_unique(top_k_args)
+        # Shared variable for f_next. ([V_tgt],), 0-1 indicator
+        top_k_vocab_indicator = theano.shared(np.empty([self.O['n_words']], dtype='int64'), name='top_k_vocab')
 
         print 'Building f_init...',
         inps = [x]
         if batch_mode:
             inps.append(x_mask)
         outs = [init_state, ctx]
-        f_init = theano.function(inps, outs, name='f_init', profile=profile,)
+        f_init = theano.function(
+            inps, outs,
+            name='f_init', profile=profile,
+            updates={
+                top_k_vocab_indicator: T.set_subtensor(T.zeros_like(top_k_vocab_indicator)[top_k_vocab_tensor], 1)
+            },
+        )
         print 'Done'
 
         pre_projected_context_ = self.attention_projected_context(ctx, prefix='decoder')
@@ -338,14 +344,18 @@ class ConditionalSoftmaxModel(DelibNMT):
         if dropout_rate_out:
             logit = self.dropout(logit, use_noise, trng, dropout_rate_out)
 
-        logit = self.feed_forward(logit, prefix='ff_logit', activation=linear)
+        logit = self.feed_forward(logit, prefix='ff_logit', activation=linear)  # ([Bs], [V_tgt])
+
+        row_index = T.arange(y.shape[0]).dimshuffle([0, 'x'])
+        # Restore vocab from indicator.
+        top_k_vocab = T.nonzero(top_k_vocab_indicator)[0]
+        part_logit = logit[row_index, top_k_vocab]
 
         # Compute the softmax probability
-        # TODO: apply per-word output on it
-        next_probs = T.nnet.softmax(logit)
+        next_probs = T.nnet.softmax(part_logit)
 
         # Sample from softmax distribution to get the sample
-        next_sample = trng.multinomial(pvals=next_probs).argmax(1)
+        next_sample = top_k_vocab[trng.multinomial(pvals=next_probs).argmax(1)]
 
         # Compile a function to do the whole thing above, next word probability,
         # sampled word for the next target, next hidden state to be used
