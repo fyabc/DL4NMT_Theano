@@ -11,6 +11,8 @@ Data format:
     value = top-k word indices
 """
 
+# TODO
+
 
 def prepare_gen(model_options):
     pass
