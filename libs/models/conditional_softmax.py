@@ -220,15 +220,23 @@ class ConditionalSoftmaxModel(DelibNMT):
             projected_context=pre_projected_context, dropout_params=dropout_params, one_step=False,
         )
 
-        trng, use_noise, probs = self.get_word_probability(hidden_decoder, context_decoder, tgt_embedding,
-                                                           trng=trng, use_noise=use_noise, pw_probs=pw_probs)
+        # TODO: remove per-word vocabulary, calculate cost individually, then combine the cost?
+        if True:
+            trng, use_noise, probs = self.get_word_probability(hidden_decoder, context_decoder, tgt_embedding,
+                                                               trng=trng, use_noise=use_noise, pw_probs=pw_probs)
 
-        rnn_cost = self.build_cost(y, y_mask, probs, epsilon=1e-6)
-        cost = rnn_cost / self.O['cost_normalization']  # cost used to derive gradient in training
+            rnn_test_cost = self.build_cost(y, y_mask, probs, epsilon=1e-6)
+            test_cost = rnn_test_cost
+        else:
+            trng, use_noise, probs = self.get_word_probability(hidden_decoder, context_decoder, tgt_embedding,
+                                                               trng=trng, use_noise=use_noise, pw_probs=None)
 
-        # TODO: add per-word cost
+            rnn_test_cost = self.build_cost(y, y_mask, probs)
+            pw_test_cost = self.build_cost(y, y_mask, pw_probs)
+            test_cost = rnn_test_cost + pw_test_cost
+        cost = test_cost / self.O['cost_normalization']
 
-        return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost, rnn_cost, context_mean
+        return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost, test_cost, context_mean
 
     def build_sampler(self, **kwargs):
         batch_mode = kwargs.pop('batch_mode', False)
@@ -298,9 +306,9 @@ class ConditionalSoftmaxModel(DelibNMT):
         f_init = theano.function(
             inps, outs,
             name='f_init', profile=profile,
-            updates={
-                top_k_vocab_indicator: T.set_subtensor(T.zeros_like(top_k_vocab_indicator)[top_k_vocab_tensor], 1)
-            },
+            updates=[
+                (top_k_vocab_indicator, T.set_subtensor(T.zeros_like(top_k_vocab_indicator)[top_k_vocab_tensor], 1))
+            ],
         )
         print 'Done'
 
@@ -380,7 +388,7 @@ class ConditionalSoftmaxModel(DelibNMT):
             ])
         f_next = theano.function(
             inps, outs, name='f_next', profile=profile,
-            updates={t_indicator: t_indicator + 1}
+            updates=[(t_indicator, t_indicator + 1)]
         )
         print 'Done'
 

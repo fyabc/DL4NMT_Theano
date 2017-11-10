@@ -599,10 +599,10 @@ class NMTModel(object):
         f_init = theano.function(
             inps, outs,
             name='f_init', profile=profile,
-            updates={
-                current_index: current_index + n_samples,
-                batch_size: n_samples,
-            } if delib_vocab_file else None,
+            updates=[
+                (current_index, current_index + n_samples),
+                (batch_size, n_samples),
+            ] if delib_vocab_file else None,
         )
         print('Done')
 

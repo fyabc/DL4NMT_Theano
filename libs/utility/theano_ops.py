@@ -81,7 +81,7 @@ def theano_argpartsort(a, k, axis=-1):
     return ArgPartSortOp(k)(a, axis)
 
 
-@theano.as_op(itypes=[T.imatrix], otypes=[T.ivector])
+@theano.as_op(itypes=[T.lmatrix], otypes=[T.lvector])
 def theano_unique(a):
     """Apply symbolic unique operation"""
     return np.unique(a)
