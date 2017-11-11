@@ -212,7 +212,8 @@ class ConditionalSoftmaxModel(DelibNMT):
 
         # Per-word prediction decoder.
         pw_probs = self.independent_decoder(tgt_embedding, y_mask, context, x_mask,
-                                            dropout_params=None, trng=trng, use_noise=use_noise, softmax=False)
+                                            dropout_params=None, trng=trng, use_noise=use_noise, softmax=False,
+                                            context_info=context_info)
 
         # RNN Decoder - pass through the decoder conditional gru with attention
         hidden_decoder, context_decoder, opt_ret['dec_alphas'], _ = self.decoder(
@@ -220,20 +221,12 @@ class ConditionalSoftmaxModel(DelibNMT):
             projected_context=pre_projected_context, dropout_params=dropout_params, one_step=False,
         )
 
-        # TODO: remove per-word vocabulary, calculate cost individually, then combine the cost?
-        if True:
-            trng, use_noise, probs = self.get_word_probability(hidden_decoder, context_decoder, tgt_embedding,
-                                                               trng=trng, use_noise=use_noise, pw_probs=pw_probs)
+        trng, use_noise, probs = self.get_word_probability(hidden_decoder, context_decoder, tgt_embedding,
+                                                           trng=trng, use_noise=use_noise, pw_probs=pw_probs)
 
-            rnn_test_cost = self.build_cost(y, y_mask, probs, epsilon=1e-6)
-            test_cost = rnn_test_cost
-        else:
-            trng, use_noise, probs = self.get_word_probability(hidden_decoder, context_decoder, tgt_embedding,
-                                                               trng=trng, use_noise=use_noise, pw_probs=None)
-
-            rnn_test_cost = self.build_cost(y, y_mask, probs)
-            pw_test_cost = self.build_cost(y, y_mask, pw_probs)
-            test_cost = rnn_test_cost + pw_test_cost
+        rnn_test_cost = self.build_cost(y, y_mask, probs)
+        pw_test_cost = self.build_cost(y, y_mask, pw_probs)
+        test_cost = rnn_test_cost + pw_test_cost
         cost = test_cost / self.O['cost_normalization']
 
         return trng, use_noise, x, x_mask, y, y_mask, opt_ret, cost, test_cost, context_mean
@@ -262,6 +255,8 @@ class ConditionalSoftmaxModel(DelibNMT):
         if batch_mode:
             x_mask = T.matrix('x_mask', dtype=fX)
             xr_mask = x_mask[::-1]
+        else:
+            x_mask, xr_mask = None, None
 
         # Word embedding for forward rnn and backward rnn (source)
         src_embedding = self.embedding(x, n_timestep, n_samples)
@@ -270,11 +265,12 @@ class ConditionalSoftmaxModel(DelibNMT):
         # Encoder
         ctx, _ = self.encoder(
             src_embedding, src_embedding_r,
-            x_mask if batch_mode else None, xr_mask if batch_mode else None,
+            x_mask, xr_mask,
             dropout_params=dropout_params,
         )
 
         # Get the input for decoder rnn initializer mlp
+        # TODO: change here to context_info (like build_model) or not?
         ctx_mean = self.get_context_mean(ctx, x_mask) if batch_mode else ctx.mean(0)
         init_state = self.feed_forward(ctx_mean, prefix='ff_state', activation=tanh)
 
@@ -289,7 +285,7 @@ class ConditionalSoftmaxModel(DelibNMT):
 
         # Output: probabilities of target words in this batch, ([Tt], [Bs], [V_tgt])
         pw_probs = self.independent_decoder(tgt_pos_embed, y_mask, ctx, x_mask,
-                                            trng=trng, use_noise=use_noise, softmax=False)
+                                            dropout_params=None, trng=trng, use_noise=use_noise, softmax=False)
         k = self.O['cond_softmax_k']
         top_k_args = theano_argpartsort(-pw_probs, k, axis=1)[:, :k]
 
@@ -415,7 +411,9 @@ class ConditionalSoftmaxModel(DelibNMT):
         assert context.ndim == 3, 'Context must be 3-d: #annotation * #sample * dim'
         n_steps = state_below.shape[0]
         n_samples = state_below.shape[1]
-        ctx_info = self.get_context_info(context, context_mask, state_below)
+        ctx_info = kwargs.get('context_info', None)
+        if ctx_info is None:
+            ctx_info = self.get_context_info(context, context_mask, state_below)
         H_ = T.zeros([n_steps, n_samples, dim], dtype=theano.config.floatX)
         C_ = T.zeros([n_steps, n_samples, dim], dtype=theano.config.floatX)
         for layer_id in xrange(self.O['n_decoder_layers']):
@@ -455,7 +453,11 @@ class ConditionalSoftmaxModel(DelibNMT):
 
         if self.O['decoder_style'] == 'stackNN':
             projected_context = T.dot(context, self.P['attn_0_ctx2hidden'])     # projected_ctx: ([Ts], [Bs], [H])
-            ctx_info = self.get_context_info(context, x_mask, tgt_embedding)
+
+            ctx_info = kwargs.get('context_info', None)
+            if ctx_info is None:
+                ctx_info = self.get_context_info(context, x_mask, tgt_embedding)
+
             H_ = T.dot(tgt_embedding, self.P['decoder_W_pose2h']) + \
                 T.dot(ctx_info, self.P['decoder_W_ctx2h']) + self.P['decoder_b_i2h']
             for layer_id in xrange(self.O['n_decoder_layers']):
@@ -482,7 +484,7 @@ class ConditionalSoftmaxModel(DelibNMT):
             if self.O['use_dropout']:
                 logit = self.dropout(logit, use_noise, trng)
         elif self.O['decoder_style'] == 'stackLSTM':
-            H_ = self.stackLSTM(tgt_embedding, 'decoder', y_mask, context, x_mask)
+            H_ = self.stackLSTM(tgt_embedding, 'decoder', y_mask, context, x_mask, **kwargs)
             logit = H_
         else:
             raise Exception('Not implemented yet')
