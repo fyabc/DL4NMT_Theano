@@ -648,7 +648,7 @@ class NMTModel(object):
         if delib_vocab_file:
             row_index = T.arange(y.shape[0]).dimshuffle([0, 'x'])
 
-            part_delib_vocab = theano_unique(delib_vocab[current_index: current_index + batch_size])
+            part_delib_vocab = theano_unique(delib_vocab[current_index - batch_size: current_index])
             part_logit = logit[row_index, part_delib_vocab]
 
             # Compute the softmax probability
