@@ -465,7 +465,7 @@ class ConditionalSoftmaxModel(DelibNMT):
 
                 # W: ([n_in], [H]); b: ([H])
                 W = _slice(self.P[_p('decoder', 'W', layer_id)], 0, dim)
-                b = self.P[_p('decoder', 'W', layer_id)][0 * dim: 1 * dim]
+                b = self.P[_p('decoder', 'b', layer_id)][0 * dim: 1 * dim]
 
                 if self.O['decoder_all_attention']:
                     # ctx_info: ([Tt], [Bs], [Hc])
