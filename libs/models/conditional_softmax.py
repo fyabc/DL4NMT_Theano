@@ -224,7 +224,7 @@ class ConditionalSoftmaxModel(DelibNMT):
         trng, use_noise, probs = self.get_word_probability(hidden_decoder, context_decoder, tgt_embedding,
                                                            trng=trng, use_noise=use_noise, pw_probs=pw_probs)
 
-        rnn_test_cost = self.build_cost(y, y_mask, probs)
+        rnn_test_cost = self.build_cost(y, y_mask, probs, epsilon=1e-6)
         pw_test_cost = self.build_cost(y, y_mask, pw_probs)
         test_cost = rnn_test_cost + pw_test_cost
         cost = test_cost / self.O['cost_normalization']
