@@ -237,7 +237,10 @@ class ConditionalSoftmaxModel(DelibNMT):
         use_noise = kwargs.pop('use_noise', theano.shared(np.float32(0.)))
         get_gates = kwargs.pop('get_gates', False)
         dropout_rate = kwargs.pop('dropout', False)
-        dropout_rate_out = self.O['dropout_out']
+
+        # [NOTE] Fix the bug of BLEU drop here
+        dropout_rate_out = 0.5 if 'fix_dp_bug' not in self.O or not self.O['fix_dp_bug'] else self.O['use_dropout']
+
         need_srcattn = kwargs.pop('need_srcattn', False)
 
         if dropout_rate is not False:
