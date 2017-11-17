@@ -184,4 +184,12 @@ Datasets = {
         'wmt17test.en','wmt17test.zh.tok',
         'wmt17_zhen.en.vocab.pkl','wmt17_zhen.zh.vocab.pkl',
     ],
+
+    'Giga': [
+        'train.article.txt', 'train.title.txt',
+        'small_train.article.txt', 'small_train.title.txt',
+        'valid.article.filter.txt', 'valid.title.filter.txt', 'valid.title.filter.txt',
+        'test.article.txt', 'test.title.txt',
+        'train.article.dict.pkl', 'train.title.dict.pkl',
+    ],
 }
