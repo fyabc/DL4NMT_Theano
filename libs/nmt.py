@@ -171,6 +171,7 @@ def train(dim_word=100,  # word vector dimensionality
           delib_reversed=None,
           cond_softmax=False,
           cond_softmax_k=1000,
+          att_window=None,
 
           zhen = False,
           previous_best_bleu = 0.0,

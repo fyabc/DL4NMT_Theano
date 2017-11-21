@@ -162,23 +162,29 @@ def main():
     parser.add_argument('--previous_finetune_cnt', action='store', default=0, type=int, dest='previous_finetune_cnt',
                         help='Previous finetune cnt during training, default to 0')
 
-    parser.add_argument('--delib', action='store_true', default=False, dest='use_delib',
-                        help='whether use deliberation model')
-    parser.add_argument('--use_attn', action="store_true", default=False, help='whether use attention')
+    group_delib = parser.add_argument_group('Deliberation options', 'options for deliberation model.')
+    group_delib.add_argument('--delib', action='store_true', default=False, dest='use_delib',
+                             help='whether use deliberation model')
+    group_delib.add_argument('--use_attn', action="store_true", default=False, help='whether use attention')
     parser.add_argument('--use_src_pos', action="store_true", default=False, help='whether use source embedding')
-    parser.add_argument('--decoder_style', type=str, default='stackNN', choices=['stackNN', 'stackLSTM', 'ffLSTM'],
-                        help='Style of decoder, default is %(default)s')
-    parser.add_argument('--which_word', type=int, default=None, help='')
+    group_delib.add_argument('--decoder_style', type=str, default='stackNN', choices=['stackNN', 'stackLSTM', 'ffLSTM'],
+                             help='Style of decoder, default is %(default)s')
+    group_delib.add_argument('--which_word', type=int, default=None, help='', metavar='N')
     parser.add_argument('--fix_encoder', action='store_true', default=False, dest='fix_encoder',
                         help='whether to fix encoder when training deliberation model')
-    parser.add_argument('--delib_reversed', action='store', default=None, dest='delib_reversed',
-                        choices=[None, 'encoder', 'decoder', 'all'],
-                        help='Reversed deliberation model, default is %(default)s')
-    parser.add_argument('--cond_softmax', nargs='?', action='store', default=None, dest='cond_softmax', const='',
-                        help='Deliberation model path to add conditional softmax into decoder, '
+    group_delib.add_argument('--delib_reversed', action='store', default=None, dest='delib_reversed',
+                             choices=[None, 'encoder', 'decoder', 'all'],
+                             help='Reversed deliberation model, default is %(default)s')
+    group_delib.add_argument('--cond_softmax', nargs='?', action='store', default=None,
+                             dest='cond_softmax', const='', metavar='<path>',
+                             help='Deliberation model path to add conditional softmax into decoder, '
                              'set "--cond_softmax" without argument to train from scratch, default is %(default)s')
-    parser.add_argument('--cond_softmax_k', action='store', default=1000, dest='cond_softmax_k', type=int,
-                        help='Use top-k pre-word prediction in conditional softmax, default is %(default)d')
+    group_delib.add_argument('--cond_softmax_k', action='store', default=1000,
+                             dest='cond_softmax_k', type=int, metavar='N',
+                             help='Use top-k pre-word prediction in conditional softmax, default is %(default)d')
+    group_delib.add_argument('--att_window', action='store', nargs='?', default=None,
+                             dest='att_window', type=int, const=3, metavar='N',
+                             help='Attention window size, default is %(default)s, const is %(const)s')
 
     args = parser.parse_args()
     print args
@@ -332,6 +338,7 @@ def main():
         delib_reversed=args.delib_reversed,
         cond_softmax=args.cond_softmax,
         cond_softmax_k=args.cond_softmax_k,
+        att_window=args.att_window,
 
         zhen=zhen,
         previous_best_bleu = args.previous_best_bleu,

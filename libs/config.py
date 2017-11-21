@@ -154,6 +154,7 @@ DefaultOptions = dict(
     delib_reversed=None,    # Reversed deliberation model, values: None, 'decoder', 'all'
     cond_softmax=False,     # Use RNN with conditional softmax from deliberation model.
     cond_softmax_k=1000,    # Use top-k per-word prediction in conditional softmax.
+    att_window=None,        # Attention window size, default = None, const = 3.
 
     zhen=False,
     previous_best_bleu=0.0,
