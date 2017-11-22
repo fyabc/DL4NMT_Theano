@@ -1,6 +1,6 @@
 DelibNMT.get_context_info(
-    context:        ([T], [Bs], [Hc]),
-    x_mask:         ([T], [Bs]),
+    context:        ([T] - 1, [Bs], [Hc]),
+    x_mask:         ([T] - 1, [Bs]),
     trg_feature:    ([T], [Bs], [W]),
 
     return:         ([T], [Bs], [Hc])   if O[use_attn]
@@ -8,18 +8,18 @@ DelibNMT.get_context_info(
 ):
     if O[use_attn]:
         tmp = T.tanh(
-            T.dot(context, self.P['attn_0_ctx2hidden']) +                                   # ([T], [Bs], [H])
+            T.dot(context, self.P['attn_0_ctx2hidden']) +                                   # ([T] - 1, [Bs], [H])
             T.dot(trg_feature, self.P['attn_0_pose2hidden'])                                # ([T], [Bs], [H])
                 .dimshuffle(0, 'x', 1, 2) +                                                 # ([T], 1, [Bs], [H])
             self.P['attn_0_b']                                                              # ([H])
-        )                                                                                   # ([T], [T], [Bs], [H])
+        )                                                                                   # ([T], [T] - 1, [Bs], [H])
 
-        tmp = T.dot(tmp, self.P['attn_1_W']).dimshuffle(0, 1, 2, 'x') + self.P['attn_1_b']  # ([T], [T], [Bs], [1])
+        tmp = T.dot(tmp, self.P['attn_1_W']).dimshuffle(0, 1, 2, 'x') + self.P['attn_1_b']  # ([T], [T] - 1, [Bs], [1])
         tmp = T.exp(tmp)
-        tmp = tmp.reshape([tmp.shape[0], tmp.shape[1], tmp.shape[2]])                       # ([T], [T], [Bs])
-        tmp *= x_mask.dimshuffle('x', 0, 1)                                                 # ([T], [T], [Bs])
-        weight = tmp / tmp.sum(axis=1, keepdims=True)                                       # ([T], [T], [Bs])
-        ctx_info = (weight.dimshuffle(0, 1, 2, 'x') * context)                              # ([T], [T], [Bs], [Hc])
+        tmp = tmp.reshape([tmp.shape[0], tmp.shape[1], tmp.shape[2]])                       # ([T], [T] - 1, [Bs])
+        tmp *= x_mask.dimshuffle('x', 0, 1)                                                 # ([T], [T] - 1, [Bs])
+        weight = tmp / tmp.sum(axis=1, keepdims=True)                                       # ([T], [T] - 1, [Bs])
+        ctx_info = (weight.dimshuffle(0, 1, 2, 'x') * context)                              # ([T], [T] - 1, [Bs], [Hc])
             .sum(axis=1)                                                                    # ([T], [Bs], [Hc])
     else:
         ctx_info = self.get_context_mean(context, x_mask)

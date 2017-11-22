@@ -116,31 +116,19 @@ class DelibNMT(NMTModel):
         else:           ([Bs], [Hc])
         """
 
-        # [DEBUG]
-        context, _ = debug_print(context, 'context:')
-        x_mask, _ = debug_print(x_mask, 'x_mask:')
-        trg_feature, _ = debug_print(trg_feature, 'trg_feature:')
-
         if self.O['use_attn']:
             tmp = T.tanh(T.dot(context, self.P['attn_0_ctx2hidden']) +
                          T.dot(trg_feature, self.P['attn_0_pose2hidden']).dimshuffle(0, 'x', 1, 2) +
                          self.P['attn_0_b'])
-            tmp, _ = debug_print(tmp, 'tmp(1):')
-
             tmp = T.dot(tmp, self.P['attn_1_W']).dimshuffle(0, 1, 2, 'x') + self.P['attn_1_b']
-            tmp, _ = debug_print(tmp, 'tmp(2):')
             tmp = T.exp(tmp)
             tmp = tmp.reshape([tmp.shape[0], tmp.shape[1], tmp.shape[2]])
-            tmp, _ = debug_print(tmp, 'tmp(3):')
             tmp *= x_mask.dimshuffle('x', 0, 1)
-            tmp, _ = debug_print(tmp, 'tmp(4):')
             weight = tmp / tmp.sum(axis=1, keepdims=True)
-
-            weight, _ = debug_print(weight, 'weight:')
 
             if self.O['att_window']:
                 from ..constants import fX
-                window_mask_np = np.ones([self.O['maxlen'], self.O['maxlen'] - 1, self.O['batch_size']], dtype=fX)
+                window_mask_np = np.ones([self.O['maxlen'], self.O['maxlen'] - 1, 1], dtype=fX)
                 s_t_ratio = 1.0     # Ratio of source / target length
                 d = self.O['att_window']
                 for t in range(window_mask_np.shape[1]):
