@@ -143,7 +143,7 @@ class DelibNMT(NMTModel):
                     outputs_info=[window_mask_init],
                 )
                 window_mask = results[-1]
-                theano.gradient.zero_grad(window_mask)  # Avoid gradient on it
+                window_mask = theano.gradient.zero_grad(window_mask)  # Avoid gradient on it
 
                 weight *= window_mask.dimshuffle(0, 1, 'x')
 
