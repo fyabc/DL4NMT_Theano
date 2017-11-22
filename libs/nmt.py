@@ -441,7 +441,8 @@ Start Time = {}
         'start_epoch', start_epoch, 'pass_batches', pass_batches
 
     print 'Allocating GPU memory in advance for batch data...',
-    inputs = get_train_input(placeholder=True, maxlen=maxlen, use_delib=use_delib, which_word=which_word)
+    inputs = get_train_input(placeholder=True, maxlen=maxlen, use_delib=use_delib,
+                             which_word=which_word, batch_size=batch_size)
     if dist_type != 'mpi_reduce':
         cost, g2_value = f_grad_shared(*inputs)
     else:
