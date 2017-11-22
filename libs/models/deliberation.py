@@ -136,7 +136,7 @@ class DelibNMT(NMTModel):
                     window_mask_ = T.set_subtensor(window_mask_[T.maximum(0, t_s - d): t_s + d, t], 1.0)
                     return window_mask_
 
-                window_mask_init = T.zeros([x_mask.shape[0], trg_feature.shape[0]], dtype=fX)
+                window_mask_init = T.zeros([trg_feature.shape[0], x_mask.shape[0]], dtype=fX)
                 results, _ = theano.scan(
                     _step_set_window,
                     sequences=[T.arange(window_mask_init.shape[1], dtype='int64')],
