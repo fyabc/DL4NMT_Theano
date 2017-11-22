@@ -126,9 +126,11 @@ class DelibNMT(NMTModel):
             tmp *= x_mask.dimshuffle('x', 0, 1)
             weight = tmp / tmp.sum(axis=1, keepdims=True)
 
+            weight, _ = debug_print(weight, 'weight:')
+
             if self.O['att_window']:
                 from ..constants import fX
-                window_mask_np = np.ones([self.O['maxlen'], self.O['maxlen'], self.O['batch_size']], dtype=fX)
+                window_mask_np = np.ones([self.O['maxlen'], self.O['maxlen'] - 1, self.O['batch_size']], dtype=fX)
                 s_t_ratio = 1.0     # Ratio of source / target length
                 d = self.O['att_window']
                 for t in range(window_mask_np.shape[1]):
