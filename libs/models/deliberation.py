@@ -116,14 +116,24 @@ class DelibNMT(NMTModel):
         else:           ([Bs], [Hc])
         """
 
+        # [DEBUG]
+        context, _ = debug_print(context, 'context:')
+        x_mask, _ = debug_print(x_mask, 'x_mask:')
+        trg_feature, _ = debug_print(trg_feature, 'trg_feature:')
+
         if self.O['use_attn']:
             tmp = T.tanh(T.dot(context, self.P['attn_0_ctx2hidden']) +
                          T.dot(trg_feature, self.P['attn_0_pose2hidden']).dimshuffle(0, 'x', 1, 2) +
                          self.P['attn_0_b'])
+            tmp, _ = debug_print(tmp, 'tmp(1):')
+
             tmp = T.dot(tmp, self.P['attn_1_W']).dimshuffle(0, 1, 2, 'x') + self.P['attn_1_b']
+            tmp, _ = debug_print(tmp, 'tmp(2):')
             tmp = T.exp(tmp)
             tmp = tmp.reshape([tmp.shape[0], tmp.shape[1], tmp.shape[2]])
+            tmp, _ = debug_print(tmp, 'tmp(3):')
             tmp *= x_mask.dimshuffle('x', 0, 1)
+            tmp, _ = debug_print(tmp, 'tmp(4):')
             weight = tmp / tmp.sum(axis=1, keepdims=True)
 
             weight, _ = debug_print(weight, 'weight:')
@@ -136,9 +146,10 @@ class DelibNMT(NMTModel):
                 for t in range(window_mask_np.shape[1]):
                     t_s = int(t * s_t_ratio)
                     window_mask_np[:max(0, t_s - d), t] = 0.
-                    window_mask_np[t_s + d:, t] = 0.
+                    window_mask_np[t_s + d + 1:, t] = 0.
                 window_mask = T.constant(window_mask_np, name='window_mask')
                 weight *= window_mask
+            # [END DEBUG]
 
             ctx_info = (weight.dimshuffle(0, 1, 2, 'x') * context).sum(axis=1)
         else:
