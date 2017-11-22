@@ -127,17 +127,24 @@ class DelibNMT(NMTModel):
             weight = tmp / tmp.sum(axis=1, keepdims=True)
 
             if self.O['att_window']:
-                from ..constants import fX
-                window_mask_np = np.ones([self.O['maxlen'], self.O['maxlen'] - 1, 1], dtype=fX)
-                s_t_ratio = 1.0     # Ratio of source / target length
+                s_t_ratio = 1.0
                 d = self.O['att_window']
-                for t in range(window_mask_np.shape[1]):
-                    t_s = int(t * s_t_ratio)
-                    window_mask_np[:max(0, t_s - d), t] = 0.
-                    window_mask_np[t_s + d + 1:, t] = 0.
-                window_mask = T.constant(window_mask_np, name='window_mask')
-                weight *= window_mask
-            # [END DEBUG]
+                from ..constants import fX
+
+                def _step_set_window(t, window_mask_):
+                    t_s = (t * s_t_ratio).astype('int64')
+                    window_mask_ = T.set_subtensor(window_mask_[T.maximum(0, t_s - d): t_s + d, t], 1.0)
+                    return window_mask_
+
+                window_mask_init = T.zeros([x_mask.shape[0], trg_feature.shape[0]], dtype=fX)
+                results, _ = theano.scan(
+                    _step_set_window,
+                    sequences=[T.arange(window_mask_init.shape[1], dtype='int64')],
+                    outputs_info=[window_mask_init],
+                )
+                window_mask = results[-1]
+
+                weight *= window_mask.dimshuffle(0, 1, 'x')
 
             ctx_info = (weight.dimshuffle(0, 1, 2, 'x') * context).sum(axis=1)
         else:

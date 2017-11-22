@@ -11,10 +11,11 @@ import theano
 
 from ..models import build_and_init_model
 from ..models.deliberation import DelibNMT
-from ..utility.utils import prepare_data, load_params, set_logging_file, message, load_options_test
+from ..utility.utils import load_params, set_logging_file, message, load_options_test
 from ..constants import profile
 from ..utility.translate import translate_whole, words2seqs, seqs2words
 from ..utility.basic import arg_top_k
+from ..utility.train import get_train_input
 
 
 def _load_one_file(filename, dic, maxlen, voc_size, UNKID=1):
@@ -205,9 +206,10 @@ def predict(modelpath,
 
                 seqx = valid_src[block_id * valid_batch_size: (block_id + 1) * valid_batch_size]
                 seqy = valid_trg[block_id * valid_batch_size: (block_id + 1) * valid_batch_size]
-                x, x_mask, y, y_mask = prepare_data(seqx, seqy)
-                y_pos_ = np.repeat(np.arange(y.shape[0])[:, None], y.shape[1], axis=1).astype('int64')
-                cost, probs = f_predictor(x, x_mask, y, y_mask, y_pos_)
+
+                inputs = get_train_input(seqx, seqy, maxlen=None, use_delib=True)
+                y, y_mask = inputs[2], inputs[3]
+                cost, probs = f_predictor(*inputs)
 
                 translation_time += time() - translation_start
 

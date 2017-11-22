@@ -18,6 +18,7 @@ from .constants import profile, fX, NaNReloadPrevious
 from .utility.data_iterator import TextIterator
 from .utility.optimizers import Optimizers
 from .utility.utils import *
+from .utility.train import get_train_input
 
 from .utility.translate import translate_dev_get_bleu
 from .models import NMTModel, TrgAttnNMTModel, DelibNMT, ConditionalSoftmaxModel
@@ -57,23 +58,10 @@ def validation(iterator, f_cost, use_noise, use_delib=False, which_word=None, ma
     valid_cost = 0.0
     valid_count = 0
     for x, y in iterator:
-        x, x_mask, y, y_mask = prepare_data(x, y, maxlen=maxlen)
-
-        if x is None:
+        inputs = get_train_input(x, y, maxlen=maxlen, use_delib=use_delib, which_word=which_word)
+        if inputs is None:
             continue
-
-        if use_delib:
-            y_pos_ = np.repeat(np.arange(y.shape[0])[:, None], y.shape[1], axis=1).astype('int64')
-            if which_word is not None:
-                try:
-                    y = y[which_word, None]
-                    y_mask = y_mask[which_word, None]
-                    y_pos_ = y_pos_[which_word, None]
-                except:
-                    continue
-        inputs = [x, x_mask, y, y_mask]
-        if use_delib:
-            inputs.append(y_pos_)
+        x_mask = inputs[1]
 
         valid_cost += f_cost(*inputs) * x_mask.shape[1]
         valid_count += x_mask.shape[1]
@@ -81,6 +69,7 @@ def validation(iterator, f_cost, use_noise, use_delib=False, which_word=None, ma
     use_noise.set_value(orig_noise)
 
     return valid_cost / valid_count
+
 
 def train(dim_word=100,  # word vector dimensionality
           dim=1000,  # the number of LSTM units
@@ -452,19 +441,7 @@ Start Time = {}
         'start_epoch', start_epoch, 'pass_batches', pass_batches
 
     print 'Allocating GPU memory in advance for batch data...',
-    x, x_mask, y, y_mask = get_batch_place_holder(batch_size, maxlen)
-    if use_delib:
-        y_pos_ = np.repeat(np.arange(y.shape[0])[:, None], y.shape[1], axis=1).astype('int64')
-        if which_word is not None:
-            try:
-                y = y[which_word, None]
-                y_mask = y_mask[which_word, None]
-                y_pos_ = y_pos_[which_word, None]
-            except:
-                pass
-    inputs = [x, x_mask, y, y_mask]
-    if use_delib:
-        inputs.append(y_pos_)
+    inputs = get_train_input(placeholder=True, maxlen=maxlen, use_delib=use_delib, which_word=which_word)
     if dist_type != 'mpi_reduce':
         cost, g2_value = f_grad_shared(*inputs)
     else:
@@ -488,25 +465,12 @@ Start Time = {}
             uidx += 1
             use_noise.set_value(1.)
 
-            x, x_mask, y, y_mask = prepare_data(x, y, maxlen=maxlen)
-
-            if x is None:
-                print 'Minibatch with zero sample under length ', maxlen
+            inputs = get_train_input(x, y, maxlen=maxlen, use_delib=use_delib, which_word=which_word)
+            if inputs is None:
+                print 'Minibatch with zero sample under length {}, ' \
+                      'or which_word {} out of range'.format(maxlen, which_word)
                 uidx -= 1
                 continue
-
-            if use_delib:
-                y_pos_ = np.repeat(np.arange(y.shape[0])[:, None], y.shape[1], axis=1).astype('int64')
-                if which_word is not None:
-                    try:
-                        y = y[which_word, None]
-                        y_mask = y_mask[which_word, None]
-                        y_pos_ = y_pos_[which_word, None]
-                    except:
-                        continue
-            inputs = [x, x_mask, y, y_mask]
-            if use_delib:
-                inputs.append(y_pos_)
 
             effective_uidx = uidx - start_uidx
             ud_start = time.time()
