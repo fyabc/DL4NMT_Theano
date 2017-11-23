@@ -133,7 +133,7 @@ class DelibNMT(NMTModel):
 
                 def _step_set_window(t, window_mask_):
                     t_s = (t * s_t_ratio).astype('int64')
-                    window_mask_ = T.set_subtensor(window_mask_[T.maximum(0, t_s - d): t_s + d, t], 1.0)
+                    window_mask_ = T.set_subtensor(window_mask_[T.maximum(0, t_s - d): t_s + d + 1, t], 1.0)
                     return window_mask_
 
                 window_mask_init = T.zeros([trg_feature.shape[0], x_mask.shape[0]], dtype=fX)
