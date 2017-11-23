@@ -13,7 +13,7 @@ from ..layers.basic import _slice
 from .model import ParameterInitializer, NMTModel
 from ..utility.utils import *
 from ..layers import *
-from ..constants import fX, profile
+from ..constants import fX, profile, AverageLength
 
 
 class DelibInitializer(ParameterInitializer):
@@ -127,7 +127,7 @@ class DelibNMT(NMTModel):
             weight = tmp / tmp.sum(axis=1, keepdims=True)
 
             if self.O['att_window']:
-                s_t_ratio = 1.0
+                s_t_ratio = AverageLength[self.O['task']][0] / AverageLength[self.O['task']][1]
                 d = self.O['att_window']
                 from ..constants import fX
 
