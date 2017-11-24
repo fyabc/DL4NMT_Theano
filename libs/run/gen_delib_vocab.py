@@ -47,18 +47,8 @@ def prepare_gen(model_options):
 
     kw_ret = {}
 
-    def _load_files():
-        src_lines = _load_one_file(test_datasets[0], srcdict, model_options['maxlen'], model_options['n_words_src'])
-        trg_lines = _load_one_file(test_datasets[1], trgdict, model_options['maxlen'], model_options['n_words'])
-
-        # sorted by trg file
-        trgsize = [len(x) for x in trg_lines]
-        sidx = np.argsort(trgsize)[::-1]
-        sorted_src = [src_lines[ii] for ii in sidx]
-        sorted_trg = [trg_lines[ii] for ii in sidx]
-        return sorted_src, sorted_trg
-
-    test_src, test_trg = _load_files()
+    test_src = _load_one_file(test_datasets[0], srcdict, model_options['maxlen'], model_options['n_words_src'])
+    test_trg = _load_one_file(test_datasets[1], trgdict, model_options['maxlen'], model_options['n_words'])
 
     return test_src, test_trg, kw_ret
 
@@ -101,7 +91,7 @@ def generate(model_path, dump_path, k=100, test_batch_size=80):
         seqx = test_src[block_id * test_batch_size: (block_id + 1) * test_batch_size]
         seqy = test_trg[block_id * test_batch_size: (block_id + 1) * test_batch_size]
 
-        inputs = get_train_input(seqx, seqy, maxlen=maxlen, use_delib=True)
+        inputs = get_train_input(seqx, seqy, maxlen=maxlen, use_delib=False)
         x, x_mask = inputs[0], inputs[1]
         cost, probs = f_predictor(x, x_mask)
 
