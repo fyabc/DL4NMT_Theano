@@ -11,8 +11,97 @@ Data format:
     value = top-k word indices
 """
 
-# TODO
+import cPickle as pkl
+
+import numpy as np
+import theano
+
+from ..models import build_and_init_model
+from ..utility.train import get_train_input
+from ..utility.basic import arg_top_k
+from ..constants import Datasets, profile
+
+
+def _load_one_file(filename, dic, maxlen, voc_size, UNKID=1):
+    ret = []
+    with open(filename, 'r') as f:
+        for line in f:
+            X = line.strip().split()[:maxlen]
+            Y = [dic.get(w, UNKID) for w in X]
+            Z = [w if w < voc_size else UNKID for w in Y]
+            ret.append(Z)
+    return ret
 
 
 def prepare_gen(model_options):
-    pass
+    test_datasets = Datasets[model_options['task']][-4:-2]
+    dictionary, dictionary_target = model_options['vocab_filenames']
+
+    # load valid data; truncated by the ``maxlen''
+    srcdict = pkl.load(open(dictionary, 'rb'))
+    trgdict = pkl.load(open(dictionary_target, 'rb'))
+
+    kw_ret = {}
+
+    def _load_files():
+        src_lines = _load_one_file(test_datasets[0], srcdict, model_options['maxlen'], model_options['n_words_src'])
+        trg_lines = _load_one_file(test_datasets[1], trgdict, model_options['maxlen'], model_options['n_words'])
+
+        # sorted by trg file
+        trgsize = [len(x) for x in trg_lines]
+        sidx = np.argsort(trgsize)[::-1]
+        sorted_src = [src_lines[ii] for ii in sidx]
+        sorted_trg = [trg_lines[ii] for ii in sidx]
+        return sorted_src, sorted_trg
+
+    test_src, test_trg = _load_files()
+
+    return test_src, test_trg, kw_ret
+
+
+def generate(model_path, dump_path, k=100, test_batch_size=80):
+    """Generate per-word vocabulary.
+
+    Parameters
+    ----------
+    model_path
+    dump_path
+    k
+    test_batch_size
+
+    Returns
+    -------
+
+    """
+
+    model, model_options, ret = build_and_init_model(model_path, model_type='DelibNMT')
+    assert model_options['use_delib'], 'Must use deliberation model.'
+
+    _, use_noise, x, x_mask, y, y_mask, y_pos_, _, cost, _, probs = ret
+    use_noise.set_value(0.)
+    inps = [x, x_mask, y, y_mask, y_pos_]
+    print 'Build predictor'
+    f_predictor = theano.function(inps, [cost, probs], profile=profile)
+    print 'Done'
+
+    test_src, test_trg, kw_ret = prepare_gen(model_options)
+
+    m_block = (len(test_src) + test_batch_size - 1) // test_batch_size
+
+    result = np.empty([len(test_src), k], dtype='int64')
+
+    for block_id in xrange(m_block):
+        seqx = test_src[block_id * test_batch_size: (block_id + 1) * test_batch_size]
+        seqy = test_trg[block_id * test_batch_size: (block_id + 1) * test_batch_size]
+
+        inputs = get_train_input(seqx, seqy, maxlen=None, use_delib=True)
+        y, y_mask = inputs[2], inputs[3]
+        cost, probs = f_predictor(*inputs)
+
+        _predict = arg_top_k(-probs, k, axis=1)
+        _predict = _predict.reshape((y.shape[0], y.shape[1], _predict.shape[-1]))
+
+        result[block_id * test_batch_size: (block_id + 1) * test_batch_size] = _predict[:, :, :k]
+
+    np.savez(dump_path, delib_vocab=result)
+    print 'Result dump to {}.'.format(dump_path)
