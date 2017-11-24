@@ -12,6 +12,7 @@ Data format:
 """
 
 import cPickle as pkl
+import os
 
 import numpy as np
 import theano
@@ -34,7 +35,10 @@ def _load_one_file(filename, dic, maxlen, voc_size, UNKID=1):
 
 
 def prepare_gen(model_options):
-    test_datasets = Datasets[model_options['task']][-4:-2]
+    test_datasets = [
+        os.path.join('data', 'test', Datasets[model_options['task']][-4]),
+        os.path.join('data', 'test', Datasets[model_options['task']][-3]),
+    ]
     dictionary, dictionary_target = model_options['vocab_filenames']
 
     # load valid data; truncated by the ``maxlen''
