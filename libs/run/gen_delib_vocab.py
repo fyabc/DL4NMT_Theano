@@ -99,7 +99,7 @@ def generate(model_path, dump_path, k=100, test_batch_size=80):
         seqx = test_src[block_id * test_batch_size: (block_id + 1) * test_batch_size]
         seqy = test_trg[block_id * test_batch_size: (block_id + 1) * test_batch_size]
 
-        inputs = get_train_input(seqx, seqy, maxlen=None, use_delib=True)
+        inputs = get_train_input(seqx, seqy, maxlen=maxlen, use_delib=True)
         y, y_mask = inputs[2], inputs[3]
         cost, probs = f_predictor(*inputs)
 
@@ -108,7 +108,7 @@ def generate(model_path, dump_path, k=100, test_batch_size=80):
         _predict *= y_mask.astype('int64')[:, :, None]
         _predict = np.transpose(_predict, [1, 0, 2]).reshape([test_batch_size, -1])
 
-        result[block_id * test_batch_size: (block_id + 1) * test_batch_size] = _predict
+        result[block_id * test_batch_size: (block_id + 1) * test_batch_size, :_predict.shape[1]] = _predict
 
     np.savez(dump_path, delib_vocab=result)
     print 'Result dump to {}.'.format(dump_path)
