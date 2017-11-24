@@ -214,7 +214,7 @@ def predict(modelpath,
 
                 inputs = get_train_input(seqx, seqy, maxlen=None, use_delib=True)
                 y, y_mask = inputs[2], inputs[3]
-                cost, probs = f_predictor(inputs[0], inputs[1])
+                cost, probs = f_predictor(*inputs)
 
                 translation_time += time() - translation_start
 

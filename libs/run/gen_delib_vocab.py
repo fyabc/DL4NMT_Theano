@@ -91,9 +91,9 @@ def generate(model_path, dump_path, k=100, test_batch_size=80):
         seqx = test_src[block_id * test_batch_size: (block_id + 1) * test_batch_size]
         seqy = test_trg[block_id * test_batch_size: (block_id + 1) * test_batch_size]
 
-        inputs = get_train_input(seqx, seqy, maxlen=maxlen, use_delib=False)
+        inputs = get_train_input(seqx, seqy, maxlen=maxlen, use_delib=True)
         x, x_mask = inputs[0], inputs[1]
-        cost, probs = f_predictor(x, x_mask)
+        cost, probs = f_predictor(*inputs)
 
         _predict = arg_top_k(-probs, k, axis=1)[:, :k]
         _predict = _predict.reshape((x.shape[0], x.shape[1], k))
