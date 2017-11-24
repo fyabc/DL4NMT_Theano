@@ -103,7 +103,7 @@ def generate(model_path, dump_path, k=100, test_batch_size=80):
         y, y_mask = inputs[2], inputs[3]
         cost, probs = f_predictor(*inputs)
 
-        _predict = arg_top_k(-probs, k, axis=1)[:, :, k]
+        _predict = arg_top_k(-probs, k, axis=1)[:, :k]
         _predict = _predict.reshape((y.shape[0], y.shape[1], _predict.shape[-1]))
         _predict *= y_mask.astype('int64')[:, :, None]
         _predict = np.transpose(_predict, [1, 0, 2]).reshape([test_batch_size, -1])
