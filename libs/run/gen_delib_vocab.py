@@ -93,7 +93,7 @@ def generate(model_path, dump_path, k=100, test_batch_size=80):
     maxlen = model_options['maxlen']
     m_block = (len(test_src) + test_batch_size - 1) // test_batch_size
 
-    result = np.empty([len(test_src), maxlen * k], dtype='int64')
+    result = np.empty([len(test_src), (maxlen + 1) * k], dtype='int64')
 
     for block_id in xrange(m_block):
         seqx = test_src[block_id * test_batch_size: (block_id + 1) * test_batch_size]
