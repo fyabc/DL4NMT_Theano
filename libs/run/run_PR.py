@@ -88,15 +88,20 @@ def prepare_predict(model_options,
     return model, valid_src, valid_trg, params, f_predictor, kw_ret
 
 
-def _calc_PR(slice_, y, y_mask_i, _predict, k, s_idx, eos_id):
+def _calc_PR(i, y, len_y, _predict, k, s_idx, eos_id, n_parts=4):
+    if i is None:
+        slice_ = slice(len_y)
+    else:
+        slice_ = slice(i * len_y // n_parts, (i + 1) * len_y // n_parts, 1)
+
     # Words of the i-th split of sentence
     # [NOTE]: EOS = 0
-    R = set((y * y_mask_i)[slice_, s_idx].flatten())
+    R = set(y[slice_, s_idx].flatten())
     R.discard(eos_id)
 
     # Words of top-k prediction of the i-th split of sentence
     s_predict = _predict[slice_, s_idx, :k]
-    T_n = set((s_predict * y_mask_i[slice_, s_idx, None]).flatten())
+    T_n = set(s_predict.flatten())
     T_n.discard(eos_id)
 
     return (len(R.intersection(T_n)) * 1.0 / len(T_n)) if T_n else 0.0, \
@@ -237,28 +242,27 @@ def predict(modelpath,
                         _predict = _predict.reshape((y.shape[0], y.shape[1], _predict.shape[-1]))
 
                         if 'v' in action:
-                            R = set((y * y_mask_i).flatten())
-                            R.discard(eos_id)
-                            vocab_size_y.append(len(R))
-                            T_n = set((_predict[:, :, :k] * y_mask_i[:, :, None]).flatten())
-                            T_n.discard(eos_id)
-                            vocab_size_top_k.append(len(T_n))
-
                             if block_id == sample_id:
+                                R = set((y * y_mask_i).flatten())
+                                R.discard(eos_id)
+                                vocab_size_y.append(len(R))
+                                T_n = set((_predict[:, :, :k] * y_mask_i[:, :, None]).flatten())
+                                T_n.discard(eos_id)
+                                vocab_size_top_k.append(len(T_n))
+
                                 dump_data['R_first'] = R
                                 dump_data['T_n_first'] = T_n
 
                         for s_idx in xrange(y.shape[1]):
-                            p, r = _calc_PR(slice(None), y, y_mask_i, _predict, k, s_idx, eos_id)
+                            len_y = np.max(np.nonzero(y_mask_i[:, s_idx])) + 1
+                            p, r = _calc_PR(None, y, len_y, _predict, k, s_idx, eos_id, n_parts=split)
                             if 'p' in action:
                                 all_precisions_list[i][0].append(p)
                             if 'r' in action:
                                 all_recalls_list[i][0].append(r)
 
                             for split_i in xrange(split):
-                                split_i_slice = slice(split_i * split_len, (split_i + 1) * split_len)
-
-                                p, r = _calc_PR(split_i_slice, y, y_mask_i, _predict, k, s_idx, eos_id)
+                                p, r = _calc_PR(split_i, y, len_y, _predict, k, s_idx, eos_id, n_parts=split)
 
                                 if 'p' in action:
                                     all_precisions_list[i][split_i + 1].append(p)
