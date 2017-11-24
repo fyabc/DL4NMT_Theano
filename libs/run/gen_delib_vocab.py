@@ -97,7 +97,7 @@ def generate(model_path, dump_path, k=100, test_batch_size=80):
 
         _predict = arg_top_k(-probs, k, axis=1)[:, :k]
         _predict = _predict.reshape((x.shape[0], x.shape[1], k))
-        _predict *= y_mask.astype('int64')[:, :, None]
+        _predict *= x_mask.astype('int64')[:, :, None]
         _predict = np.transpose(_predict, [1, 0, 2]).reshape([x.shape[1], -1])
 
         result[block_id * test_batch_size: block_id * test_batch_size + x.shape[1], :_predict.shape[1]] = _predict
