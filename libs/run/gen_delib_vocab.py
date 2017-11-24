@@ -93,6 +93,8 @@ def generate(model_path, dump_path, k=100, test_batch_size=80):
     maxlen = model_options['maxlen']
     m_block = (len(test_src) + test_batch_size - 1) // test_batch_size
 
+    print 'Test data size: {}, maxlen: {}, m_block: {}'.format(len(test_src), maxlen, m_block)
+
     result = np.empty([len(test_src), (maxlen + 1) * k], dtype='int64')
 
     for block_id in xrange(m_block):
@@ -100,15 +102,15 @@ def generate(model_path, dump_path, k=100, test_batch_size=80):
         seqy = test_trg[block_id * test_batch_size: (block_id + 1) * test_batch_size]
 
         inputs = get_train_input(seqx, seqy, maxlen=maxlen, use_delib=True)
-        y, y_mask = inputs[2], inputs[3]
-        cost, probs = f_predictor(*inputs)
+        x, x_mask = inputs[0], inputs[1]
+        cost, probs = f_predictor(x, x_mask)
 
         _predict = arg_top_k(-probs, k, axis=1)[:, :k]
-        _predict = _predict.reshape((y.shape[0], y.shape[1], _predict.shape[-1]))
+        _predict = _predict.reshape((x.shape[0], x.shape[1], k))
         _predict *= y_mask.astype('int64')[:, :, None]
-        _predict = np.transpose(_predict, [1, 0, 2]).reshape([y.shape[1], -1])
+        _predict = np.transpose(_predict, [1, 0, 2]).reshape([x.shape[1], -1])
 
-        result[block_id * test_batch_size: block_id * test_batch_size + y.shape[1], :_predict.shape[1]] = _predict
+        result[block_id * test_batch_size: block_id * test_batch_size + x.shape[1], :_predict.shape[1]] = _predict
 
     np.savez(dump_path, delib_vocab=result)
     print 'Result dump to {}.'.format(dump_path)
