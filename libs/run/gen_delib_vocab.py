@@ -6,7 +6,7 @@
 Result data: numpy zip file
 Data format:
     numpy.array
-    shape = (#sentences, k)
+    shape = (#sentences, maxlen * k)
     dtype = int64
     value = top-k word indices
 """
@@ -90,9 +90,10 @@ def generate(model_path, dump_path, k=100, test_batch_size=80):
 
     test_src, test_trg, kw_ret = prepare_gen(model_options)
 
+    maxlen = model_options['maxlen']
     m_block = (len(test_src) + test_batch_size - 1) // test_batch_size
 
-    result = np.empty([len(test_src), k], dtype='int64')
+    result = np.empty([len(test_src), maxlen * k], dtype='int64')
 
     for block_id in xrange(m_block):
         seqx = test_src[block_id * test_batch_size: (block_id + 1) * test_batch_size]
@@ -102,10 +103,12 @@ def generate(model_path, dump_path, k=100, test_batch_size=80):
         y, y_mask = inputs[2], inputs[3]
         cost, probs = f_predictor(*inputs)
 
-        _predict = arg_top_k(-probs, k, axis=1)
+        _predict = arg_top_k(-probs, k, axis=1)[:, :, k]
         _predict = _predict.reshape((y.shape[0], y.shape[1], _predict.shape[-1]))
+        _predict *= y_mask.astype('int64')[:, :, None]
+        _predict = np.transpose(_predict, [1, 0, 2]).reshape([test_batch_size, -1])
 
-        result[block_id * test_batch_size: (block_id + 1) * test_batch_size] = _predict[:, :, :k]
+        result[block_id * test_batch_size: (block_id + 1) * test_batch_size] = _predict
 
     np.savez(dump_path, delib_vocab=result)
     print 'Result dump to {}.'.format(dump_path)

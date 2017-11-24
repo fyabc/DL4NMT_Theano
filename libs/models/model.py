@@ -574,7 +574,8 @@ class NMTModel(object):
 
         # Deliberation vocabulary
         if delib_vocab_file is not None:
-            # delib_vocab: ([#sentences], [k]); current_index: shared variable of current index of the delib_vocab
+            # delib_vocab: ([#sentences], [T] * [k])
+            # current_index: shared variable of current index of the delib_vocab
             delib_vocab = T.constant(np.load(delib_vocab_file)['delib_vocab'], name='delib_vocab')
             current_index = theano.shared(0, name='current_index')
             batch_size = theano.shared(0, name='batch_size')
