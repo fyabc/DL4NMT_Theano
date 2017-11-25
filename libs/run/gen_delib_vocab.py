@@ -86,7 +86,7 @@ def generate(model_path, dump_path, k=100, test_batch_size=80):
 
     print 'Test data size: {}, maxlen: {}, m_block: {}'.format(len(test_src), maxlen, m_block)
 
-    result = np.empty([len(test_src), (maxlen + 1) * k], dtype='int64')
+    result = np.zeros([len(test_src), (maxlen + 1) * k], dtype='int64')
 
     for block_id in xrange(m_block):
         seqx = test_src[block_id * test_batch_size: (block_id + 1) * test_batch_size]
