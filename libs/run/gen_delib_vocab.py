@@ -92,7 +92,7 @@ def generate(model_path, dump_path, k=100, test_batch_size=80):
         seqx = test_src[block_id * test_batch_size: (block_id + 1) * test_batch_size]
         seqy = test_trg[block_id * test_batch_size: (block_id + 1) * test_batch_size]
 
-        inputs = get_train_input(seqx, seqy, maxlen=maxlen, use_delib=True)
+        inputs = get_train_input(seqx, seqy, maxlen=None, use_delib=True)
         x, x_mask = inputs[0], inputs[1]
         cost, probs = f_predictor(*inputs)
 
@@ -101,8 +101,9 @@ def generate(model_path, dump_path, k=100, test_batch_size=80):
         print '$ x: {}, x_mask: {}, _predict: {}'.format(x.shape, x_mask.shape, _predict.shape)
 
         _predict = _predict.reshape([-1, x.shape[1], k])
+        _min_len = min(x_mask.shape[0], _predict.shape[0])
         x_mask_i = np.zeros(_predict.shape[:2], dtype='int64')
-        x_mask_i[:x_mask.shape[0], :] = x_mask
+        x_mask_i[:_min_len] = x_mask[:_min_len]
         _predict *= x_mask_i[:, :, None]
         _predict = np.transpose(_predict, [1, 0, 2]).reshape([x.shape[1], -1])
 
