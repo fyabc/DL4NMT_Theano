@@ -75,6 +75,7 @@ def generate(model_path, dump_path, k=100, test_batch_size=80):
     use_noise.set_value(0.)
     inps = [x, x_mask, y, y_mask, y_pos_]
     print 'Build predictor'
+    # todo: Need fix here, remove y inputs.
     f_predictor = theano.function(inps, [cost, probs], profile=profile)
     print 'Done'
 
@@ -96,8 +97,13 @@ def generate(model_path, dump_path, k=100, test_batch_size=80):
         cost, probs = f_predictor(*inputs)
 
         _predict = arg_top_k(-probs, k, axis=1)[:, :k]
-        _predict = _predict.reshape((x.shape[0], x.shape[1], k))
-        _predict *= x_mask.astype('int64')[:, :, None]
+
+        print '$ x: {}, x_mask: {}, _predict: {}'.format(x.shape, x_mask.shape, _predict.shape)
+
+        _predict = _predict.reshape([-1, x.shape[1], k])
+        x_mask_i = np.zeros(_predict.shape[:2], dtype='int64')
+        x_mask_i[:x_mask.shape[0], :] = x_mask
+        _predict *= x_mask_i[:, :, None]
         _predict = np.transpose(_predict, [1, 0, 2]).reshape([x.shape[1], -1])
 
         result[block_id * test_batch_size: block_id * test_batch_size + x.shape[1], :_predict.shape[1]] = _predict
