@@ -298,12 +298,12 @@ def predict(modelpath,
                     k: [np.mean(all_precisions) for all_precisions in all_precisions_splits[1:]]
                     for k, all_precisions_splits in zip(k_list, all_precisions_list)
                 }
-                message('Precision:\n\t{}'.format(
+                message('Precision: top {} (total at last)\n\t{}'.format(
+                    ' '.join(map(str, k_list)),
                     '\n\t'.join(
-                        'top {} = {}: {}'.format(
-                            k,
-                            dump_data['precision'][k],
-                            ', '.join(str(precision) for precision in dump_data['precision_split'][k]),
+                        '\t'.join(
+                            [str(precision) for precision in dump_data['precision_split'][k]] +
+                            [dump_data['precision'][k]]
                         ) for k in k_list
                     )))
             if 'r' in action:
@@ -315,12 +315,12 @@ def predict(modelpath,
                     k: [np.mean(all_recalls) for all_recalls in all_recalls_splits[1:]]
                     for k, all_recalls_splits in zip(k_list, all_recalls_list)
                 }
-                message('Recall:\n\t{}'.format(
+                message('Recall: top {} (total at last)\n\t{}'.format(
+                    ' '.join(map(str, k_list)),
                     '\n\t'.join(
-                        'top {} = {}: {}'.format(
-                            k,
-                            dump_data['recall'][k],
-                            ', '.join(str(recall) for recall in dump_data['recall_split'][k]),
+                        '\t'.join(
+                            [str(recall) for recall in dump_data['recall_split'][k]] +
+                            [dump_data['recall'][k]]
                         ) for k in k_list
                     )))
             if 'v' in action:
