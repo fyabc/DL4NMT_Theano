@@ -303,7 +303,7 @@ def predict(modelpath,
                     '\n\t'.join(
                         '\t'.join(
                             [str(precision) for precision in dump_data['precision_split'][k]] +
-                            [dump_data['precision'][k]]
+                            [str(dump_data['precision'][k])]
                         ) for k in k_list
                     )))
             if 'r' in action:
@@ -320,7 +320,7 @@ def predict(modelpath,
                     '\n\t'.join(
                         '\t'.join(
                             [str(recall) for recall in dump_data['recall_split'][k]] +
-                            [dump_data['recall'][k]]
+                            [str(dump_data['recall'][k])]
                         ) for k in k_list
                     )))
             if 'v' in action:
