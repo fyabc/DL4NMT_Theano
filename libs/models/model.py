@@ -1465,8 +1465,8 @@ class NMTModel(object):
                     kw_ret['forget_gates_att'] = kw_ret_att['forget_gates_att']
                     kw_ret['output_gates_att'] = kw_ret_att['output_gates_att']
 
-                h_last = hidden_decoder
-                h_last = concatenate([input_, h_last], axis=input_.ndim-1)
+                
+                h_last = concatenate([input_, hidden_decoder], axis=input_.ndim-1)
                 last_state = concatenate([last_state, init_state[attention_layer_id]], axis=last_state.ndim-1)
 
                 # Layers after attention layer
@@ -1487,11 +1487,10 @@ class NMTModel(object):
                         kw_ret['forget_gates'].append(kw_ret_layer['forget_gates'])
                         kw_ret['output_gates'].append(kw_ret_layer['output_gates'])
 
-                    h_last = layer_out[0]
-                    h_last = concatenate([input_, h_last], axis=input_.ndim-1)
+                    h_last = concatenate([input_, layer_out[0]], axis=input_.ndim-1)
                     last_state = concatenate([last_state, init_state[layer_id]], axis=last_state.ndim-1)
 
-                output = h_last #concat_feat
+                output = h_last
 
             else: # Not densely connected
                 # Layers before attention layer

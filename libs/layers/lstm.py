@@ -205,7 +205,7 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
 
     n_steps = state_below.shape[0] if state_below.ndim == 3 else 1
     n_samples = state_below.shape[1] if state_below.ndim == 3 else state_below.shape[0]
-    
+
     if multi:
         dim = P[_p(prefix, 'U', layer_id)][0].shape[1] // 4
     else:
@@ -227,8 +227,7 @@ def lstm_layer(P, state_below, O, prefix='lstm', mask=None, **kwargs):
         if state_below.ndim == 3:
             state_below = concatenate([last_state[None, :, :], state_below], axis=0)
         else:
-            #state_below = T.stack([last_state, state_below], axis=0)
-            state_below = last_state
+            state_below = last_state #[n_samples, dim]
 
     def _step_slice(mask_, x_, h_, c_, U):
         h_tmp = h_
