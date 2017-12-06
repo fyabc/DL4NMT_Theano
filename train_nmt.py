@@ -195,7 +195,7 @@ def main():
     if args.dataset != 'en-fr':
         args.train1, args.train2, args.small1, args.small2, args.valid1, args.valid2, valid3, test1, test2, args.dic1, args.dic2 = \
             Datasets[args.dataset]
-    zhen = 'zh' in args.dataset and 'en' in args.dataset
+    zhen = 'zh-en' in args.dataset and 'wmt17' not in args.dataset
 
     print 'Command line arguments:'
     print args
@@ -254,7 +254,8 @@ def main():
                   './data/train/{}'.format(args.train2)),
         valid_datasets=('./data/dev/{}'.format(args.valid1),
                         './data/dev/{}'.format(args.valid2) if not zhen else './data/dic/{}'.format(args.valid2), #for zhen, dev1 is the giza file, stored in /data/dic
-                        './data/dev/{}{}'.format(valid3, '0' if zhen else '')), #hot fix for zhen valid file
+                        #'./data/dev/{}{}'.format(valid3, '0' if zhen else '')), #hot fix for zhen valid file
+						'./data/dev/{}'.format(valid3)),
         small_train_datasets=('./data/train/{}'.format(args.small1),
                               './data/train/{}'.format(args.small2)),
         vocab_filenames=('./data/dic/{}'.format(args.dic1),
