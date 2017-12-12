@@ -4,7 +4,7 @@ import os
 
 from libs.constants import Datasets
 from libs.gpu_manager import get_gpu_usage
-
+sys.setrecursionlimit(1000000)
 
 def main():
     parser = argparse.ArgumentParser(
