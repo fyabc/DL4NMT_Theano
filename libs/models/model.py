@@ -996,7 +996,7 @@ class NMTModel(object):
                     new_hyp_scores[idx] = copy.copy(costs[idx])
                     new_hyp_states.append(copy.copy(next_state[:, cursor_start + ti, :]))#[n_layers, 1, dim]
                     new_hyp_memories.append(copy.copy(next_memory[:, cursor_start + ti, :]))
-                    last_hyp_states.append(last_state[cursor_start + ti, :])#[1, dim_word]
+                    last_hyp_states.append(copy.copy(last_state[cursor_start + ti, :]))#[1, dim_word]
 
                 # check the finished samples
                 new_live_k = 0
