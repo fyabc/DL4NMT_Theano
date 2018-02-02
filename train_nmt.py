@@ -185,6 +185,8 @@ def main():
     group_delib.add_argument('--att_window', action='store', nargs='?', default=None,
                              dest='att_window', type=int, const=3, metavar='N',
                              help='Attention window size, default is %(default)s, const is %(const)s')
+    group_delib.add_argument('--use_y', action="store_true", dest='use_y', default=False,
+                             help='Use y information in per-word decoder')
 
     args = parser.parse_args()
     print args
@@ -339,6 +341,9 @@ def main():
         cond_softmax=args.cond_softmax,
         cond_softmax_k=args.cond_softmax_k,
         att_window=args.att_window,
+        pw_options=dict(
+            use_y=args.use_y,
+        ),
 
         zhen=zhen,
         previous_best_bleu = args.previous_best_bleu,

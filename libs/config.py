@@ -155,6 +155,9 @@ DefaultOptions = dict(
     cond_softmax=False,     # Use RNN with conditional softmax from deliberation model.
     cond_softmax_k=1000,    # Use top-k per-word prediction in conditional softmax.
     att_window=None,        # Attention window size, default = None, const = 3.
+    pw_options=dict(        # Other per-word predictor options.
+        use_y=False,        # Use y information in per-word decoder.
+    ),
 
     zhen=False,
     previous_best_bleu=0.0,

@@ -85,6 +85,9 @@ class DelibInitializer(ParameterInitializer):
         # Encoder: bidirectional RNN
         np_parameters = self.init_encoder(np_parameters)
 
+        if self.O['pw_options']['use_y']:
+            self.init_embedding(np_parameters, 'Wemb_pos', self.O['n_words'], self.O['dim_word'])
+
         # Target position embedding
         self.init_embedding(np_parameters, 'Wemb_dec_pos', self.O['maxlen'] + 1, self.O['dim_word'])
 
@@ -305,6 +308,9 @@ class DelibNMT(NMTModel):
         y_pos_ = T.matrix('y_pos_', dtype='int64')
         tgt_pos_embed = self.P['Wemb_dec_pos'][y_pos_.flatten()].reshape(
             [y_pos_.shape[0], y_pos_.shape[1], self.O['dim_word']])
+        if self.O['pw_options']['use_y']:
+            tgt_pos_embed += self.P['dec_pos'][y.flatten()].reshape(
+                [y.shape[0], y.shape[1], self.O['dim_word']])
         probs = self.independent_decoder(tgt_pos_embed, y, y_mask, context, x_mask,
                                          trng=trng, use_noise=use_noise)
 
@@ -315,6 +321,10 @@ class DelibNMT(NMTModel):
         return trng, use_noise, x, x_mask, y, y_mask, y_pos_, opt_ret, cost, test_cost, probs
 
     def build_sampler(self, **kwargs):
+        # todo: Add support for use_y, use f_init and f_next
+        # How to generate `y` in inference mode? May see the solution in fairseq-py
+        # <https://github.com/facebookresearch/fairseq-py/blob/master/fairseq/models/fconv.py> ?
+
         # Build model
         _, use_noise, x, x_mask, y, y_mask, y_pos_, _, cost, _, probs = self.build_model()
         n_timestep, n_timestep_tgt, n_samples = self.input_dimensions(x, y)
@@ -340,7 +350,7 @@ class DelibNMT(NMTModel):
         print('Done')
         return f_predictor, None
 
-    def gen_batch_sample(self, f_init, f_next, x, x_mask, trng=None, k=1, maxlen=30, eos_id=0, attn_src=False, **kwargs):
+    def gen_batch_sample(self, f_init, f_next, x, x_mask, trng=None, k=1, maxlen=30, eos_id=0, attn_src=False, **kwargs):   # noqa
         # 解决包含y_mask和y_pos的问题
         # 一个方案：translate的时候，翻译到第几个词，就给出第几个词的pos，翻译到出了EOS的时候就结束。
 
