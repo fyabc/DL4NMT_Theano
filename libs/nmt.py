@@ -561,7 +561,7 @@ Start Time = {}
                                 message('Discount clip value to {} at iteration {}'.format(clip_shared.get_value(), uidx))
                             finetune_cnt += 1
                             if finetune_cnt >= 3:
-                                message('Learning rate decayed to {:.5f}, clip decayed to {:.5f}, task completed'.format(lrate, clip_shared.get_value()))
+                                message('Learning rate decayed to {:.5f}, clip decayed to {:.5f}, task completed'.format(float(lrate), float(clip_shared.get_value())))
                                 return 1., 1., 1.
                             bad_counter = 0
 
