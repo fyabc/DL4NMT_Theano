@@ -166,17 +166,7 @@ class ConditionalSoftmaxModel(DelibNMT):
 
         """
 
-        dropout_rate = self.O['use_dropout']
-
-        opt_ret = {}
-
-        trng = RandomStreams(1234)
-        use_noise = theano.shared(np.float32(1.))
-
-        if dropout_rate is not False:
-            dropout_params = [use_noise, trng, dropout_rate]
-        else:
-            dropout_params = None
+        opt_ret, trng, use_noise, dropout_params = self._prepare_encoder()
 
         # Encoder.
         # [NOTE] Encoder options of self.O and self.DO must be same. Switch to use self.DO['use_src_pos'].
@@ -184,20 +174,10 @@ class ConditionalSoftmaxModel(DelibNMT):
 
         n_timestep, n_timestep_tgt, n_samples = self.input_dimensions(x, y)
 
-        # Target embedding (with position embedding).
         tgt_embedding = self.embedding(y, n_timestep_tgt, n_samples, 'Wemb_dec')
-        y_pos_ = T.repeat(T.arange(y.shape[0]).dimshuffle(0, 'x'), y.shape[1], 1)
-        tgt_pos_embed = self.P['Wemb_dec_pos'][y_pos_.flatten()].reshape(
-            [y_pos_.shape[0], y_pos_.shape[1], self.O['dim_word']])
-        tgt_embedding += tgt_pos_embed
+        tgt_embedding += self._pos_embedding(n_timestep_tgt, n_samples, 'Wemb_dec_pos')
+        tgt_embedding = self._shift_embedding(tgt_embedding)
 
-        # We will shift the target sequence one time step
-        # to the right. This is done because of the bi-gram connections in the
-        # readout and decoder rnn. The first target will be all zeros and we will
-        # not condition on the last output.
-        emb_shifted = T.zeros_like(tgt_embedding)
-        emb_shifted = T.set_subtensor(emb_shifted[1:], tgt_embedding[:-1])
-        tgt_embedding = emb_shifted
         pre_projected_context = self.attention_projected_context(context, prefix='decoder')
 
         # Context info.
@@ -208,7 +188,7 @@ class ConditionalSoftmaxModel(DelibNMT):
             context_mean = T.mean(context_info, axis=0)
         else:
             context_mean = context_info
-        init_decoder_state = self.feed_forward(context_mean, prefix='ff_state', activation=tanh)
+        init_decoder_state = self.feed_forward(context_mean, prefix='ff_state')
 
         # Per-word prediction decoder.
         pw_probs = self.independent_decoder(tgt_embedding, y_mask, context, x_mask,

@@ -414,20 +414,21 @@ class NMTModel(object):
     def sync_tparams(self):
         sync_tparams(self.P, self.dupP)
 
-    def build_model(self, set_instance_variables=False):
-        """Build a training model."""
-
+    def _prepare_encoder(self):
         dropout_rate = self.O['use_dropout']
-
         opt_ret = {}
-
         trng = RandomStreams(1234)
         use_noise = theano.shared(np.float32(0.))
-
         if dropout_rate is not False:
             dropout_params = [use_noise, trng, dropout_rate]
         else:
             dropout_params = None
+        return opt_ret, trng, use_noise, dropout_params
+
+    def build_model(self, set_instance_variables=False):
+        """Build a training model."""
+
+        opt_ret, trng, use_noise, dropout_params = self._prepare_encoder()
 
         (x, x_mask, y, y_mask), context, _ = self.input_to_context(dropout_params=dropout_params)
 
@@ -435,16 +436,11 @@ class NMTModel(object):
 
         context_mean = self.get_context_mean(context, x_mask)
         # Initial decoder state
-        init_decoder_state = self.feed_forward(context_mean, prefix='ff_state', activation=tanh)
+        init_decoder_state = self.feed_forward(context_mean, prefix='ff_state')
 
-        # Word embedding (target), we will shift the target sequence one time step
-        # to the right. This is done because of the bi-gram connections in the
-        # readout and decoder rnn. The first target will be all zeros and we will
-        # not condition on the last output.
         tgt_embedding = self.embedding(y, n_timestep_tgt, n_samples, 'Wemb_dec')
-        emb_shifted = T.zeros_like(tgt_embedding)
-        emb_shifted = T.set_subtensor(emb_shifted[1:], tgt_embedding[:-1])
-        tgt_embedding = emb_shifted
+        tgt_embedding = self._shift_embedding(tgt_embedding)
+
         pre_projected_context = self.attention_projected_context(context, prefix='decoder')
 
         # Decoder - pass through the decoder conditional gru with attention
@@ -1063,6 +1059,24 @@ class NMTModel(object):
         emb = emb.reshape([n_timestep, n_samples, self.O['dim_word']])
 
         return emb
+
+    def _pos_embedding(self, n_timestep, n_samples, emb_name='Wemb_pos'):
+        y_pos_ = T.repeat(T.arange(n_timestep).dimshuffle(0, 'x'), n_samples, 1)
+        return self.embedding(y_pos_, n_timestep, n_samples, emb_name)
+
+    @staticmethod
+    def _shift_embedding(embedding):
+        """Get shifted embedding.
+
+        We will shift the target sequence one time step
+        to the right. This is done because of the bi-gram connections in the
+        readout and decoder rnn. The first target will be all zeros and we will
+        not condition on the last output.
+        """
+
+        emb_shifted = T.zeros_like(embedding)
+        emb_shifted = T.set_subtensor(emb_shifted[1:], embedding[:-1])
+        return emb_shifted
 
     @staticmethod
     def dropout(input_, use_noise, trng, dropout_rate = 0.):
